@@ -1,6 +1,26 @@
-# ros_gz_bridge config: Gazebo camera topics -> ROS 2 (docs/decisions.md: Humble + Fortress).
+# ros_gz_bridge config: Gazebo <-> ROS 2 (docs/decisions.md: Humble + Fortress).
 # Run inside the container:
 #   ros2 run ros_gz_bridge parameter_bridge --ros-args -p config_file:=/ws/sim/bridge.yaml
+#
+# /clock makes ROS nodes run on Gazebo sim time (use_sim_time): camera stamps
+# are sim time, so the controller's dead-reckoning must tick on the same clock.
+- topic_name: /clock
+  ros_type_name: rosgraph_msgs/msg/Clock
+  gz_type_name: ignition.msgs.Clock
+  direction: GZ_TO_ROS
+# actuator commands: ROS -> Gazebo JointController topics (m/s)
+- topic_name: /conveyor/cmd_vel
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: ignition.msgs.Double
+  direction: ROS_TO_GZ
+- topic_name: /pusher_c/cmd
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: ignition.msgs.Double
+  direction: ROS_TO_GZ
+- topic_name: /pusher_d/cmd
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: ignition.msgs.Double
+  direction: ROS_TO_GZ
 - topic_name: /camera/image
   ros_type_name: sensor_msgs/msg/Image
   gz_type_name: ignition.msgs.Image
