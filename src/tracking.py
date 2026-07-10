@@ -1,0 +1,32 @@
+# -*- coding: utf-8 -*-
+"""Belt position tracking and pusher lead-time (day 2, P1).
+
+Pure functions: given where and when perception saw an item, predict where it is
+now and when to command the pusher so the paddle meets it. The belt runs at a
+known constant speed (src.constants.BELT_SPEED_M_S) along +x, so tracking is
+dead-reckoning — no per-frame detection needed between camera and pusher.
+
+Positions are meters in the world frame (x along the belt); times are seconds
+(ROS stamp). The controller node supplies the item x (from the measurement) and
+the pusher x (from sim/worlds/cell.sdf).
+"""
+from src.constants import BELT_SPEED_M_S
+
+
+def position_at(item_x_m, seen_stamp_s, t_s, belt_speed_m_s=BELT_SPEED_M_S):
+    """Predicted item x at time t, dead-reckoned from the sighting."""
+    return item_x_m + belt_speed_m_s * (t_s - seen_stamp_s)
+
+
+def fire_time(item_x_m, seen_stamp_s, pusher_x_m,
+              belt_speed_m_s=BELT_SPEED_M_S, actuation_latency_s=0.0):
+    """Wall-clock time to command the pusher so it fires as the item arrives.
+
+    The item reaches the pusher after (pusher_x - item_x)/belt_speed; command it
+    earlier by actuation_latency to cover the mechanism's response time. Raises
+    ValueError if the item is already at or past the pusher (too late to catch).
+    """
+    travel_m = pusher_x_m - item_x_m
+    if travel_m <= 0:
+        raise ValueError(f"item at x={item_x_m} already past pusher x={pusher_x_m}")
+    return seen_stamp_s + travel_m / belt_speed_m_s - actuation_latency_s
