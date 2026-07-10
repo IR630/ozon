@@ -52,15 +52,18 @@ geometry_msgs/Point position  # позиция товара, метры, world f
 
 ## Задачи по потокам
 
-### P4 — classifier_node (чистый Python, проверяется без WSL)
+### P4 — classifier_node (rclpy-нода, тест в WSL/ROS)
 - **Делаем:** `src/classifier_node.py` — подписка `/item/measurement`, вызов
-  `classify()` из `src/classification.py`, консервативная политика (K у порога 0.8
-  или габарит у границы → C/D вместо B, PLAN.md принцип 5), публикация
-  `/item/classification`. Mock-паблишер измерений для standalone-теста.
-- **Проверка:** node-level pytest на rclpy — publish мок-измерение Короба →
-  assert `category == "B"` и заполненный `ItemClassification`. Зелёный тест =
-  критерий готовности.
-- **НЕ делаем:** реальную перцепцию, интеграцию с gz.
+  `classify()` из `src/classification.py`, `confidence` проброшена из измерения
+  без изменений, публикация `/item/classification`. Тонкая обёртка: логика правил
+  живёт в `classify()` (единственный источник), нода лишь кладёт результат на шину.
+- **Проверка:** node-level pytest на rclpy — probe-нода публикует мок-измерение
+  Короба → assert `category == "B"` и заполненный `ItemClassification`. Тест под
+  `importorskip("rclpy")`: на pytest-джобе CI (голый ubuntu, без ROS) и на
+  Windows-хосте пропускается, реально гоняется в WSL (colcon build ros_msgs +
+  source). Зелёный тест = критерий готовности.
+- **НЕ делаем:** реальную перцепцию, интеграцию с gz, политику неуверенности
+  (K у порога, габариты у границ → C/D) — это **день 4**.
 
 ### P3 — perception_node (проверяется на day1 depth-PNG, без WSL)
 - **Делаем:** `src/perception.py` — сегментация по depth (`depth < depth_ленты − ε`),
