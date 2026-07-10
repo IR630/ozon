@@ -13,6 +13,9 @@ venv/
 Thumbs.db
 .DS_Store
 
+# Генерируется скриптом scripts/build_item_models.py — не в гит
+sim/models/items/
+
 # Крупные артефакты — в облако организаторов, не в гит
 *.onnx
 *.pt
