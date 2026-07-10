@@ -1,0 +1,7 @@
+# 3D-модели и бинарные артефакты — без конвертации переводов строк
+*.stl -text
+*.STL -text
+*.stp -text
+*.step -text
+*.pdf -text
+*.png -text

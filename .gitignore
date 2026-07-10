@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# IDE
+.idea/
+.vscode/
+
+# ОС
+Thumbs.db
+.DS_Store
+
+# Крупные артефакты — в облако организаторов, не в гит
+*.onnx
+*.pt
+*.pth
+weights/
+datasets/
+*.mp4
