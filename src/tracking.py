@@ -12,6 +12,28 @@ the pusher x (from sim/worlds/cell.sdf).
 """
 from src.constants import BELT_SPEED_M_S
 
+# Scene calibration, mirrors sim/worlds/cell.sdf (single source is the world
+# file): pusher paddle x positions. If the world changes, update here.
+PUSHER_X_M = {"C": 2.5, "D": 3.0}
+# Paddle response: time from the velocity command to the face reaching the
+# item's flank (~0.18 m gap at 2.5 m/s, plus controller jitter). Tuned on the
+# e2e run (docs/experiments.md).
+ACTUATION_LATENCY_S = 0.1
+
+
+def plan_push(category, item_x_m, seen_stamp_s):
+    """Routing decision for one classified item: (pusher, fire_time_s) or None.
+
+    B rides the belt to its end — no push. C and D get the staggered side
+    pushers. Raises ValueError (from fire_time) when the item is already past
+    its pusher — the caller decides how to report the miss.
+    """
+    if category not in PUSHER_X_M:
+        return None
+    when = fire_time(item_x_m, seen_stamp_s, PUSHER_X_M[category],
+                     actuation_latency_s=ACTUATION_LATENCY_S)
+    return category, when
+
 
 def position_at(item_x_m, seen_stamp_s, t_s, belt_speed_m_s=BELT_SPEED_M_S):
     """Predicted item x at time t, dead-reckoned from the sighting."""

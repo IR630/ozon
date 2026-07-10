@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Belt tracking and pusher lead-time (day 2, P1). Pure math, runs everywhere."""
+"""Belt tracking, pusher lead-time, push planning (days 2-3). Pure math, runs everywhere."""
 import pytest
 
 from src.constants import BELT_SPEED_M_S
-from src.tracking import fire_time, position_at
+from src.tracking import ACTUATION_LATENCY_S, PUSHER_X_M, fire_time, plan_push, position_at
 
 
 def test_position_dead_reckoning():
@@ -33,3 +33,23 @@ def test_fire_time_scales_with_speed():
 def test_fire_time_item_past_pusher_raises():
     with pytest.raises(ValueError):
         fire_time(3.0, 10.0, 2.5, belt_speed_m_s=1.0)
+
+
+def test_plan_push_b_rides_to_belt_end():
+    assert plan_push("B", 1.5, 10.0) is None
+
+
+def test_plan_push_c_and_d_use_staggered_pushers():
+    # seen at x=1.5, stamp 10 s: C pusher at 2.5 -> fire at 11-latency,
+    # D pusher at 3.0 -> fire at 11.5-latency (belt speed from constants)
+    zone, when = plan_push("C", 1.5, 10.0)
+    assert zone == "C"
+    assert when == pytest.approx(10.0 + 1.0 / BELT_SPEED_M_S - ACTUATION_LATENCY_S)
+    zone, when = plan_push("D", 1.5, 10.0)
+    assert zone == "D"
+    assert when == pytest.approx(10.0 + 1.5 / BELT_SPEED_M_S - ACTUATION_LATENCY_S)
+
+
+def test_plan_push_item_past_pusher_raises():
+    with pytest.raises(ValueError):
+        plan_push("C", PUSHER_X_M["C"] + 0.1, 10.0)
