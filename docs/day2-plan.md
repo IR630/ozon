@@ -89,14 +89,21 @@ geometry_msgs/Point position  # позиция товара, метры, world f
   доставка на кейдж C — день 3 (придвинуть кейдж / жёлоб).
 - **НЕ делаем:** зону D / реверс / выбор реального механизма (день 5).
 
-### P1 — launch + упреждение (тайминг тестируется без WSL, launch — в WSL)
-- **Делаем:** `launch/skeleton.launch.py` — bridge (`sim/bridge.yaml`) + perception +
-  classifier + controller одной командой, топики связаны. Чистая функция упреждения:
-  товар виден в x_cam=1.5 при stamp t0, v=1.0 м/с (из констант), толкатель в
-  x_push=2.5 → момент команды `t0 + (x_push − x_cam)/v − latency`.
-- **Проверка:** `ros2 launch` поднимает все ноды, `ros2 topic list` показывает
-  связанные топики; pytest на функции упреждения (момент срабатывания для Короба).
-- **НЕ делаем:** реальную маршрутизацию end-to-end — это день 3.
+### P1 — launch + упреждение (тайминг тестируется без WSL, launch — в WSL) ✅
+- **Делаем:** `launch/skeleton.launch.py` — bridge (`sim/bridge.yaml`) + `classifier`
+  одной командой. Это **seed** сквозного скелета дня 3, а не весь контур: реальные
+  ноды дня 2 — только bridge и classifier; `perception_node` (camera→measurement)
+  и `controller_node` (classification→pusher) появятся в дне 3 под интеграцию.
+  `src/` — не ROS-пакет, поэтому нода гонится `python3 -m src.classifier_node`
+  (cwd=корень, overlay `ros_msgs`). Упреждение — чистая функция `src/tracking.py`:
+  `fire_time = t0 + (x_push − x_cam)/v − latency`, v из констант.
+- **Проверка (факт):** в WSL `ros2 launch launch/skeleton.launch.py` поднимает
+  `/camera_bridge` и `/classifier`; `ros2 topic list` — `/camera/{image,depth_image,
+  camera_info}`, `/item/measurement`, `/item/classification`; `/classifier` подписан
+  на `/item/measurement`, публикует `/item/classification`. `tests/test_tracking.py`
+  (упреждение) зелёный.
+- **НЕ делаем:** perception_node/controller_node, реальную маршрутизацию end-to-end
+  — это день 3.
 
 ### P5 — устойчивость 11 SDF (WSL-runtime) ✅ 8/11
 - **Делаем:** `scripts/check_stability.sh` — цикл по 11 товарам: спавн, отстой на
