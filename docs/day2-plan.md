@@ -95,20 +95,17 @@ geometry_msgs/Point position  # позиция товара, метры, world f
 - **НЕ делаем:** зону D / реверс / выбор реального механизма (день 5).
 
 ### P1 — launch + упреждение (тайминг тестируется без WSL, launch — в WSL) ✅
-- **Делаем:** `launch/skeleton.launch.py` — bridge (`sim/bridge.yaml`) + `classifier`
-  одной командой. Это **seed** сквозного скелета дня 3, а не весь контур: реальные
-  ноды дня 2 — только bridge и classifier; `perception_node` (camera→measurement)
-  и `controller_node` (classification→pusher) появятся в дне 3 под интеграцию.
-  `src/` — не ROS-пакет, поэтому нода гонится `python3 -m src.classifier_node`
-  (cwd=корень, overlay `ros_msgs`). Упреждение — чистая функция `src/tracking.py`:
-  `fire_time = t0 + (x_push − x_cam)/v − latency`, v из констант.
-- **Проверка (факт):** в WSL `ros2 launch launch/skeleton.launch.py` поднимает
-  `/camera_bridge` и `/classifier`; `ros2 topic list` — `/camera/{image,depth_image,
-  camera_info}`, `/item/measurement`, `/item/classification`; `/classifier` подписан
-  на `/item/measurement`, публикует `/item/classification`. `tests/test_tracking.py`
-  (упреждение) зелёный.
-- **НЕ делаем:** perception_node/controller_node, реальную маршрутизацию end-to-end
-  — это день 3.
+- **Делаем (факт):** `launch/skeleton.launch.py` — bridge (`sim/bridge.yaml`) +
+  `perception` + `classifier` одной командой. `src/` — не ROS-пакет, поэтому ноды
+  гонятся `python3 -m src.<node>` (cwd=корень, overlay `ros_msgs`). Упреждение —
+  чистая функция `src/tracking.py`: `fire_time = t0 + (x_push − x_cam)/v − latency`,
+  v из констант.
+- **Проверка (факт):** живой прогон в WSL — Gazebo + спавн Короба 300 + launch →
+  `/item/measurement` (296×200×198 мм, K=0.56, позиция (1.501, 0.001), stamp кадра)
+  → `/item/classification` **category B**. Цепочка камера→классификация работает
+  end-to-end; `tests/test_perception_node.py`, `tests/test_classifier_node.py`,
+  `tests/test_tracking.py` зелёные.
+- **НЕ делаем:** controller_node (classification→pusher) и маршрутизацию — день 3.
 
 ### P5 — устойчивость 11 SDF (WSL-runtime) ✅ 10/11
 - **Делаем:** `scripts/check_stability.sh` — цикл по 11 товарам: спавн, отстой на
