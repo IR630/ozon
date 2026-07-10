@@ -36,6 +36,18 @@
   в main через merge после проверки. Мелкие безопасные шаги можно коммитить в main напрямую.
 - Историю, отправленную в общий репозиторий, не переписываем (`push --force` в main запрещён).
 
+## Ремоуты
+
+Два репозитория: **`true`** — основной, командный у организаторов
+(`hackathonsrus/ozone-tech_ii_v_massy_883`), `origin` — зеркало (`IR630/ozon`).
+Пуш всегда в оба. У `true` настроены два push-URL, поэтому обычный `git push`
+отправляет в оба сразу; каждому участнику настроить у себя один раз:
+
+```
+git remote set-url --push true https://github.com/hackathonsrus/ozone-tech_ii_v_massy_883.git
+git remote set-url --add --push true https://github.com/IR630/ozon.git
+```
+
 ## Вехи
 
 Достигли этапа из PLAN.md — ставим тег:
