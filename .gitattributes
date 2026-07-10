@@ -5,3 +5,4 @@
 *.step -text
 *.pdf -text
 *.png -text
+*.sh text eol=lf

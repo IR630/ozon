@@ -45,27 +45,38 @@
       </link>
     </model>
 
-    <!-- infeed conveyor A: 3 m along +X, belt top at z = 0.4 -->
+    <!-- infeed conveyor A: belt top at z = 0.4, working section x = 0..3.
+         Implementation: a long platform on a prismatic joint driven at
+         constant velocity (JointController). Real friction carries items —
+         TrackController turned out to be inert on a world-welded link
+         (docs/decisions.md). The 9 m platform gives ~3 m of travel per
+         episode; runs are short and reset the world anyway (seed principle). -->
     <model name="conveyor">
       <pose>1.5 0 0.35 0 0 0</pose>
       <link name="belt">
-        <inertial><mass>100</mass><inertia><ixx>10</ixx><iyy>10</iyy><izz>10</izz></inertia></inertial>
+        <inertial><mass>200</mass><inertia><ixx>20</ixx><iyy>20</iyy><izz>20</izz></inertia></inertial>
         <collision name="collision">
-          <geometry><box><size>3.0 0.5 0.1</size></box></geometry>
+          <geometry><box><size>9.0 0.5 0.1</size></box></geometry>
           <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface>
         </collision>
         <visual name="visual">
-          <geometry><box><size>3.0 0.5 0.1</size></box></geometry>
+          <geometry><box><size>9.0 0.5 0.1</size></box></geometry>
           <material><ambient>0.2 0.2 0.25 1</ambient><diffuse>0.2 0.2 0.25 1</diffuse></material>
         </visual>
       </link>
-      <joint name="world_fixed" type="fixed">
+      <joint name="belt_joint" type="prismatic">
         <parent>world</parent>
         <child>belt</child>
+        <axis>
+          <xyz>1 0 0</xyz>
+          <limit><lower>-3.2</lower><upper>3.2</upper></limit>
+        </axis>
       </joint>
-      <!-- moving belt surface; velocity commanded over the plugin topic -->
-      <plugin filename="ignition-gazebo-track-controller-system" name="ignition::gazebo::systems::TrackController">
-        <link>belt</link>
+      <!-- belt speed (m/s) is commanded at runtime on this topic; the value
+           comes from BELT_SPEED_M_S in src/constants.py -->
+      <plugin filename="ignition-gazebo-joint-controller-system" name="ignition::gazebo::systems::JointController">
+        <joint_name>belt_joint</joint_name>
+        <topic>/conveyor/cmd_vel</topic>
       </plugin>
     </model>
 

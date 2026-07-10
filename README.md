@@ -26,6 +26,22 @@ pytest -q                     # 35 тестов зелёные
 python scripts/build_item_models.py   # SDF-модели 11 товаров -> sim/models/items/
 ```
 
+## Быстрый старт: симуляция (WSL2, рекомендуется на Windows)
+
+```powershell
+# один раз: импорт Ubuntu 22.04 на диск D (rootfs: cloud-images.ubuntu.com/wsl/jammy)
+wsl --import ozon D:\wsl\ozon D:\vano\installers\ubuntu2204-wsl-rootfs.tar.gz --version 2
+wsl -d ozon -- bash /mnt/d/vano/ozon/scripts/provision_wsl.sh   # ROS 2 + Gazebo + docker-ce
+wsl --terminate ozon                                            # включить systemd
+```
+
+```bash
+# внутри WSL (wsl -d ozon), из /mnt/d/vano/ozon:
+bash scripts/check_sdf.sh    # валидность мира и 11 моделей
+bash scripts/smoke_belt.sh   # короб физически едет по ленте 1 м/с
+# headless-запуски Gazebo — только с LIBGL_ALWAYS_SOFTWARE=1 (см. docs/decisions.md)
+```
+
 ## Быстрый старт: симуляция (Docker)
 
 ```bash
