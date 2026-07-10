@@ -1,0 +1,20 @@
+# Dev environment. From the repo root:
+#   docker compose -f docker/docker-compose.yml build
+#   docker compose -f docker/docker-compose.yml run dev
+# GUI: on Linux — X11 passthrough below; on Windows — Docker Desktop + WSLg
+# exposes DISPLAY automatically. Headless check: ign gazebo -s -r <world>.
+services:
+  dev:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    volumes:
+      - ..:/ws
+      - /tmp/.X11-unix:/tmp/.X11-unix
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - QT_X11_NO_MITSHM=1
+    network_mode: host
+    stdin_open: true
+    tty: true
+    command: bash
