@@ -1,21 +1,36 @@
 # -*- coding: utf-8 -*-
 """Analyze STL models: dimensions, volume, watertightness, circle-in-section criterion.
 
-Classification per task rules:
-  1. Gabarits: fits if min-extent sorted dims > 10x10x10 and < 450x320x320 (sorted desc compare).
+Classification per task rules (docs/md/task.md, section 2):
+  1. Gabarits: fits if sorted-desc dims are within (10x10x10, 450x320x320) mm.
   2. Circle-in-section: K = r_inscribed / R_circumscribed of a cross-section > 0.8 -> round.
      Approximated via the max over principal-axis cross-sections (convex hull of section,
      R = max distance from centroid, r = min distance from centroid to hull edges).
 """
 import sys
 from pathlib import Path
+
 import numpy as np
 import trimesh
 
-sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-
-MAX_DIMS = np.array([450, 320, 320])  # sorted desc
+MAX_DIMS = np.array([450, 320, 320])  # sorted desc, mm
 MIN_DIMS = np.array([10, 10, 10])
+ROUND_K = 0.8
+
+CAT_B = "B: подходит для сортировки"
+CAT_C = "C: не подходит по габаритам"
+CAT_D = "D: доупаковка (круг в сечении)"
+
+
+def classify(dims, k):
+    """Category by task rules: gabarits first, then circle-in-section."""
+    d = np.sort(np.asarray(dims, dtype=float))[::-1]
+    fits = bool(np.all(d < MAX_DIMS)) and bool(np.all(d > MIN_DIMS))
+    if not fits:
+        return CAT_C
+    if k > ROUND_K:
+        return CAT_D
+    return CAT_B
 
 
 def section_circle_ratio(mesh, origin, normal):
@@ -28,8 +43,7 @@ def section_circle_ratio(mesh, origin, normal):
         pts = np.asarray(planar.vertices)
         if len(pts) < 3:
             return None
-    except Exception as e:
-        print(f"    section fail ({normal}, {origin.round(1)}): {type(e).__name__}: {e}", file=sys.stderr)
+    except Exception:
         return None
     from scipy.spatial import ConvexHull
     try:
@@ -54,9 +68,8 @@ def section_circle_ratio(mesh, origin, normal):
 
 
 def max_circle_ratio(mesh):
-    """Max K over cross-sections along 3 principal axes at several offsets."""
+    """Max K over cross-sections along 3 OBB axes at several offsets."""
     m = mesh.copy()
-    # align to principal axes via OBB
     m.apply_transform(np.linalg.inv(m.bounding_box_oriented.primitive.transform))
     lo, hi = m.bounds
     best = 0.0
@@ -72,66 +85,80 @@ def max_circle_ratio(mesh):
     return best
 
 
-rows = []
-for f in sorted(Path("docs/Stl").iterdir()):
-    m = trimesh.load(str(f), force="mesh")
-    # oriented bounding box extents = real dims regardless of orientation in file
-    obb = m.bounding_box_oriented.primitive.extents
-    dims = np.sort(obb)[::-1]  # desc
-    fits_max = bool(np.all(dims < MAX_DIMS))
-    fits_min = bool(np.all(np.sort(m.bounding_box_oriented.primitive.extents) > MIN_DIMS))
+def analyze_file(path):
+    """Full geometric analysis of one STL file."""
+    m = trimesh.load(str(path), force="mesh")
+    dims = np.sort(m.bounding_box_oriented.primitive.extents)[::-1]
     k = max_circle_ratio(m)
-    if not (fits_max and fits_min):
-        cat = "C: не подходит по габаритам"
-    elif k > 0.8:
-        cat = "D: доупаковка (круг в сечении)"
-    else:
-        cat = "B: подходит для сортировки"
-    rows.append({
-        "name": f.stem,
-        "file": f.name,
+    return {
+        "name": Path(path).stem,
+        "file": Path(path).name,
         "dims": dims,
-        "aabb": np.sort(m.extents)[::-1],
         "volume": m.volume if m.is_watertight else None,
         "watertight": m.is_watertight,
         "faces": len(m.faces),
         "k": k,
-        "cat": cat,
-    })
-    print(f"{f.stem}: OBB {dims.round(1)} K={k:.3f} watertight={m.is_watertight} faces={len(m.faces)} -> {cat}")
+        "cat": classify(dims, k),
+    }
 
-# sanity check against box names
-print("\nПроверка: Короб 300х200х200 ->", [r["dims"].round(0) for r in rows if "300" in r["name"]])
-print("Проверка: Короб 400х400х300 ->", [r["dims"].round(0) for r in rows if "400" in r["name"]])
 
-# write models.md
-lines = [
-    "# Тестовый набор 3D-моделей: геометрический анализ",
-    "",
-    "> Автоматический анализ STL из `docs/Stl/` (trimesh). Габариты — по ориентированному",
-    "> ограничивающему боксу (OBB), мм, по убыванию. K — максимальный коэффициент",
-    "> r_впис/R_опис по сечениям вдоль главных осей (порог круга: K > 0,8).",
-    "> Категория — предварительная оценка по правилам классификации из task.md;",
-    "> пограничные случаи требуют ручной проверки.",
-    "",
-    "| Модель | Габариты OBB, мм | Объём, л | Watertight | Треуг. | K (круг) | Категория (оценка) |",
-    "|---|---|---|---|---|---|---|",
-]
-for r in rows:
-    d = " × ".join(f"{x:.0f}" for x in r["dims"])
-    vol = f"{r['volume']/1e6:.2f}" if r["volume"] else "—"
-    wt = "да" if r["watertight"] else "нет"
-    lines.append(f"| {r['name']} | {d} | {vol} | {wt} | {r['faces']} | {r['k']:.2f} | {r['cat']} |")
-lines += [
-    "",
-    "## Ограничения сортировщика (для справки)",
-    "",
-    "- Минимум: 10 × 10 × 10 мм; максимум: 450 × 320 × 320 мм.",
-    "- Круг в сечении: r_впис / R_опис > 0,8 → категория D (доупаковка).",
-    "- Приоритет: сначала габариты (C), затем форма (D), иначе B.",
-    "",
-    "*Сгенерировано скриптом анализа, 2026-07-10. STEP-модели (`docs/Step/`) — точная",
-    "геометрия тех же объектов для CAD/аналитической проверки.*",
-]
-Path("docs/md/models.md").write_text("\n".join(lines), encoding="utf-8")
-print("\ndocs/md/models.md written")
+def main():
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    rows = []
+    for f in sorted(Path("docs/Stl").iterdir()):
+        r = analyze_file(f)
+        rows.append(r)
+        print(f"{r['name']}: OBB {r['dims'].round(1)} K={r['k']:.3f} "
+              f"watertight={r['watertight']} faces={r['faces']} -> {r['cat']}")
+
+    lines = [
+        "# Тестовый набор 3D-моделей: геометрический анализ",
+        "",
+        "> Автоматический анализ STL из `docs/Stl/` (trimesh). Габариты — по ориентированному",
+        "> ограничивающему боксу (OBB), мм, по убыванию. K — максимальный коэффициент",
+        "> r_впис/R_опис по сечениям вдоль главных осей (порог круга: K > 0,8).",
+        "> Категория — предварительная оценка по правилам классификации из task.md;",
+        "> пограничные случаи требуют ручной проверки.",
+        "",
+        "| Модель | Габариты OBB, мм | Объём, л | Watertight | Треуг. | K (круг) | Категория (оценка) |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for r in rows:
+        d = " × ".join(f"{x:.0f}" for x in r["dims"])
+        vol = f"{r['volume'] / 1e6:.2f}" if r["volume"] else "—"
+        wt = "да" if r["watertight"] else "нет"
+        lines.append(f"| {r['name']} | {d} | {vol} | {wt} | {r['faces']} | {r['k']:.2f} | {r['cat']} |")
+    lines += [
+        "",
+        "## Пограничные и особые случаи",
+        "",
+        "- **Цилиндр (K=0.74)** — это не гладкий цилиндр, а корпус с четырьмя продольными",
+        "  стяжками и квадратными торцами (~50×43 мм). Выпуклая оболочка сечения — скруглённый",
+        "  квадрат, поэтому по формальному критерию K < 0,8 объект **не** круглый → B.",
+        "  Явно заложенный организаторами пограничный кейс: «называется цилиндром, но по критерию не круг».",
+        "- **Шлем (K=0.78)** — купол почти круглый в горизонтальном сечении, K вплотную к порогу 0,8.",
+        "  Результат чувствителен к способу вычисления сечения; требует аккуратной проверки",
+        "  и обоснования в отчёте.",
+        "- **Ручка (K=0.99, 148 × 13 × 9 мм)** — круглая в сечении, **но** минимальный габарит",
+        "  9 мм < 10 мм → по приоритету правил уходит в C (габариты важнее формы).",
+        "- **Пуфик (K=1.00, 489 мм)** — круглый, но 489 > 450 мм → по приоритету правил C, не D.",
+        "- **Короб 400х400х300 (401 × 400 × 300)** — превышает 450 × 320 × 320 по второму",
+        "  и третьему габариту (400 > 320) → C.",
+        "- Габариты коробов на ~1 мм больше названий (301 против 300) — это толщина стенок",
+        "  в модели; при проверке порогов стоит помнить про допуск.",
+        "",
+        "## Ограничения сортировщика (для справки)",
+        "",
+        "- Минимум: 10 × 10 × 10 мм; максимум: 450 × 320 × 320 мм.",
+        "- Круг в сечении: r_впис / R_опис > 0,8 → категория D (доупаковка).",
+        "- Приоритет: сначала габариты (C), затем форма (D), иначе B.",
+        "",
+        "*Сгенерировано скриптом анализа. STEP-модели (`docs/Step/`) — точная",
+        "геометрия тех же объектов для CAD/аналитической проверки.*",
+    ]
+    Path("docs/md/models.md").write_text("\n".join(lines), encoding="utf-8")
+    print("\ndocs/md/models.md written")
+
+
+if __name__ == "__main__":
+    main()
