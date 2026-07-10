@@ -13,24 +13,19 @@ from pathlib import Path
 import numpy as np
 import trimesh
 
-MAX_DIMS = np.array([450, 320, 320])  # sorted desc, mm
-MIN_DIMS = np.array([10, 10, 10])
-ROUND_K = 0.8
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from src.classification import classify as classify_category  # noqa: E402
+from src.constants import CATEGORY_B, CATEGORY_C, CATEGORY_D  # noqa: E402
 
-CAT_B = "B: подходит для сортировки"
-CAT_C = "C: не подходит по габаритам"
-CAT_D = "D: доупаковка (круг в сечении)"
+CAT_B = f"{CATEGORY_B}: подходит для сортировки"
+CAT_C = f"{CATEGORY_C}: не подходит по габаритам"
+CAT_D = f"{CATEGORY_D}: доупаковка (круг в сечении)"
+_LABELS = {CATEGORY_B: CAT_B, CATEGORY_C: CAT_C, CATEGORY_D: CAT_D}
 
 
 def classify(dims, k):
-    """Category by task rules: gabarits first, then circle-in-section."""
-    d = np.sort(np.asarray(dims, dtype=float))[::-1]
-    fits = bool(np.all(d < MAX_DIMS)) and bool(np.all(d > MIN_DIMS))
-    if not fits:
-        return CAT_C
-    if k > ROUND_K:
-        return CAT_D
-    return CAT_B
+    """Human-readable label for the report; rules live in src/classification.py."""
+    return _LABELS[classify_category(dims, k)]
 
 
 def section_circle_ratio(mesh, origin, normal):
