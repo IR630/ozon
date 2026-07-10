@@ -1,0 +1,15 @@
+# ros_gz_bridge config: Gazebo camera topics -> ROS 2 (docs/decisions.md: Humble + Fortress).
+# Run inside the container:
+#   ros2 run ros_gz_bridge parameter_bridge --ros-args -p config_file:=/ws/sim/bridge.yaml
+- topic_name: /camera/image
+  ros_type_name: sensor_msgs/msg/Image
+  gz_type_name: ignition.msgs.Image
+  direction: GZ_TO_ROS
+- topic_name: /camera/depth_image
+  ros_type_name: sensor_msgs/msg/Image
+  gz_type_name: ignition.msgs.Image
+  direction: GZ_TO_ROS
+- topic_name: /camera/camera_info
+  ros_type_name: sensor_msgs/msg/CameraInfo
+  gz_type_name: ignition.msgs.CameraInfo
+  direction: GZ_TO_ROS
