@@ -3,13 +3,11 @@
   Sorting cell world, 6 x 10 m (docs/md/plan.md): infeed conveyor A along +X,
   zone B = sorter infeed past the belt end, roll-cages C/D on the belt sides.
 
-  DRAFT until first run in the Docker environment (no Gazebo on the dev host).
-  TODO(day 2): verify TrackController surface velocity topic name and that
-  items ride the belt; fallback per PLAN-7DAYS risks — kinematic guidance.
-
-  Belt speed is NOT hardcoded here: it is commanded at runtime over the
-  TrackController topic by the launch/orchestration code, which reads
-  BELT_SPEED_M_S from src/constants.py (single source of domain constants).
+  Belt speed is NOT hardcoded here: it is commanded at runtime on
+  /conveyor/cmd_vel by scripts/orchestration, which read BELT_SPEED_M_S from
+  src/constants.py (single source of domain constants). Command it with a
+  soft-start ramp, never a 0->1 m/s step: the jerk launches round items
+  (docs/decisions.md 2026-07-11, scripts/check_stability.sh).
 -->
 <sdf version="1.8">
   <world name="cell">
