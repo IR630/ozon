@@ -10,7 +10,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /tmp/requirements.txt
-RUN pip3 install --no-cache-dir -r /tmp/requirements.txt opencv-python-headless
+# numpy<2: ROS ships apt-built scipy/cv_bridge compiled against numpy 1.x;
+# opencv wheels otherwise drag in numpy 2 and break them (binary ABI)
+RUN pip3 install --no-cache-dir -r /tmp/requirements.txt "numpy<2" opencv-python-headless
 
 # repo is mounted at /ws (see docker-compose.yml)
 WORKDIR /ws

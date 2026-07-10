@@ -31,7 +31,8 @@ apt-get install -y \
     python3-colcon-common-extensions \
     python3-pip
 
-pip3 install --no-cache-dir numpy scipy trimesh pytest ruff opencv-python-headless
+# numpy<2: apt-built scipy/cv_bridge are compiled against numpy 1.x (ABI)
+pip3 install --no-cache-dir "numpy<2" scipy trimesh pytest ruff opencv-python-headless
 
 # docker-ce: build/run the compose environment inside WSL (no Docker Desktop)
 install -m 0755 -d /etc/apt/keyrings
