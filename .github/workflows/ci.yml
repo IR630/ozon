@@ -42,7 +42,9 @@ jobs:
       - name: Node and geometry tests (rclpy + cv2)
         shell: bash
         run: |
-          apt-get install -y python3-pytest python3-numpy python3-scipy python3-opencv
+          apt-get install -y python3-pytest python3-numpy python3-scipy python3-opencv python3-pip
+          # --no-deps: keep the apt numpy/scipy that cv2 and rclpy are built against
+          pip3 install --no-deps trimesh
           source /opt/ros/humble/setup.bash
           source install/setup.bash
           python3 -m pytest -q
