@@ -116,18 +116,15 @@ def _min_enclosing_radius(pts):
     return circle[1]
 
 
-def _roundness_k(xs, ys):
-    """K = r_inscribed / R_circumscribed of the convex hull of mask pixels.
+def _roundness_k(pts, hull):
+    """K = r_inscribed / R_circumscribed of the convex `hull` of mask pixels `pts`.
 
     Same definition as the task criterion and the docs/md/models.md analysis:
     the hull (not the raw outline), so a cylinder with tie-wraps reads as a
     rounded square, not a circle. Dimensionless: pixel scale cancels out.
     """
     from scipy.optimize import linprog
-    from scipy.spatial import ConvexHull
 
-    pts = np.column_stack([xs, ys]).astype(float)
-    hull = ConvexHull(pts)
     # Chebyshev center: maximize r s.t. A@c + r <= -b (hull normals are unit)
     a_ub = np.hstack([hull.equations[:, :2], np.ones((len(hull.equations), 1))])
     b_ub = -hull.equations[:, 2]
@@ -166,13 +163,10 @@ def _min_area_rect_dims(poly):
     return max(best), min(best)
 
 
-def _obb_dims_px(xs, ys):
-    """Long/short footprint (px) of the mask via its oriented bounding box."""
-    from scipy.spatial import ConvexHull
-
-    pts = np.column_stack([xs, ys]).astype(float)
-    hull = ConvexHull(pts)
-    return _min_area_rect_dims(pts[hull.vertices])
+def _obb_dims_px(hull_vertices):
+    """Long/short footprint (px) of the mask via its oriented bounding box,
+    from the convex-hull vertices (CCW) of the mask pixels."""
+    return _min_area_rect_dims(hull_vertices)
 
 
 def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK_MARGIN_M,
@@ -192,11 +186,17 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK
     ys, xs = np.where(mask)
 
     top_depth_m = float(np.median(depth_m[mask]))
+    # One convex hull of the mask pixels, shared by the OBB footprint and the
+    # roundness K below — both need it, computing it twice per frame was waste.
+    from scipy.spatial import ConvexHull
+
+    pts = np.column_stack([xs, ys]).astype(float)
+    hull = ConvexHull(pts)
     # oriented bbox, not the axis-aligned pixel bbox: a box rotated in yaw on the
     # belt inflates the axis-aligned extent (measured 341x322 for a 300x200 box,
     # docs/experiments.md) and can cross the sorter limit. +1 px matches the
     # inclusive-pixel convention (a lone axis-aligned box reads the same as before).
-    long_px, short_px = _obb_dims_px(xs, ys)
+    long_px, short_px = _obb_dims_px(pts[hull.vertices])
     dx_mm = (long_px + 1.0) * top_depth_m / fx * 1000.0
     dy_mm = (short_px + 1.0) * top_depth_m / fy * 1000.0
     # height = the item's HIGHEST point (bounding box), not the mask median:
@@ -213,7 +213,7 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK
 
     return Measurement(
         dims_mm=dims,
-        k=_roundness_k(xs, ys),
+        k=_roundness_k(pts, hull),
         position_m=(world_x, world_y, world_z),
         bbox_px=(x0, y0, x1, y1),
     )
