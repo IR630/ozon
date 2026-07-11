@@ -139,14 +139,51 @@ def _roundness_k(xs, ys):
     return float(min(r_in / r_circ, 1.0))
 
 
+def _min_area_rect_dims(poly):
+    """Long/short side lengths (px) of the minimum-area rectangle enclosing the
+    convex polygon `poly` (rotating calipers: a side of the min-area rectangle
+    is collinear with a hull edge). This is the item footprint independent of
+    its yaw, unlike the axis-aligned pixel bbox, which inflates when the item is
+    rotated on the belt (docs/experiments.md 2026-07-11).
+    """
+    n = len(poly)
+    best_area = None
+    best = (0.0, 0.0)
+    for i in range(n):
+        edge = poly[(i + 1) % n] - poly[i]
+        length = float(np.hypot(edge[0], edge[1]))
+        if length < 1e-9:
+            continue
+        ux, uy = edge / length
+        proj = poly @ np.array([ux, uy])    # extent along the edge
+        perp = poly @ np.array([-uy, ux])   # extent across the edge
+        w = float(proj.max() - proj.min())
+        h = float(perp.max() - perp.min())
+        area = w * h
+        if best_area is None or area < best_area:
+            best_area = area
+            best = (w, h)
+    return max(best), min(best)
+
+
+def _obb_dims_px(xs, ys):
+    """Long/short footprint (px) of the mask via its oriented bounding box."""
+    from scipy.spatial import ConvexHull
+
+    pts = np.column_stack([xs, ys]).astype(float)
+    hull = ConvexHull(pts)
+    return _min_area_rect_dims(pts[hull.vertices])
+
+
 def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK_MARGIN_M,
                  camera_x_m=CAMERA_X_M, camera_y_m=CAMERA_Y_M):
     """Measurement of the single item on the belt, or None (empty / partial view).
 
     depth_m: HxW depth image in meters (0 = no return). Two lateral dims come
-    from the pixel bbox at the item's top-face depth; height from how far the
-    top rises above the belt. K from the top-view hull; position from the mask
-    centroid via the verified pixel->world mapping.
+    from the oriented bounding box (yaw-invariant footprint) at the item's
+    top-face depth; height from how far the top rises above the belt. K from the
+    top-view hull; position from the mask centroid via the verified pixel->world
+    mapping.
     """
     found = _find_item(depth_m, belt_depth_m, margin_m)
     if found is None:
@@ -155,8 +192,13 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK
     ys, xs = np.where(mask)
 
     top_depth_m = float(np.median(depth_m[mask]))
-    dx_mm = (x1 - x0 + 1) * top_depth_m / fx * 1000.0
-    dy_mm = (y1 - y0 + 1) * top_depth_m / fy * 1000.0
+    # oriented bbox, not the axis-aligned pixel bbox: a box rotated in yaw on the
+    # belt inflates the axis-aligned extent (measured 341x322 for a 300x200 box,
+    # docs/experiments.md) and can cross the sorter limit. +1 px matches the
+    # inclusive-pixel convention (a lone axis-aligned box reads the same as before).
+    long_px, short_px = _obb_dims_px(xs, ys)
+    dx_mm = (long_px + 1.0) * top_depth_m / fx * 1000.0
+    dy_mm = (short_px + 1.0) * top_depth_m / fy * 1000.0
     # height = the item's HIGHEST point (bounding box), not the mask median:
     # concave items (Тарелка — rim 27 mm, dish bottom 8 mm) would otherwise
     # read below the 10 mm min-dim threshold and flip category to C.

@@ -32,8 +32,35 @@ def test_measure_synthetic():
     assert dims == pytest.approx([260.0, 260.0, 200.0])
 
 
+def _synthetic_rotated_rect(l_px, w_px, angle_deg, top=1.3, belt=1.5):
+    """Depth frame with an l_px x w_px rectangle rotated by angle_deg about center."""
+    depth = np.full((480, 640), belt)
+    yy, xx = np.mgrid[0:480, 0:640]
+    a = np.deg2rad(angle_deg)
+    dx, dy = xx - 320.0, yy - 240.0
+    xr = np.cos(a) * dx + np.sin(a) * dy
+    yr = -np.sin(a) * dx + np.cos(a) * dy
+    depth[(np.abs(xr) <= l_px / 2) & (np.abs(yr) <= w_px / 2)] = top
+    return depth
+
+
 def test_measure_empty_belt_returns_none():
     assert measure_dims_mm(np.full((480, 640), 1.5)) is None
+
+
+def test_obb_dims_invariant_to_yaw():
+    # A 200x120 px box: the oriented bbox recovers its true footprint at ANY yaw.
+    # The old axis-aligned bbox would read ~226x226 at 45deg (root cause of the
+    # rotation-inflation finding, docs/experiments.md 2026-07-11).
+    fx = 500.0
+    long_mm = (200 + 1) * 1.3 / fx * 1000.0   # ~522.6
+    short_mm = (120 + 1) * 1.3 / fx * 1000.0  # ~314.6
+    for angle in (0, 20, 45, 70):
+        dims = measure_dims_mm(_synthetic_rotated_rect(200, 120, angle),
+                               belt_depth_m=1.5, fx=fx, fy=fx)
+        assert dims[0] == pytest.approx(long_mm, rel=0.04), f"long @ {angle}deg: {dims}"
+        assert dims[1] == pytest.approx(short_mm, rel=0.04), f"short @ {angle}deg: {dims}"
+        assert dims[2] == pytest.approx(200.0, abs=1.0)  # height unaffected by yaw
 
 
 def test_measure_concave_item_height_from_rim():
