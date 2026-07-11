@@ -64,8 +64,12 @@ item_pose() {  # x y z, with retries against ign CLI flakes
     echo "${out:-nan nan nan}"
 }
 
+# verdict polling is WALL-clock; under render load (record_skeleton_video.sh)
+# RTF drops ~10x, so the recorder widens the window via this env override
+POLL_ITERS=${RUN_SKELETON_POLL_ITERS:-60}
+
 VERDICT=FAIL
-for _ in $(seq 1 60); do
+for _ in $(seq 1 "$POLL_ITERS"); do
     read X Y Z <<< "$(item_pose)"
     OK=$(python3 -c "
 x, y, z = float('$X'), float('$Y'), float('$Z')

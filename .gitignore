@@ -28,3 +28,6 @@ sim/models/items/
 weights/
 datasets/
 *.mp4
+
+# Видео прогонов — крупные бинарники в облако организаторов (GIT.md)
+docs/report/video/
