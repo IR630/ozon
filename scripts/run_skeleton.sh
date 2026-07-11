@@ -14,8 +14,11 @@
 #
 # Zone success criteria (world frame, mirrors sim/worlds/cell.sdf):
 #   B: rode past the pushers on the belt (x >= 3.5, still at belt height)
-#   C: landed on the zone C patch (x 1.9..3.1, y 0.5..1.3, on the floor)
-#   D: landed on the zone D patch (x 2.4..3.6, y -1.3..-0.5, on the floor)
+#   C: landed in the zone C roll-cage (x 1.9..3.1, y 0.5..1.4, on the floor)
+#   D: landed in the zone D roll-cage (x 2.4..3.6, y -1.4..-0.5, on the floor)
+# The y/z bounds carry cage slack over the flat patch footprint (patch edge
+# y=1.3/-1.3, physical cage wall at y=1.5/-1.5; z<0.25 clears a 400 mm-tall box
+# standing on its base at center z~0.2 yet stays well under belt height z~0.45).
 cd "$(dirname "$0")/.."
 export LIBGL_ALWAYS_SOFTWARE=1
 source /opt/ros/humble/setup.bash
@@ -80,8 +83,8 @@ for _ in $(seq 1 "$POLL_ITERS"); do
 x, y, z = float('$X'), float('$Y'), float('$Z')
 checks = {
     'B': x >= 3.5 and 0.35 <= z <= 1.0,
-    'C': 1.9 <= x <= 3.1 and 0.5 <= y <= 1.3 and z < 0.2,
-    'D': 2.4 <= x <= 3.6 and -1.3 <= y <= -0.5 and z < 0.2,
+    'C': 1.9 <= x <= 3.1 and 0.5 <= y <= 1.4 and z < 0.25,
+    'D': 2.4 <= x <= 3.6 and -1.4 <= y <= -0.5 and z < 0.25,
 }
 print('YES' if checks['$EXPECT'] else 'no')
 ")

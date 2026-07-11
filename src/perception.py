@@ -37,6 +37,32 @@ _MIN_ITEM_PX = 200    # ignore specks; a real item covers thousands of pixels
 # frames — sim depth is clean; 20 mm silently swallowed items under 20 mm).
 MASK_MARGIN_M = 0.005
 
+# Vertical cross-section roundness (day 4, P2). A body of revolution lying on
+# its side (Бутылка) shows a rectangular top-view silhouette, so silhouette K
+# alone reads it as B — but its hidden end section is a circle (K=1 -> D). The
+# top surface across the SHORT axis traces that section's upper arc; a circle
+# fit to it recovers the section.
+#
+# A round section RESTING ON THE BELT is a circle tangent to it: centre height
+# equals the radius, so tau = peak/R_fit ~ 2. That single fact separates it from
+# a dome (Шлем), whose top-arc fits a circle that either floats high above the
+# belt (tau >> 2) or is a shallow wide cap (tau << 2). A tie-rod Цилиндр end is
+# tau ~ 2 too, but a rounded SQUARE, not a circle -> caught by the fit residual.
+# So "round" = tau in a BAND around 2 AND low residual. Thresholds from top-down
+# depth frames of the real settled STLs, 3 seeded poses each (docs/experiments.md
+# 2026-07-11):
+#   item       tau (poses)          rms/R        -> section verdict
+#   bottle     2.13 2.19 2.26       <=0.009         circle on belt   -> D  (the fix)
+#   cylinder   1.88 2.20 11.17      0.087..0.206    rounded square   -> B  (rms / tau)
+#   helmet     1.11 1.38 2.98       0.01..0.02      dome             -> B  (tau band)
+#   bag        2.13                 0.086           soft blob        -> B  (rms; also D via silhouette)
+#   box/deterg/pouf/plate 0.44..0.98  --            flat/shallow     -> B  (tau band)
+SECTION_TAU_LO = 1.85     # circle tangent to belt has tau ~ 2 (centre = radius);
+SECTION_TAU_HI = 2.6      # below = shallow arc, above = dome cap floating high
+SECTION_TAU_RAMP = 0.15   # trapezoid edge width -> full-strength plateau ~[2.0, 2.45]
+SECTION_RMS_HI = 0.05     # rms/R above this is not a circle (rounded square / soft blob)
+SECTION_RMS_SPAN = 0.03   # saturates to "circle" at rms/R <= HI - SPAN (0.02)
+
 
 @dataclass
 class Measurement:
@@ -136,16 +162,70 @@ def _roundness_k(pts, hull):
     return float(min(r_in / r_circ, 1.0))
 
 
+def _section_roundness_k(xs, ys, heights_m, long_dir, scale_m_per_px):
+    """K of the item's cross-section perpendicular to its long axis, recovered
+    from the top-view height map (heights_m: pixel heights above the belt, m).
+
+    Reconstructs the section's upper arc by taking, per bin across the SHORT
+    axis, the highest surface point (the ridge), then fits a circle (algebraic
+    Kåsa fit) to that arc. Returns ~1 only when the arc is a genuine circle
+    RESTING ON THE BELT — tau = peak/R in a band around 2 (tangent to the belt)
+    AND low residual — else ~0, leaving the top-view silhouette K to decide. See
+    the SECTION_* constants for why both gates are needed (Цилиндр lands in the
+    tau band but its square section fails the residual; every Шлем dome pose
+    falls outside the tau band — a dome is never tangent-circle-on-belt).
+    """
+    ux, uy = long_dir
+    sx, sy = -uy, ux                          # short axis, perpendicular to long
+    w_m = ((xs - xs.mean()) * sx + (ys - ys.mean()) * sy) * scale_m_per_px
+    lo, hi = float(w_m.min()), float(w_m.max())
+    if hi - lo <= 0.0:
+        return 0.0
+    nb = 24
+    edges = np.linspace(lo, hi, nb + 1)
+    idx = np.clip(np.digitize(w_m, edges) - 1, 0, nb - 1)
+    wc, hc = [], []
+    for b in range(nb):
+        sel = idx == b
+        if int(sel.sum()) < 3:                # a stable ridge needs a few pixels
+            continue
+        wc.append(0.5 * (edges[b] + edges[b + 1]))
+        hc.append(float(heights_m[sel].max()))
+    if len(wc) < 6:                           # too few bins to fit a circle
+        return 0.0
+    wc, hc = np.asarray(wc), np.asarray(hc)
+    # Kåsa fit: solve w^2+h^2 + D*w + E*h + F = 0 in least squares
+    a_mat = np.column_stack([wc, hc, np.ones_like(wc)])
+    sol, *_ = np.linalg.lstsq(a_mat, -(wc ** 2 + hc ** 2), rcond=None)
+    a_c, b_c = -sol[0] / 2.0, -sol[1] / 2.0
+    disc = a_c ** 2 + b_c ** 2 - sol[2]
+    if disc <= 0.0:
+        return 0.0
+    r_fit = float(np.sqrt(disc))
+    if r_fit <= 0.0 or not np.isfinite(r_fit):
+        return 0.0
+    tau = float(hc.max()) / r_fit             # ~2 tangent circle, else dome/flat
+    rms_rel = float(np.sqrt(np.mean((np.hypot(wc - a_c, hc - b_c) - r_fit) ** 2))) / r_fit
+    # trapezoid on tau (0 outside [LO, HI], plateau in the middle) x circle-fit gate
+    c_shape = np.clip(min((tau - SECTION_TAU_LO) / SECTION_TAU_RAMP,
+                          (SECTION_TAU_HI - tau) / SECTION_TAU_RAMP), 0.0, 1.0)
+    c_fit = np.clip((SECTION_RMS_HI - rms_rel) / SECTION_RMS_SPAN, 0.0, 1.0)
+    return float(c_shape * c_fit)
+
+
 def _min_area_rect_dims(poly):
-    """Long/short side lengths (px) of the minimum-area rectangle enclosing the
-    convex polygon `poly` (rotating calipers: a side of the min-area rectangle
-    is collinear with a hull edge). This is the item footprint independent of
-    its yaw, unlike the axis-aligned pixel bbox, which inflates when the item is
-    rotated on the belt (docs/experiments.md 2026-07-11).
+    """Long/short side lengths (px) and the LONG side's unit direction of the
+    minimum-area rectangle enclosing the convex polygon `poly` (rotating
+    calipers: a side of the min-area rectangle is collinear with a hull edge).
+    This is the item footprint independent of its yaw, unlike the axis-aligned
+    pixel bbox, which inflates when the item is rotated on the belt
+    (docs/experiments.md 2026-07-11). The long-side direction is the item's
+    on-belt long axis, used by the vertical cross-section K below.
     """
     n = len(poly)
     best_area = None
     best = (0.0, 0.0)
+    best_dir = (1.0, 0.0)
     for i in range(n):
         edge = poly[(i + 1) % n] - poly[i]
         length = float(np.hypot(edge[0], edge[1]))
@@ -160,12 +240,13 @@ def _min_area_rect_dims(poly):
         if best_area is None or area < best_area:
             best_area = area
             best = (w, h)
-    return max(best), min(best)
+            best_dir = (ux, uy) if w >= h else (-uy, ux)  # unit vector of long side
+    return max(best), min(best), best_dir
 
 
 def _obb_dims_px(hull_vertices):
-    """Long/short footprint (px) of the mask via its oriented bounding box,
-    from the convex-hull vertices (CCW) of the mask pixels."""
+    """Long/short footprint (px) and long-axis direction of the mask via its
+    oriented bounding box, from the convex-hull vertices (CCW) of the mask."""
     return _min_area_rect_dims(hull_vertices)
 
 
@@ -196,7 +277,7 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK
     # belt inflates the axis-aligned extent (measured 341x322 for a 300x200 box,
     # docs/experiments.md) and can cross the sorter limit. +1 px matches the
     # inclusive-pixel convention (a lone axis-aligned box reads the same as before).
-    long_px, short_px = _obb_dims_px(pts[hull.vertices])
+    long_px, short_px, long_dir = _obb_dims_px(pts[hull.vertices])
     dx_mm = (long_px + 1.0) * top_depth_m / fx * 1000.0
     dy_mm = (short_px + 1.0) * top_depth_m / fy * 1000.0
     # height = the item's HIGHEST point (bounding box), not the mask median:
@@ -211,9 +292,17 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK
     world_y = camera_y_m - (float(xs.mean()) - cx) * top_depth_m / fx
     world_z = BELT_TOP_Z_M + dz_mm / 1000.0 / 2.0
 
+    # K = max of the top-view silhouette and the vertical cross-section: a body
+    # of revolution lying on its side is a rectangle from above (low silhouette
+    # K) but a circle in its hidden end section (K=1). max, per the criterion
+    # "max r_in/R_circ over sections along the principal axes" (docs/md/models.md).
+    heights_m = belt_depth_m - depth_m[mask]
+    k_silhouette = _roundness_k(pts, hull)
+    k_section = _section_roundness_k(xs, ys, heights_m, long_dir, top_depth_m / fx)
+
     return Measurement(
         dims_mm=dims,
-        k=_roundness_k(pts, hull),
+        k=max(k_silhouette, k_section),
         position_m=(world_x, world_y, world_z),
         bbox_px=(x0, y0, x1, y1),
     )

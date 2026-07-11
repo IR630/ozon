@@ -17,6 +17,7 @@ from src.perception import measure_dims_mm, measure_item
 IMG_DIR = Path(__file__).resolve().parents[1] / "docs" / "report" / "img"
 DEPTH_PNG = IMG_DIR / "day1_camera_depth.png"
 OFFSET_PNG = IMG_DIR / "day2_offset_x1.8_y0.1_depth.png"
+BOTTLE_PNG = IMG_DIR / "day4_bottle_depth.png"
 
 
 def _synthetic_box(rows=slice(100, 200), cols=slice(150, 250), top=1.3):
@@ -41,6 +42,18 @@ def _synthetic_rotated_rect(l_px, w_px, angle_deg, top=1.3, belt=1.5):
     xr = np.cos(a) * dx + np.sin(a) * dy
     yr = -np.sin(a) * dx + np.cos(a) * dy
     depth[(np.abs(xr) <= l_px / 2) & (np.abs(yr) <= w_px / 2)] = top
+    return depth
+
+
+def _section_strip(profile, r_px=40, length_px=200, belt=1.5, fx=2000.0):
+    """Depth frame of a prism lying along the columns whose cross-section top
+    (across the rows) follows `profile(dy_px) -> height_above_belt_m`. Long axis
+    = columns, short axis = rows: the vertical section K reads the row profile.
+    fx=2000 keeps heights small vs the belt so a single depth scale is faithful."""
+    depth = np.full((480, 640), belt)
+    for dy in range(-r_px, r_px + 1):
+        h = profile(dy)
+        depth[240 + dy, 220:220 + length_px] = belt - h
     return depth
 
 
@@ -111,6 +124,46 @@ def test_k_circle():
     assert m.k > 0.97  # pixelated circle
 
 
+def test_section_k_lying_cylinder_is_round():
+    # A body of revolution lying on its side (Бутылка, 305x91x91, ref K=1.00->D):
+    # the top-view silhouette is a rectangle (silhouette K ~ 0.37, would be B),
+    # but the hidden end section is a circle. The vertical section K recovers it.
+    s = 1.5 / 2000.0
+    depth = _section_strip(lambda dy: s * (40 + np.sqrt(max(40**2 - dy**2, 0.0))))
+    m = measure_item(depth, belt_depth_m=1.5, fx=2000.0, fy=2000.0)
+    assert m.k > 0.8, f"lying cylinder must read round (D): K={m.k}"
+
+
+def test_section_k_dome_stays_low():
+    # Flat-bottomed semicircle section (dome, Шлем analog, ref K=0.78->B): the
+    # arc peaks at only ~1 radius (tau~1), not a full circle (tau~2). The tau
+    # gate must keep the section K low so a dome is NOT mistaken for round.
+    s = 1.5 / 2000.0
+    depth = _section_strip(lambda dy: s * np.sqrt(max(40**2 - dy**2, 0.0)))
+    m = measure_item(depth, belt_depth_m=1.5, fx=2000.0, fy=2000.0)
+    assert m.k < 0.8, f"dome must stay B: K={m.k}"
+
+
+def test_section_k_rounded_square_stays_low():
+    # Superellipse section (tie-rod Цилиндр, 435x50x43, ref K=0.74->B): its arc
+    # is nearly as tall as a circle (tau~1.9) but is a rounded SQUARE, so the
+    # circle-fit residual is large. The residual gate must keep it B — this is
+    # the organizers' deliberate "named a cylinder but not round" trap.
+    s, a, n = 1.5 / 2000.0, 40, 4
+    depth = _section_strip(
+        lambda dy: s * (a + a * max(1.0 - (abs(dy) / a) ** n, 0.0) ** (1.0 / n)))
+    m = measure_item(depth, belt_depth_m=1.5, fx=2000.0, fy=2000.0)
+    assert m.k < 0.8, f"rounded-square section must stay B: K={m.k}"
+
+
+def test_section_k_flat_box_not_inflated():
+    # A flat-topped box must not gain roundness from the section path: the
+    # section is a straight top -> section K ~ 0, K stays the silhouette value.
+    depth = _synthetic_box(rows=slice(100, 300), cols=slice(100, 400))
+    m = measure_item(depth, belt_depth_m=1.5)
+    assert m.k == pytest.approx(99.5 / np.hypot(149.5, 99.5), abs=0.02)
+
+
 def test_position_synthetic():
     # mask centroid (199.5, 149.5) px, center (320, 240), top depth 1.3, f=500:
     # world_x = 1.5 - (149.5-240)*1.3/500 ; world_y = 0 - (199.5-320)*1.3/500
@@ -151,6 +204,22 @@ def test_measure_real_offset_frame():
     # dims read up to ~20 mm large (v0 limitation, docs/day2-plan.md)
     for measured, truth in zip(m.dims_mm, [300.0, 200.0, 200.0]):
         assert abs(measured - truth) <= 20.0, f"{m.dims_mm} vs [300, 200, 200]"
+
+
+def test_measure_real_bottle_frame_is_round():
+    # Real top-down depth of Бутылка lying on its side (Gazebo, day 4). The
+    # top-view silhouette is a rectangle (silhouette K ~ 0.3), so this locks the
+    # vertical cross-section K that reads the hidden round end: K must clear the
+    # 0.8 roundness threshold so the item routes to D (ground truth 305x91x91,
+    # ref K=1.00). The synthetic section tests fix the math; this fixes reality.
+    pytest.importorskip("cv2")
+    from src.perception import load_depth_png
+
+    m = measure_item(load_depth_png(BOTTLE_PNG))
+    assert m is not None
+    for measured, truth in zip(m.dims_mm, [305.0, 91.0, 91.0]):
+        assert abs(measured - truth) <= 20.0, f"{m.dims_mm} vs [305, 91, 91]"
+    assert m.k > 0.8, f"lying bottle must read round (-> D): K={m.k}"
 
 
 def test_load_depth_png_from_unicode_path(tmp_path):
