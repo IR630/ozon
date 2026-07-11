@@ -35,6 +35,14 @@ def test_measure_empty_belt_returns_none():
     assert measure_dims_mm(np.full((480, 640), 1.5)) is None
 
 
+def test_measure_thin_item_9mm():
+    # Ручка rests 9 mm tall (docs/md/models.md) — the mask margin must not
+    # swallow it, or perception silently reports an empty belt
+    dims = measure_dims_mm(_synthetic_box(top=1.491), belt_depth_m=1.5, fx=500.0, fy=500.0)
+    assert dims is not None
+    assert dims[2] == pytest.approx(9.0)
+
+
 def test_partial_item_returns_none():
     # item touching the frame border = riding into view -> refuse to measure
     depth = _synthetic_box(rows=slice(0, 150), cols=slice(200, 300))

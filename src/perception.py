@@ -32,6 +32,10 @@ BELT_DEPTH_M = CAMERA_Z_M - BELT_TOP_Z_M
 FX = FY = (IMG_W / 2.0) / np.tan(HFOV_RAD / 2.0)
 
 _MIN_ITEM_PX = 200    # ignore specks; a real item covers thousands of pixels
+# Mask margin above the belt plane: must clear the thinnest item (Ручка, 9 mm)
+# while staying above the empty-belt depth spread (<=1 mm on the saved real
+# frames — sim depth is clean; 20 mm silently swallowed items under 20 mm).
+MASK_MARGIN_M = 0.005
 
 
 @dataclass
@@ -135,7 +139,7 @@ def _roundness_k(xs, ys):
     return float(min(r_in / r_circ, 1.0))
 
 
-def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=0.02,
+def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK_MARGIN_M,
                  camera_x_m=CAMERA_X_M, camera_y_m=CAMERA_Y_M):
     """Measurement of the single item on the belt, or None (empty / partial view).
 
@@ -169,13 +173,13 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=0.02
     )
 
 
-def measure_dims_mm(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=0.02):
+def measure_dims_mm(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK_MARGIN_M):
     """Three dimensions (mm, sorted descending) of the item, or None."""
     m = measure_item(depth_m, belt_depth_m, fx=fx, fy=fy, margin_m=margin_m)
     return None if m is None else m.dims_mm
 
 
-def item_bbox_px(depth_m, belt_depth_m=BELT_DEPTH_M, margin_m=0.02):
+def item_bbox_px(depth_m, belt_depth_m=BELT_DEPTH_M, margin_m=MASK_MARGIN_M):
     """(x0, y0, x1, y1) pixel bounding box of the item, or None."""
     m = measure_item(depth_m, belt_depth_m, margin_m=margin_m)
     return None if m is None else m.bbox_px

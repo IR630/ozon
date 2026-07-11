@@ -43,7 +43,8 @@ class ControllerNode(Node):
             "C": self.create_publisher(Float64, "/pusher_c/cmd", 10),
             "D": self.create_publisher(Float64, "/pusher_d/cmd", 10),
         }
-        self.done_items = set()         # routed for good: pusher fired / B / missed
+        self.fired = set()              # pusher fired — irreversible, ignore the item
+        self.done_items = set()         # decided B / missed (log dedupe; a fresher C/D overrides)
         self.pending = {}               # item_id -> scheduled fire timer (replannable)
         self.one_shot_timers = []       # keep one-shot timers alive (Node.timers is taken)
         self.ramp_step = 0
@@ -62,7 +63,7 @@ class ControllerNode(Node):
         return self.get_clock().now().nanoseconds / 1e9
 
     def on_classification(self, msg):
-        if msg.item_id in self.done_items:
+        if msg.item_id in self.fired:
             return
 
         stamp_s = msg.header.stamp.sec + msg.header.stamp.nanosec / 1e9
@@ -76,17 +77,22 @@ class ControllerNode(Node):
         try:
             plan = plan_push(msg.category, msg.position.x, stamp_s)
         except ValueError as e:
-            if msg.item_id not in self.pending:  # never even scheduled
-                self.done_items.add(msg.item_id)
+            if msg.item_id not in self.pending and msg.item_id not in self.done_items:
+                self.done_items.add(msg.item_id)  # never even scheduled
                 self.get_logger().error(f"item {msg.item_id}: MISSED — {e}")
             return
         if plan is None:
-            self.done_items.add(msg.item_id)
-            self.get_logger().info(f"item {msg.item_id}: B — rides to belt end")
+            old = self.pending.pop(msg.item_id, None)  # C/D -> B flip: drop the push
+            if old is not None:
+                old.cancel()
+            if msg.item_id not in self.done_items:
+                self.done_items.add(msg.item_id)
+                self.get_logger().info(f"item {msg.item_id}: B — rides to belt end")
             return
 
         # (re)schedule: cancel the previous plan, trust the freshest measurement
         zone, fire_at_s = plan
+        self.done_items.discard(msg.item_id)  # B -> C/D flip: the push is back on
         old = self.pending.pop(msg.item_id, None)
         if old is not None:
             old.cancel()
@@ -98,7 +104,7 @@ class ControllerNode(Node):
 
     def fire(self, zone, item_id):
         self.pending.pop(item_id, None)
-        self.done_items.add(item_id)
+        self.fired.add(item_id)
         self.pusher_pubs[zone].publish(Float64(data=_PUSH_SPEED_M_S))
         self.one_shot(_STROKE_S, lambda z=zone: self.retract(z))
 

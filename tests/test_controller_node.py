@@ -78,6 +78,56 @@ def test_soft_start_and_c_routing_fire_once():
         rclpy.shutdown()
 
 
+def test_c_then_b_correction_cancels_pusher():
+    # boundary items flip category between frames (Цилиндр K=0.74, Пуфик 489 мм):
+    # a fresher B classification must cancel the already scheduled pusher
+    rclpy.init()
+    try:
+        node = ControllerNode()
+        probe = rclpy.create_node("probe")
+        pusher_c_cmds = []
+        probe.create_subscription(Float64, "/pusher_c/cmd",
+                                  lambda m: pusher_c_cmds.append(m.data), 10)
+        pub = probe.create_publisher(ItemClassification, "/item/classification", 10)
+        _spin_both(node, probe, 0.3)
+
+        pub.publish(_classification(node, 9, "C", PUSHER_X_M["C"] - 0.5))
+        pub.publish(_classification(node, 9, "B", PUSHER_X_M["C"] - 0.5))
+        _spin_both(node, probe, 1.5)
+
+        assert pusher_c_cmds == []
+
+        probe.destroy_node()
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def test_b_then_c_correction_fires():
+    # the reverse flip: an early B must not lock the item out of a fresher
+    # C classification — the pusher still has to fire
+    rclpy.init()
+    try:
+        node = ControllerNode()
+        probe = rclpy.create_node("probe")
+        pusher_c_cmds = []
+        probe.create_subscription(Float64, "/pusher_c/cmd",
+                                  lambda m: pusher_c_cmds.append(m.data), 10)
+        pub = probe.create_publisher(ItemClassification, "/item/classification", 10)
+        _spin_both(node, probe, 0.3)
+
+        pub.publish(_classification(node, 10, "B", PUSHER_X_M["C"] - 0.5))
+        pub.publish(_classification(node, 10, "C", PUSHER_X_M["C"] - 0.15))
+        _spin_both(node, probe, 2.0)
+
+        assert pusher_c_cmds.count(_PUSH_SPEED_M_S) == 1, pusher_c_cmds
+
+        probe.destroy_node()
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
 def test_b_does_not_touch_pushers():
     rclpy.init()
     try:
