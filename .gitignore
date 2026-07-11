@@ -5,6 +5,14 @@ __pycache__/
 venv/
 .ipynb_checkpoints/
 
+# venv provisioned in the repo root (non-standard location on some dev hosts)
+/Lib/
+/Scripts/
+/Include/
+/share/
+/pyvenv.cfg
+CACHEDIR.TAG
+
 # ROS 2 colcon build artifacts (ros_msgs is rebuilt from source)
 build/
 install/
