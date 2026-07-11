@@ -55,13 +55,18 @@ for dir in sim/models/items/*/; do
     sleep 4
     ign topic -t /conveyor/cmd_vel -m ignition.msgs.Double -p "data: 0" > /dev/null
     sleep 1
+    # x=-5.0: deep inside the infeed guide rails (belt_guides in cell.sdf).
+    # This CLI-paced ramp is ~2x slower than the controller's sim-time ramp
+    # (each `ign topic` call adds ~0.5 s) and covers ~3 m — the deep spawn
+    # keeps the whole ramp + full-speed window guided, like the real contour
+    # (run_skeleton.sh spawns at -1.5 for the same reason)
     ign service -s /world/cell/create --reqtype ignition.msgs.EntityFactory \
         --reptype ignition.msgs.Boolean --timeout 5000 \
-        --req "sdf_filename: \"$PWD/${dir}model.sdf\", name: \"item\", pose: {position: {x: 0.0, y: 0, z: 0.5}}" > /dev/null
+        --req "sdf_filename: \"$PWD/${dir}model.sdf\", name: \"item\", pose: {position: {x: -5.0, y: 0, z: 0.5}}" > /dev/null
     sleep 2
     read rx0 rz0 <<< "$(item_pose)"                       # after settling on the static belt
-    belt_soft_start                                       # ~0.45 m of travel during the ramp
-    sleep 2                                               # + 2 s at full speed (2.5 m total < 3.2 m belt travel)
+    belt_soft_start                                       # ~3 m of travel during the CLI-paced ramp
+    sleep 2                                               # + 2 s at full speed (~5 m total < 6.4 m belt travel)
     read rx1 rz1 <<< "$(item_pose)"                       # after riding the belt
     kill "$GZ" 2>/dev/null || true
     wait "$GZ" 2>/dev/null || true

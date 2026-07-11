@@ -6,7 +6,9 @@
 #   bash scripts/run_skeleton.sh <slug> <B|C|D> [spawn_x]
 #
 # Reproducibility: the spawn pose is fixed (x=spawn_x, y=0, default STL
-# orientation) and the world restarts per episode — the run is deterministic
+# orientation; default x=-1.5 — inside the infeed guide rails so the belt
+# ramp completes before the camera window, see belt_guides in cell.sdf)
+# and the world restarts per episode — the run is deterministic
 # up to physics chaos; there is no randomness to seed yet (seed enters with
 # random orientations on day 4).
 #
@@ -22,7 +24,7 @@ set -e
 
 SLUG=${1:?usage: run_skeleton.sh <slug> <B|C|D> [spawn_x]}
 EXPECT=${2:?expected zone B|C|D}
-SPAWN_X=${3:-0.0}
+SPAWN_X=${3:--1.5}
 
 pkill -f "ign gazebo" 2>/dev/null || true
 pkill -f "skeleton.launch" 2>/dev/null || true
@@ -40,7 +42,8 @@ ign topic -t /conveyor/cmd_vel -m ignition.msgs.Double -p "data: 0" > /dev/null
 sleep 1
 
 # spawn BEFORE the nodes start: the item rides the controller's soft-start
-# ramp from x=SPAWN_X; the camera picks it up around x=0.8
+# ramp from x=SPAWN_X inside the infeed guide rails and reaches the camera
+# window (x ~0.9) already settled at full belt speed
 ign service -s /world/cell/create --reqtype ignition.msgs.EntityFactory \
     --reptype ignition.msgs.Boolean --timeout 5000 \
     --req "sdf_filename: \"$PWD/sim/models/items/$SLUG/model.sdf\", name: \"item\", pose: {position: {x: $SPAWN_X, y: 0, z: 0.5}}" > /dev/null

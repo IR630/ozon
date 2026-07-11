@@ -78,6 +78,50 @@
       </plugin>
     </model>
 
+    <!-- static infeed side guides (day 3): tall rails over the belt edges on
+         the spawn/ramp section. The helmet hull is a rocking chair — the
+         start ramp excites rocking and it deterministically rolls off in +y,
+         unfixable by tuning (docs/decisions.md 2026-07-11). The rails damp
+         the rocking by contact while the ramp runs; items reach the camera
+         already settled at constant speed (no lateral excitation remains).
+         Geometry constraints, all load-bearing:
+         - a LOW in-window curb does NOT work: rolling forward at 1 m/s the
+           helmet climbs a 15 mm lip at grazing angle like a wheel on a rail
+           (verified in-sim) — hence tall rails, but strictly OUTSIDE the
+           camera window: they end at x=0.7, the window starts at x=0.88
+           (even at rail-top height) — perception sees pure belt;
+         - items must spawn inside the rails (run_skeleton.sh: x=-1.5; the
+           controller's sim-time ramp covers ~1.35 m and completes by x=-0.15
+           with ~0.8 m of settle distance left). The rails run long upstream
+           so that even the slower CLI-paced ramp of check_stability.sh
+           (each `ign topic` call adds ~0.5 s → ~3 m of ramp travel from its
+           deeper x=-5 spawn) completes fully guided;
+         - 2 mm clear of the moving belt platform in y — no rubbing contact;
+         - pusher ejection paths (x=2.5 / 3.0) untouched -->
+    <model name="belt_guides">
+      <static>true</static>
+      <link name="link">
+        <collision name="left">
+          <pose>-2.65 0.272 0.39 0 0 0</pose>
+          <geometry><box><size>6.7 0.04 0.18</size></box></geometry>
+        </collision>
+        <visual name="left_visual">
+          <pose>-2.65 0.272 0.39 0 0 0</pose>
+          <geometry><box><size>6.7 0.04 0.18</size></box></geometry>
+          <material><ambient>0.5 0.5 0.55 1</ambient><diffuse>0.5 0.5 0.55 1</diffuse></material>
+        </visual>
+        <collision name="right">
+          <pose>-2.65 -0.272 0.39 0 0 0</pose>
+          <geometry><box><size>6.7 0.04 0.18</size></box></geometry>
+        </collision>
+        <visual name="right_visual">
+          <pose>-2.65 -0.272 0.39 0 0 0</pose>
+          <geometry><box><size>6.7 0.04 0.18</size></box></geometry>
+          <material><ambient>0.5 0.5 0.55 1</ambient><diffuse>0.5 0.5 0.55 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
     <!-- RGBD camera above the belt, looking straight down -->
     <model name="camera">
       <static>true</static>
