@@ -43,7 +43,7 @@ class ControllerNode(Node):
             "C": self.create_publisher(Float64, "/pusher_c/cmd", 10),
             "D": self.create_publisher(Float64, "/pusher_d/cmd", 10),
         }
-        self.fired = set()              # pusher fired — irreversible, ignore the item
+        self.fired = {}                 # item_id -> zone; irreversible once fired
         self.done_items = set()         # decided B / missed (log dedupe; a fresher C/D overrides)
         self.pending = {}               # item_id -> scheduled fire timer (replannable)
         self.one_shot_timers = []       # keep one-shot timers alive (Node.timers is taken)
@@ -64,6 +64,12 @@ class ControllerNode(Node):
 
     def on_classification(self, msg):
         if msg.item_id in self.fired:
+            # too late to act, but a contradiction must be visible in the log
+            if msg.category != self.fired[msg.item_id]:
+                self.get_logger().warn(
+                    f"item {msg.item_id}: classified {msg.category} AFTER firing "
+                    f"pusher_{self.fired[msg.item_id].lower()} — possible mis-sort",
+                    throttle_duration_sec=1.0)
             return
 
         stamp_s = msg.header.stamp.sec + msg.header.stamp.nanosec / 1e9
@@ -104,7 +110,9 @@ class ControllerNode(Node):
 
     def fire(self, zone, item_id):
         self.pending.pop(item_id, None)
-        self.fired.add(item_id)
+        self.fired[item_id] = zone
+        self.get_logger().info(
+            f"item {item_id}: pusher_{zone.lower()} FIRED at t={self.now_s():.2f}s")
         self.pusher_pubs[zone].publish(Float64(data=_PUSH_SPEED_M_S))
         self.one_shot(_STROKE_S, lambda z=zone: self.retract(z))
 

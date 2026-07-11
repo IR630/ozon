@@ -128,6 +128,39 @@ def test_b_then_c_correction_fires():
         rclpy.shutdown()
 
 
+def test_c_then_d_flip_cancels_c_and_fires_d_once():
+    # zone flip between pushers: the scheduled C timer must be cancelled,
+    # only pusher_d fires, and exactly once
+    rclpy.init()
+    try:
+        node = ControllerNode()
+        probe = rclpy.create_node("probe")
+        pusher_c_cmds, pusher_d_cmds = [], []
+        probe.create_subscription(Float64, "/pusher_c/cmd",
+                                  lambda m: pusher_c_cmds.append(m.data), 10)
+        probe.create_subscription(Float64, "/pusher_d/cmd",
+                                  lambda m: pusher_d_cmds.append(m.data), 10)
+        pub = probe.create_publisher(ItemClassification, "/item/classification", 10)
+        _spin_both(node, probe, 0.3)
+
+        pub.publish(_classification(node, 11, "C", PUSHER_X_M["C"] - 0.5))
+        pub.publish(_classification(node, 11, "D", PUSHER_X_M["D"] - 0.15))
+        # spin until the full stroke (fire -> retract -> stop) completes, so no
+        # late 0.0 command leaks into the next test's subscriptions
+        import time
+        end = time.monotonic() + 6.0
+        while time.monotonic() < end and (not pusher_d_cmds or pusher_d_cmds[-1] != 0.0):
+            _spin_both(node, probe, 0.2)
+
+        assert pusher_c_cmds == [], pusher_c_cmds
+        assert pusher_d_cmds.count(_PUSH_SPEED_M_S) == 1, pusher_d_cmds
+
+        probe.destroy_node()
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
 def test_b_does_not_touch_pushers():
     rclpy.init()
     try:
