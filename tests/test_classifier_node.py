@@ -5,6 +5,10 @@ Runs only where rclpy and the built ros_msgs overlay exist (WSL / ROS CI);
 importorskip skips it on the plain pytest CI job and on the Windows dev host.
 A probe node acts as the mock perception publisher and the mock controller
 subscriber, so the classifier is exercised over the real ROS graph.
+
+Day 4: the classifier aggregates frames (src/aggregation.py), so confidence is
+computed from the frames seen (not the passthrough it used to be); how many land
+before the reply is timing-dependent, so we assert its range, not an exact value.
 """
 import pytest
 
@@ -43,8 +47,8 @@ def test_box_300_measurement_routes_to_B():
         out = received[0]
         assert out.category == "B"
         assert out.item_id == 1
-        assert list(out.dims_mm) == [300.0, 200.0, 200.0]
-        assert out.confidence == pytest.approx(0.9, abs=1e-6)
+        assert list(out.dims_mm) == [300.0, 200.0, 200.0]  # median of identical frames
+        assert 0.0 < out.confidence <= 1.0  # computed by aggregation, not passthrough
 
         probe.destroy_node()
         node.destroy_node()

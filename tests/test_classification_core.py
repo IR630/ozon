@@ -6,7 +6,7 @@ production core (scripts/analyze_models.py is a thin label wrapper over it).
 """
 import pytest
 
-from src.classification import classify
+from src.classification import classify, classify_conservative
 from src.constants import CATEGORY_B, CATEGORY_C, CATEGORY_D
 
 
@@ -31,6 +31,39 @@ class TestRules:
 
     def test_dims_order_does_not_matter(self):
         assert classify([100, 500, 100], k=0.5) == CATEGORY_C
+
+
+class TestConservativePolicy:
+    """Day 4, P4: conservative size policy biases fragile 'fits' verdicts to C,
+    without disturbing the pinned boundary four (docs/decisions.md)."""
+
+    def test_boundary_four_route_correctly(self):
+        # Reference dims/K from docs/md/models.md -> reference zones.
+        assert classify_conservative([435, 50, 43], k=0.74) == CATEGORY_B  # Цилиндр
+        assert classify_conservative([352, 298, 282], k=0.78) == CATEGORY_B  # Шлем
+        assert classify_conservative([148, 13, 9], k=0.99) == CATEGORY_C     # Ручка
+        assert classify_conservative([489, 489, 264], k=1.0) == CATEGORY_C   # Пуфик
+
+    def test_cylinder_435_stays_b_not_swallowed_by_margin(self):
+        # 435 is 15 mm from the 450 limit — the small margin must NOT reach it.
+        assert classify_conservative([435, 50, 43], k=0.74) == CATEGORY_B
+
+    def test_near_oversized_fit_biases_to_c(self):
+        # Fits strictly (448 < 450) but within 5 mm of the bound -> conservative C.
+        assert classify([448, 300, 300], k=0.5) == CATEGORY_B
+        assert classify_conservative([448, 300, 300], k=0.5) == CATEGORY_C
+
+    def test_near_undersized_fit_biases_to_c(self):
+        # Smallest dim 12 mm fits (> 10) but within 5 mm of the floor -> C.
+        assert classify([200, 100, 12], k=0.5) == CATEGORY_B
+        assert classify_conservative([200, 100, 12], k=0.5) == CATEGORY_C
+
+    def test_policy_does_not_touch_roundness_decision(self):
+        # Шлем-like K just under 0.8 stays B; a symmetric K band would wrongly D it.
+        assert classify_conservative([352, 298, 282], k=0.79) == CATEGORY_B
+
+    def test_comfortable_fit_stays_b(self):
+        assert classify_conservative([200, 100, 100], k=0.5) == CATEGORY_B
 
 
 class TestSanity:

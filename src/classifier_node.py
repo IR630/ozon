@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
-"""Classifier ROS 2 node: ItemMeasurement -> ItemClassification (day 2, P4).
+"""Classifier ROS 2 node: ItemMeasurement -> ItemClassification (day 2 / day 4, P4).
 
-Thin wrapper. The rules live once in src.classification.classify() (single
-source of truth); this node only moves that decision onto the wire. The
-uncertainty / conservative policy is day 4 — here confidence passes through
-from the measurement unchanged.
+The rules live once in src.classification (single source of truth); this node
+moves the decision onto the wire. Day 4: it no longer reacts to each frame.
+It aggregates the measurements of an item by item_id (src.aggregation) and
+classifies the running MEDIAN dims/K with the conservative size policy
+(classify_conservative). The published dims/K/confidence are the aggregate, so
+the category is stable and the flip patches in the controller become a safety
+net rather than the fix.
 
 Runs inside the ROS 2 environment (needs rclpy and the built ros_msgs overlay):
     python3 src/classifier_node.py
@@ -14,26 +17,31 @@ from rclpy.node import Node
 
 from ros_msgs.msg import ItemClassification, ItemMeasurement
 
-from src.classification import classify
+from src.aggregation import ItemAggregator
+from src.classification import classify_conservative
 
 
 class ClassifierNode(Node):
     def __init__(self):
         super().__init__("classifier")
+        self.agg = ItemAggregator()
         self.pub = self.create_publisher(ItemClassification, "/item/classification", 10)
         self.create_subscription(ItemMeasurement, "/item/measurement", self.on_measurement, 10)
 
     def on_measurement(self, msg):
+        est = self.agg.update(msg.item_id, msg.dims_mm, msg.k)
         out = ItemClassification()
         out.header = msg.header
         out.item_id = msg.item_id
-        out.dims_mm = msg.dims_mm
-        out.k = msg.k
-        out.confidence = msg.confidence  # day 4: uncertainty policy will adjust routing
+        out.dims_mm = [float(d) for d in est.dims_mm]
+        out.k = est.k
+        out.confidence = est.confidence
         out.position = msg.position
-        out.category = classify(msg.dims_mm, msg.k)
+        out.category = classify_conservative(est.dims_mm, est.k)
         self.pub.publish(out)
-        self.get_logger().info(f"item {msg.item_id}: {out.category} (k={msg.k:.3f})")
+        self.get_logger().info(
+            f"item {msg.item_id}: {out.category} "
+            f"(k={est.k:.3f}, conf={est.confidence:.2f}, n={est.n_frames})")
 
 
 def main():
