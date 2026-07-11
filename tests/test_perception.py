@@ -35,6 +35,19 @@ def test_measure_empty_belt_returns_none():
     assert measure_dims_mm(np.full((480, 640), 1.5)) is None
 
 
+def test_measure_concave_item_height_from_rim():
+    # Тарелка is a dish: rim 27 mm tall, interior bottom ~8 mm. Height must be
+    # the rim (bounding box), not the median of the mask — 8 mm would flip the
+    # category to C via the min-dim rule (dims have priority over shape)
+    depth = np.full((480, 640), 1.5)
+    yy, xx = np.mgrid[0:480, 0:640]
+    r2 = (xx - 320) ** 2 + (yy - 240) ** 2
+    depth[r2 <= 80**2] = 1.5 - 0.008   # dish interior, 8 mm above belt
+    depth[(r2 > 60**2) & (r2 <= 80**2)] = 1.5 - 0.027  # rim, 27 mm
+    dims = measure_dims_mm(depth, belt_depth_m=1.5, fx=500.0, fy=500.0)
+    assert dims[2] == pytest.approx(27.0, abs=1.0)
+
+
 def test_measure_thin_item_9mm():
     # Ручка rests 9 mm tall (docs/md/models.md) — the mask margin must not
     # swallow it, or perception silently reports an empty belt

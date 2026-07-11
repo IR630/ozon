@@ -157,7 +157,11 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK
     top_depth_m = float(np.median(depth_m[mask]))
     dx_mm = (x1 - x0 + 1) * top_depth_m / fx * 1000.0
     dy_mm = (y1 - y0 + 1) * top_depth_m / fy * 1000.0
-    dz_mm = (belt_depth_m - top_depth_m) * 1000.0
+    # height = the item's HIGHEST point (bounding box), not the mask median:
+    # concave items (Тарелка — rim 27 mm, dish bottom 8 mm) would otherwise
+    # read below the 10 mm min-dim threshold and flip category to C.
+    # 1st percentile, not min: robust to stray depth returns.
+    dz_mm = (belt_depth_m - float(np.percentile(depth_m[mask], 1.0))) * 1000.0
     dims = sorted([dx_mm, dy_mm, dz_mm], reverse=True)
 
     cx, cy = depth_m.shape[1] / 2.0, depth_m.shape[0] / 2.0
