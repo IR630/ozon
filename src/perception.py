@@ -162,6 +162,27 @@ def _roundness_k(pts, hull):
     return float(min(r_in / r_circ, 1.0))
 
 
+def _silhouette_solidity(pts, hull):
+    """Fraction of the top-view convex `hull` actually filled by mask pixels `pts`.
+
+    _roundness_k measures the HULL, so a slumped soft item (Мешок) with an
+    irregular outline is smoothed into a round hull -> high silhouette K though it
+    is not round (measured 0.79..0.87, straddling the 0.8 -> D threshold against
+    its reference 0.72 -> B). Solidity = mask_area / hull_area stays ~1 for a rigid
+    item that fills its hull (a flat round Тарелка, legitimately D) but drops for a
+    lumpy blob with a concave boundary -- the intended discriminator to keep the
+    silhouette-K -> D route honest without touching K's threshold (which protects
+    Шлем 0.78, see classify_conservative).
+
+    NOT yet wired into measure_item: the cutoff must be read off a real Gazebo bag
+    frame, never tuned on synthetic masks (docs/decisions.md, Karpathy #1). Reuses
+    the `pts`/`hull` already built in measure_item.
+    """
+    hull_area = float(hull.volume)  # 2-D ConvexHull.volume is the enclosed area
+    assert hull_area > 0.0, "degenerate hull"
+    return float(min(len(pts) / hull_area, 1.0))
+
+
 def _section_roundness_k(xs, ys, heights_m, long_dir, scale_m_per_px):
     """K of the item's cross-section perpendicular to its long axis, recovered
     from the top-view height map (heights_m: pixel heights above the belt, m).

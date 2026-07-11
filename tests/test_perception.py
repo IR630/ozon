@@ -164,6 +164,46 @@ def test_section_k_flat_box_not_inflated():
     assert m.k == pytest.approx(99.5 / np.hypot(149.5, 99.5), abs=0.02)
 
 
+def _mask_points(mask):
+    ys, xs = np.where(mask)
+    return np.column_stack([xs, ys]).astype(float)
+
+
+def test_solidity_filled_square_is_one():
+    # a convex filled shape fills its own hull -> solidity ~ 1
+    from scipy.spatial import ConvexHull
+
+    from src.perception import _silhouette_solidity
+    mask = np.zeros((60, 60), dtype=bool)
+    mask[10:50, 10:50] = True
+    pts = _mask_points(mask)
+    assert _silhouette_solidity(pts, ConvexHull(pts)) == pytest.approx(1.0, abs=0.03)
+
+
+def test_solidity_filled_disk_is_near_one():
+    from scipy.spatial import ConvexHull
+
+    from src.perception import _silhouette_solidity
+    yy, xx = np.mgrid[0:80, 0:80]
+    mask = (xx - 40) ** 2 + (yy - 40) ** 2 <= 30**2
+    pts = _mask_points(mask)
+    assert _silhouette_solidity(pts, ConvexHull(pts)) > 0.9
+
+
+def test_solidity_concave_blob_drops():
+    # a plus/cross: the hull is the full bounding square but the mask fills only
+    # the arms -> solidity well below 1, the soft-blob signature the bag gate keys
+    # on (a round hull that is NOT a filled round shape)
+    from scipy.spatial import ConvexHull
+
+    from src.perception import _silhouette_solidity
+    mask = np.zeros((90, 90), dtype=bool)
+    mask[35:55, 10:80] = True   # horizontal bar
+    mask[10:80, 35:55] = True   # vertical bar
+    pts = _mask_points(mask)
+    assert _silhouette_solidity(pts, ConvexHull(pts)) < 0.7
+
+
 def test_position_synthetic():
     # mask centroid (199.5, 149.5) px, center (320, 240), top depth 1.3, f=500:
     # world_x = 1.5 - (149.5-240)*1.3/500 ; world_y = 0 - (199.5-320)*1.3/500
