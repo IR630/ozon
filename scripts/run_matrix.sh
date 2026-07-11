@@ -15,12 +15,21 @@
 #
 # One cell ~40 s (Gazebo boot + episode); 11 x N cells run sequentially.
 # orient_index 0 is the default STL pose, so the matrix includes the day-3 runs.
+#
+# Cap each cell's wall-clock — a wedged Gazebo episode (a foreground `ign` query
+# in run_skeleton.sh blocks forever when physics blows up, e.g. pouf) would else
+# hang the whole matrix. A capped cell is recorded TIMEOUT, and the loop moves on.
+#   CELL_TIMEOUT=180 bash scripts/run_matrix.sh 0 3
 set -u
 cd "$(dirname "$0")/.."
 
 SEED=${1:-0}
 N=${2:-3}
 PYTHON=${PYTHON:-python3}
+# Per-cell wall-clock ceiling (s) and the runner it caps. SKELETON is overridable
+# so tests can inject a stub, exactly like the PYTHON seam above.
+CELL_TIMEOUT=${CELL_TIMEOUT:-180}
+SKELETON=${SKELETON:-bash scripts/run_skeleton.sh}
 SLUGS=(bottle box_300x200x200 box_400x400x300 lunchbox bag detergent pouf pen plate cylinder helmet)
 ZONES=(D      B               C               B        B   B         C    C   D     B        B)
 START_ITEM=${3:-0}
@@ -70,11 +79,17 @@ for i in $(seq "$START_ITEM" "$END_ITEM"); do
             echo "[plan $slug oi=$oi -> $zone] quat=$OX $OY $OZ $OW"
             continue
         fi
-        if ORIENT_X=$OX ORIENT_Y=$OY ORIENT_Z=$OZ ORIENT_W=$OW \
-           bash scripts/run_skeleton.sh "$slug" "$zone" > "$log" 2>&1; then
+        rc=0
+        ORIENT_X=$OX ORIENT_Y=$OY ORIENT_Z=$OZ ORIENT_W=$OW \
+            timeout --kill-after=15 "$CELL_TIMEOUT" $SKELETON "$slug" "$zone" \
+            > "$log" 2>&1 || rc=$?
+        if [ "$rc" = 0 ]; then
             v=PASS
             pass=$((pass + 1))
             item_pass[$slug]=$((item_pass[$slug] + 1))
+        elif [ "$rc" = 124 ] || [ "$rc" = 137 ]; then
+            # 124: SIGTERM at CELL_TIMEOUT; 137: SIGKILL after --kill-after grace
+            v=TIMEOUT
         else
             v=FAIL
         fi
