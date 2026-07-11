@@ -19,6 +19,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from src.constants import ROUND_K_THRESHOLD
+
 CAMERA_X_M = 1.5      # cell.sdf: camera model pose x
 CAMERA_Y_M = 0.0      # cell.sdf: camera model pose y
 CAMERA_Z_M = 1.9      # cell.sdf: camera model pose z
@@ -62,6 +64,22 @@ SECTION_TAU_HI = 2.6      # below = shallow arc, above = dome cap floating high
 SECTION_TAU_RAMP = 0.15   # trapezoid edge width -> full-strength plateau ~[2.0, 2.45]
 SECTION_RMS_HI = 0.05     # rms/R above this is not a circle (rounded square / soft blob)
 SECTION_RMS_SPAN = 0.03   # saturates to "circle" at rms/R <= HI - SPAN (0.02)
+
+# Flatness gate on the silhouette->D route (day 4, P3). A round top-view
+# silhouette means D (round in a section) only for a genuinely FLAT disc
+# (Тарелка). A soft Мешок slumped on the belt also fills a round hull (silhouette
+# K=0.88, solidity=1.0 — the solidity discriminator could NOT tell it from a
+# plate, refuted on real Gazebo frames, docs/decisions.md 2026-07-12), but it is a
+# THICK lump, not a disc: its height rivals its diameter. So when the silhouette
+# CLAIMS roundness (K > ROUND_K_THRESHOLD) we additionally require the item to be
+# flat; flatness = height/diameter read off the real settled STLs:
+#   plate  dz/diam = 0.14  (flat disc)   -> keep silhouette K -> D
+#   bag    dz/diam = 0.85  (thick lump)  -> drop silhouette K -> B
+# The gate fires ONLY on a round-AND-thick silhouette (just the bag): a box's
+# K=0.55 is below threshold and untouched, and the synthetic thick-puck test
+# (dz/diam 0.53) stays below FLATNESS_MAX, so 0.7 leaves it round. The cross-
+# section K route (Бутылка) is untouched, so a lying body of revolution reaches D.
+FLATNESS_MAX = 0.7
 
 
 @dataclass
@@ -319,6 +337,15 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK
     # "max r_in/R_circ over sections along the principal axes" (docs/md/models.md).
     heights_m = belt_depth_m - depth_m[mask]
     k_silhouette = _roundness_k(pts, hull)
+    # The top-view silhouette means D only for a FLAT disc. A thick round lump
+    # (Мешок slumped on the belt) fills a round hull too (silhouette K=0.88,
+    # solidity=1.0 — indistinguishable from Тарелка by silhouette shape), so once
+    # the silhouette CLAIMS roundness, require the item to be flat; otherwise drop
+    # the silhouette K and let the cross-section K decide (0 for a lump -> B). The
+    # flat disc (dz/diam ~0.14) is untouched. See FLATNESS_MAX; provenance
+    # docs/decisions.md 2026-07-12 (solidity refuted on the real bag frame).
+    if k_silhouette > ROUND_K_THRESHOLD and dz_mm > FLATNESS_MAX * max(dx_mm, dy_mm):
+        k_silhouette = 0.0
     k_section = _section_roundness_k(xs, ys, heights_m, long_dir, top_depth_m / fx)
 
     return Measurement(

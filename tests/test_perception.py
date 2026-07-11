@@ -18,6 +18,8 @@ IMG_DIR = Path(__file__).resolve().parents[1] / "docs" / "report" / "img"
 DEPTH_PNG = IMG_DIR / "day1_camera_depth.png"
 OFFSET_PNG = IMG_DIR / "day2_offset_x1.8_y0.1_depth.png"
 BOTTLE_PNG = IMG_DIR / "day4_bottle_depth.png"
+BAG_PNG = IMG_DIR / "day4_bag_depth.png"
+PLATE_PNG = IMG_DIR / "day4_plate_depth.png"
 
 
 def _synthetic_box(rows=slice(100, 200), cols=slice(150, 250), top=1.3):
@@ -260,6 +262,38 @@ def test_measure_real_bottle_frame_is_round():
     for measured, truth in zip(m.dims_mm, [305.0, 91.0, 91.0]):
         assert abs(measured - truth) <= 20.0, f"{m.dims_mm} vs [305, 91, 91]"
     assert m.k > 0.8, f"lying bottle must read round (-> D): K={m.k}"
+
+
+def test_measure_real_bag_frame_is_not_round():
+    # Real top-down depth of Мешок settled under the camera (Gazebo, day 4). The
+    # slumped bag fills a ROUND convex hull (silhouette K=0.88, solidity=1.0 —
+    # indistinguishable from a plate by shape), so silhouette K alone misroutes it
+    # to D against reference B (196x173x166 mm, ref K=0.72). The flatness gate keys
+    # on the one real difference vs a Тарелка: the bag is a THICK round lump
+    # (dz/diameter ~0.9), not a flat disc (~0.14). K must drop below the 0.8
+    # threshold so the item routes to B. Threshold read off this real frame, never
+    # synthetic (docs/decisions.md, Karpathy #1: solidity was refuted here).
+    pytest.importorskip("cv2")
+    from src.perception import load_depth_png
+
+    m = measure_item(load_depth_png(BAG_PNG))
+    assert m is not None
+    for measured, truth in zip(m.dims_mm, [196.0, 173.0, 166.0]):
+        assert abs(measured - truth) <= 20.0, f"{m.dims_mm} vs [196, 173, 166]"
+    assert m.k <= 0.8, f"thick round lump must NOT read round (-> B): K={m.k}"
+
+
+def test_measure_real_plate_frame_stays_round():
+    # Regression guard for the flatness gate: a real flat round Тарелка
+    # (213x211x29 mm, dz/diameter ~0.14) must still read round via the silhouette
+    # (K=0.98 > 0.8 -> D). The gate suppresses silhouette K only for THICK round
+    # items (Мешок); it must leave the genuine flat disc untouched.
+    pytest.importorskip("cv2")
+    from src.perception import load_depth_png
+
+    m = measure_item(load_depth_png(PLATE_PNG))
+    assert m is not None
+    assert m.k > 0.8, f"flat round plate must read round (-> D): K={m.k}"
 
 
 def test_load_depth_png_from_unicode_path(tmp_path):
