@@ -30,7 +30,19 @@ for i in "${!SLUGS[@]}"; do
     item_total[$slug]=0
     item_pass[$slug]=0
     for oi in $(seq 0 $((N - 1))); do
-        read OX OY OZ OW <<< "$(python3 scripts/spawn_orientations.py "$SEED" "$i" "$oi")"
+        # Fail LOUD if the seeded generator breaks: an empty read would leave the
+        # ORIENT_* vars empty and run_skeleton.sh would silently fall back to the
+        # identity pose (${ORIENT_X:-0}...), so every oi>0 cell would re-run the
+        # default pose while still scoring PASS/FAIL — a silent, wrong matrix.
+        quat=$(python3 scripts/spawn_orientations.py "$SEED" "$i" "$oi") || {
+            echo "ABORT: spawn_orientations.py failed (seed=$SEED item=$i oi=$oi)" >&2
+            exit 1
+        }
+        read OX OY OZ OW _ <<< "$quat"
+        if [ -z "$OW" ]; then
+            echo "ABORT: orientation generator returned <4 values (seed=$SEED item=$i oi=$oi): '$quat'" >&2
+            exit 1
+        fi
         log="/tmp/matrix_${slug}_${oi}.log"
         total=$((total + 1))
         item_total[$slug]=$((item_total[$slug] + 1))
