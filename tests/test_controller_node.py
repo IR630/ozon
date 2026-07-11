@@ -53,8 +53,9 @@ def test_soft_start_and_c_routing_fire_once():
         pub = probe.create_publisher(ItemClassification, "/item/classification", 10)
         _spin_both(node, probe, 0.3)  # discovery
 
-        # item just before the C pusher -> fires almost immediately;
-        # the duplicate classification (same item_id) must NOT double-fire
+        # item just before the C pusher -> fires almost immediately; the
+        # duplicate classification (same item_id) replans the schedule
+        # (cancel + reschedule) and must NOT double-fire
         msg = _classification(node, 7, "C", PUSHER_X_M["C"] - 0.15)
         pub.publish(msg)
         pub.publish(msg)

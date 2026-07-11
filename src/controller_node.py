@@ -2,9 +2,14 @@
 """Controller ROS 2 node: ItemClassification -> belt + pusher commands (day 3).
 
 The routing brain of the skeleton. On startup it soft-starts the belt (a 0->1
-m/s step launches round items — docs/decisions.md 2026-07-11). For each newly
+m/s step launches round items — docs/decisions.md 2026-07-11). For each
 classified item: B — nothing (the belt carries it to its end), C/D — schedule
 the matching staggered pusher via dead-reckoning (src.tracking.plan_push).
+
+The pusher schedule is REPLANNED on every fresh classification (15 Hz) until
+the fire moment: dead-reckoning assumes constant belt speed, which is false
+while the item crosses the camera during the start ramp — the freshest
+measurement is taken at full speed close to the pusher and self-corrects that.
 
 MUST run with use_sim_time:=true and the /clock bridge: camera stamps are
 Gazebo sim time, and the fire timer counts on the same clock. A sanity check
@@ -38,7 +43,8 @@ class ControllerNode(Node):
             "C": self.create_publisher(Float64, "/pusher_c/cmd", 10),
             "D": self.create_publisher(Float64, "/pusher_d/cmd", 10),
         }
-        self.handled_items = set()      # item_id -> routed once
+        self.done_items = set()         # routed for good: pusher fired / B / missed
+        self.pending = {}               # item_id -> scheduled fire timer (replannable)
         self.one_shot_timers = []       # keep one-shot timers alive (Node.timers is taken)
         self.ramp_step = 0
         self.ramp_timer = self.create_timer(_RAMP_PERIOD_S, self.on_ramp)
@@ -56,9 +62,8 @@ class ControllerNode(Node):
         return self.get_clock().now().nanoseconds / 1e9
 
     def on_classification(self, msg):
-        if msg.item_id in self.handled_items:
+        if msg.item_id in self.done_items:
             return
-        self.handled_items.add(msg.item_id)
 
         stamp_s = msg.header.stamp.sec + msg.header.stamp.nanosec / 1e9
         age_s = self.now_s() - stamp_s
@@ -71,19 +76,29 @@ class ControllerNode(Node):
         try:
             plan = plan_push(msg.category, msg.position.x, stamp_s)
         except ValueError as e:
-            self.get_logger().error(f"item {msg.item_id}: MISSED — {e}")
+            if msg.item_id not in self.pending:  # never even scheduled
+                self.done_items.add(msg.item_id)
+                self.get_logger().error(f"item {msg.item_id}: MISSED — {e}")
             return
         if plan is None:
+            self.done_items.add(msg.item_id)
             self.get_logger().info(f"item {msg.item_id}: B — rides to belt end")
             return
 
+        # (re)schedule: cancel the previous plan, trust the freshest measurement
         zone, fire_at_s = plan
+        old = self.pending.pop(msg.item_id, None)
+        if old is not None:
+            old.cancel()
         delay_s = max(fire_at_s - self.now_s(), 0.0)
         self.get_logger().info(
             f"item {msg.item_id}: {zone} — firing pusher_{zone.lower()} in {delay_s:.2f}s")
-        self.one_shot(delay_s, lambda z=zone: self.fire(z))
+        self.pending[msg.item_id] = self.one_shot(
+            delay_s, lambda z=zone, i=msg.item_id: self.fire(z, i))
 
-    def fire(self, zone):
+    def fire(self, zone, item_id):
+        self.pending.pop(item_id, None)
+        self.done_items.add(item_id)
         self.pusher_pubs[zone].publish(Float64(data=_PUSH_SPEED_M_S))
         self.one_shot(_STROKE_S, lambda z=zone: self.retract(z))
 
@@ -101,6 +116,7 @@ class ControllerNode(Node):
 
         timer = self.create_timer(max(delay_s, 1e-3), cb)
         self.one_shot_timers.append(timer)
+        return timer
 
 
 def main():
