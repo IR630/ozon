@@ -22,7 +22,7 @@
 python -m venv .venv
 .venv/Scripts/activate        # Windows; на Linux: source .venv/bin/activate
 pip install -r requirements.txt
-pytest -q                     # 35 тестов зелёные
+pytest -q                     # локальные тесты; ROS-node тесты полностью гоняет CI
 python scripts/build_item_models.py   # SDF-модели 11 товаров -> sim/models/items/
 ```
 
@@ -58,9 +58,10 @@ python3 scripts/dump_camera.py --out out        # PNG кадры с камеры
 ## Структура
 
 ```
-src/          ядро: константы домена и правила классификации (+ тесты в tests/)
+src/          ядро perception/классификации/tracking и ROS 2 ноды
+launch/       запуск полного контура одной командой
 scripts/      анализ STL, генератор SDF-моделей, утилиты
-ros_msgs/     ROS 2 пакет с контрактом ItemClassification (CV -> контроллер)
+ros_msgs/     ROS 2 пакет с контрактами ItemMeasurement и ItemClassification
 sim/          мир Gazebo, модели, конфиг моста ros_gz
 docker/       среда разработки и запуска
 docs/         условия, решения, эксперименты, отчёт
