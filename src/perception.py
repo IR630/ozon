@@ -193,7 +193,11 @@ def load_depth_png(path):
     """Load a uint16-millimeter depth PNG (as dumped by scripts/dump_camera.py) to meters."""
     import cv2
 
-    mm = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+    # cv2.imread() cannot open non-ASCII paths on some Windows builds.  Read
+    # the encoded bytes with numpy (which uses Python's Unicode-aware file
+    # APIs) and let OpenCV decode the in-memory buffer instead.
+    encoded = np.fromfile(path, dtype=np.uint8)
+    mm = cv2.imdecode(encoded, cv2.IMREAD_UNCHANGED)
     if mm is None:
         raise FileNotFoundError(path)
     return mm.astype(np.float64) / 1000.0

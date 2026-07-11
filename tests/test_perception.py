@@ -6,6 +6,7 @@ Synthetic tests lock the math with analytic numbers and run everywhere
 against ground truth and need cv2 to read PNG — skipped where OpenCV is absent
 (Windows dev host), run in WSL and the ROS CI job.
 """
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -123,3 +124,18 @@ def test_measure_real_offset_frame():
     # dims read up to ~20 mm large (v0 limitation, docs/day2-plan.md)
     for measured, truth in zip(m.dims_mm, [300.0, 200.0, 200.0]):
         assert abs(measured - truth) <= 20.0, f"{m.dims_mm} vs [300, 200, 200]"
+
+
+def test_load_depth_png_from_unicode_path(tmp_path):
+    pytest.importorskip("cv2")
+    from src.perception import load_depth_png
+
+    unicode_dir = tmp_path / "данные"
+    unicode_dir.mkdir()
+    unicode_png = unicode_dir / "глубина.png"
+    shutil.copyfile(DEPTH_PNG, unicode_png)
+
+    depth = load_depth_png(unicode_png)
+    assert depth.shape == (480, 640)
+    assert depth.dtype == np.float64
+    assert depth[240, 320] == pytest.approx(1.3)
