@@ -31,6 +31,18 @@ def _depth_image_msg():
     return msg
 
 
+def _two_item_depth_image_msg():
+    depth = np.full((480, 640), BELT_DEPTH_M, dtype=np.float32)
+    depth[80:160, 100:180] = 1.30
+    depth[280:370, 430:530] = 1.25
+    msg = Image()
+    msg.height, msg.width = depth.shape
+    msg.encoding = "32FC1"
+    msg.step = depth.shape[1] * 4
+    msg.data = depth.tobytes()
+    return msg
+
+
 def test_depth_frame_yields_measurement():
     rclpy.init()
     try:
@@ -86,6 +98,34 @@ def test_empty_belt_publishes_nothing():
             rclpy.spin_once(probe, timeout_sec=0.05)
 
         assert received == []
+
+        probe.destroy_node()
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def test_two_disconnected_items_get_distinct_ids():
+    rclpy.init()
+    try:
+        node = PerceptionNode()
+        probe = rclpy.create_node("probe_multi")
+        received = []
+        probe.create_subscription(ItemMeasurement, "/item/measurement", received.append, 10)
+        pub = probe.create_publisher(Image, "/camera/depth_image", 10)
+
+        frame = _two_item_depth_image_msg()
+        for _ in range(100):
+            pub.publish(frame)
+            rclpy.spin_once(node, timeout_sec=0.05)
+            rclpy.spin_once(probe, timeout_sec=0.05)
+            if len(received) >= 2:
+                break
+
+        assert len(received) >= 2
+        first_frame = received[:2]
+        assert {measurement.item_id for measurement in first_frame} == {1, 2}
+        assert len({measurement.position.x for measurement in first_frame}) == 2
 
         probe.destroy_node()
         node.destroy_node()

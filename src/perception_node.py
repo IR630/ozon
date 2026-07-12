@@ -8,9 +8,8 @@ publishes for the gz depth camera) and moves the measurement onto the wire.
 Intrinsics: prefers fx/fy from /camera/camera_info at runtime; until the first
 CameraInfo arrives, falls back to the offline calibration in src.perception.
 
-item_id v0: one item is visible at a time (task flow), so a new id is assigned
-whenever an item appears after empty frames. Real multi-item tracking is out
-of scope for the skeleton.
+Disconnected items are measured independently. A lightweight world-position
+tracker keeps item_id stable across frames and short detection gaps.
 
 Runs inside the ROS 2 environment (needs rclpy and the built ros_msgs overlay):
     python3 -m src.perception_node
@@ -22,9 +21,8 @@ from sensor_msgs.msg import CameraInfo, Image
 
 from ros_msgs.msg import ItemMeasurement
 
-from src.perception import measure_item
-
-_GAP_FRAMES = 2  # empty frames before the next detection counts as a new item
+from src.item_tracking import ItemTracker
+from src.perception import measure_items
 
 
 class PerceptionNode(Node):
@@ -34,8 +32,7 @@ class PerceptionNode(Node):
         self.fy = None
         self.cx = None  # principal point from CameraInfo; None -> image center
         self.cy = None
-        self.item_id = 0
-        self.gap = _GAP_FRAMES  # start "empty long enough": first item gets a fresh id
+        self.tracker = ItemTracker()
         self.pub = self.create_publisher(ItemMeasurement, "/item/measurement", 10)
         self.create_subscription(Image, "/camera/depth_image", self.on_depth, 10)
         self.create_subscription(CameraInfo, "/camera/camera_info", self.on_info, 10)
@@ -56,27 +53,23 @@ class PerceptionNode(Node):
         kwargs = {}
         if self.fx is not None:
             kwargs = {"fx": self.fx, "fy": self.fy, "cx": self.cx, "cy": self.cy}
-        m = measure_item(depth.astype(np.float64), **kwargs)
-        if m is None:
-            self.gap += 1
-            return
-        if self.gap >= _GAP_FRAMES:
-            self.item_id += 1
-        self.gap = 0
-
-        out = ItemMeasurement()
-        out.header.stamp = msg.header.stamp  # measurement time = frame time
-        out.header.frame_id = "world"
-        out.item_id = self.item_id
-        out.dims_mm = [float(d) for d in m.dims_mm]
-        out.k = m.k
-        out.confidence = 1.0  # day 4: uncertainty policy will lower this
-        out.position.x, out.position.y, out.position.z = m.position_m
-        self.pub.publish(out)
-        self.get_logger().info(
-            f"item {out.item_id}: {out.dims_mm[0]:.0f}x{out.dims_mm[1]:.0f}x{out.dims_mm[2]:.0f} mm"
-            f" K={out.k:.2f} at ({out.position.x:.2f}, {out.position.y:.2f})"
-        )
+        measurements = measure_items(depth.astype(np.float64), **kwargs)
+        item_ids = self.tracker.update([measurement.position_m for measurement in measurements])
+        for item_id, measurement in zip(item_ids, measurements):
+            out = ItemMeasurement()
+            out.header.stamp = msg.header.stamp  # measurement time = frame time
+            out.header.frame_id = "world"
+            out.item_id = item_id
+            out.dims_mm = [float(d) for d in measurement.dims_mm]
+            out.k = measurement.k
+            out.confidence = 1.0  # classifier aggregation computes decision confidence
+            out.position.x, out.position.y, out.position.z = measurement.position_m
+            self.pub.publish(out)
+            self.get_logger().info(
+                f"item {out.item_id}: {out.dims_mm[0]:.0f}x{out.dims_mm[1]:.0f}x"
+                f"{out.dims_mm[2]:.0f} mm K={out.k:.2f} at "
+                f"({out.position.x:.2f}, {out.position.y:.2f})"
+            )
 
 
 def main():

@@ -39,7 +39,7 @@ Gazebo (sim/worlds/cell.sdf)                          ROS 2 (launch/skeleton.lau
 | Узел | Вход | Выход | Суть |
 |---|---|---|---|
 | `ros_gz_bridge` | топики Gazebo | топики ROS 2 | камера, `/clock`, команды ленты и толкателей (`sim/bridge.yaml`) |
-| `perception_node` (`src/perception.py`) | depth-кадр 15 Гц | `ItemMeasurement` | сегментация по высоте над лентой, габариты в мм, K = r_вписанной/R_описанной по хулу вида сверху, позиция в мире; частично видимые кадры отбрасываются |
+| `perception_node` (`src/perception.py`) | depth-кадр 15 Гц | по одному `ItemMeasurement` на товар | связные depth-компоненты измеряются независимо; nearest-neighbour tracker сохраняет `item_id` между кадрами; геометрия даёт габариты, K и мировую позицию, частично видимые компоненты отбрасываются |
 | `classifier_node` (`src/classifier_node.py`) | `ItemMeasurement` | `ItemClassification` | правила задачи (пороги 10×10×10 и 450×320×320 мм, K > 0.8) из `src/constants.py` — единственного источника доменных констант |
 | `controller_node` (`src/controller_node.py`) | `ItemClassification`, `/emergency_stop` (`Bool`) | `/conveyor/cmd_vel`, `/pusher_{c,d}/cmd` | мягкий пуск ленты; B — едет до конца, C/D — команда механизму по dead-reckoning; защёлкнутый E-stop отменяет таймеры и обнуляет все приводы |
 

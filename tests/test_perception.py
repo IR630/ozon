@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from src.perception import measure_dims_mm, measure_item
+from src.perception import BELT_DEPTH_M, measure_dims_mm, measure_item
 
 IMG_DIR = Path(__file__).resolve().parents[1] / "docs" / "report" / "img"
 DEPTH_PNG = IMG_DIR / "day1_camera_depth.png"
@@ -170,6 +170,20 @@ def test_section_k_flat_box_not_inflated():
 def _mask_points(mask):
     ys, xs = np.where(mask)
     return np.column_stack([xs, ys]).astype(float)
+
+
+def test_measure_items_returns_two_disconnected_products():
+    from src.perception import measure_items
+
+    depth = np.full((480, 640), BELT_DEPTH_M, dtype=float)
+    depth[100:180, 100:180] = 1.30
+    depth[260:350, 420:520] = 1.25
+
+    measured = measure_items(depth)
+
+    assert len(measured) == 2
+    assert measured[0].position_m[0] < measured[1].position_m[0]
+    assert all(measurement.dims_mm[0] > 150 for measurement in measured)
 
 
 def test_solidity_filled_square_is_one():

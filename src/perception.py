@@ -124,6 +124,26 @@ def _find_item(depth_m, belt_depth_m, margin_m):
     return mask, (x0, y0, x1, y1)
 
 
+def _find_items(depth_m, belt_depth_m, margin_m):
+    """Valid connected item masks and bboxes in one frame."""
+    from scipy.ndimage import label
+
+    foreground = _item_mask(depth_m, belt_depth_m, margin_m)
+    labels, count = label(foreground, structure=np.ones((3, 3), dtype=int))
+    h, w = depth_m.shape
+    found = []
+    for component_id in range(1, count + 1):
+        mask = labels == component_id
+        ys, xs = np.where(mask)
+        if xs.size < _MIN_ITEM_PX:
+            continue
+        x0, y0, x1, y1 = int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
+        if x0 == 0 or y0 == 0 or x1 == w - 1 or y1 == h - 1:
+            continue
+        found.append((mask, (x0, y0, x1, y1)))
+    return found
+
+
 def _min_enclosing_radius(pts):
     """Radius of the minimal enclosing circle (incremental Welzl, deterministic).
 
@@ -369,6 +389,35 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK
         position_m=(world_x, world_y, world_z),
         bbox_px=(x0, y0, x1, y1),
     )
+
+
+def measure_items(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY,
+                  margin_m=MASK_MARGIN_M, camera_x_m=CAMERA_X_M,
+                  camera_y_m=CAMERA_Y_M, cx=None, cy=None):
+    """Measure every disconnected, fully visible item in a depth frame.
+
+    Geometry remains single-sourced in measure_item(): each component is isolated
+    against belt depth and passed through that existing path. Touching products
+    form one component and are intentionally not split yet.
+    """
+    measurements = []
+    for mask, _ in _find_items(depth_m, belt_depth_m, margin_m):
+        isolated = np.full_like(depth_m, belt_depth_m)
+        isolated[mask] = depth_m[mask]
+        measurement = measure_item(
+            isolated,
+            belt_depth_m=belt_depth_m,
+            fx=fx,
+            fy=fy,
+            margin_m=margin_m,
+            camera_x_m=camera_x_m,
+            camera_y_m=camera_y_m,
+            cx=cx,
+            cy=cy,
+        )
+        if measurement is not None:
+            measurements.append(measurement)
+    return sorted(measurements, key=lambda measurement: measurement.position_m[0])
 
 
 def measure_dims_mm(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK_MARGIN_M):
