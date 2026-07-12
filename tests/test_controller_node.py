@@ -291,3 +291,46 @@ def test_emergency_stop_cancels_motion_and_reset_soft_starts_belt():
         node.destroy_node()
     finally:
         rclpy.shutdown()
+
+
+def test_second_item_to_same_zone_is_not_cut_short_by_the_first_retract():
+    # Multi-item flow (PLAN-WEEK2 day 10): "действие одного товара не отменяет
+    # другое". Two items routed to the SAME zone closer together than hold_s.
+    # The mechanism is shared, and the retract used to be scheduled hold_s after
+    # EACH fire — so item 1's retract yanked the paddle/blade back while item 2
+    # was still being pushed, and item 2 rode on to the belt end (a misroute that
+    # the single-item census could never show). The mechanism must stay engaged
+    # until hold_s after the LAST fire on that zone.
+    import time
+
+    rclpy.init()
+    try:
+        node = ControllerNode()          # default hold_s = 0.6 s
+        probe = rclpy.create_node("probe")
+        cmds = []                        # (t, value) on /pusher_c/cmd
+        t0 = time.monotonic()
+        probe.create_subscription(
+            Float64, "/pusher_c/cmd",
+            lambda m: cmds.append((time.monotonic() - t0, m.data)), 10)
+        pub = probe.create_publisher(ItemClassification, "/item/classification", 10)
+        _spin_both(node, probe, 0.3)
+
+        # item 1 fires ~0.05 s in, item 2 ~0.35 s in: 0.3 s apart, well inside
+        # the 0.6 s hold (at 1 m/s that is two items 0.3 m apart on the belt)
+        pub.publish(_classification(node, 21, "C", PUSHER_X_M["C"] - 0.15))
+        pub.publish(_classification(node, 22, "C", PUSHER_X_M["C"] - 0.45))
+        _spin_both(node, probe, 1.8)
+
+        fires = [t for t, v in cmds if v == _PUSH_SPEED_M_S]
+        retracts = [t for t, v in cmds if v == -_PUSH_SPEED_M_S]
+        assert len(fires) == 2, f"both items must be pushed: {cmds}"
+        assert retracts, f"the mechanism must return: {cmds}"
+        held_s = retracts[0] - fires[-1]
+        assert held_s >= node.hold_s - 0.1, (
+            f"retract {held_s:.2f}s after the last fire, hold_s={node.hold_s}: "
+            f"item 2's push was cut short by item 1's retract — {cmds}")
+
+        probe.destroy_node()
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()

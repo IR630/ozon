@@ -59,6 +59,7 @@ class ControllerNode(Node):
         self.fired = {}                 # item_id -> zone; irreversible once fired
         self.done_items = set()         # decided B / missed (log dedupe; a fresher C/D overrides)
         self.pending = {}               # item_id -> scheduled fire timer (replannable)
+        self.returning = {}             # zone -> pending retract/stop timer of the SHARED mechanism
         self.one_shot_timers = set()    # keep one-shot timers alive (Node.timers is taken)
         self.emergency_stopped = False  # latched until an explicit False command
         self.ramp_step = 0
@@ -133,17 +134,39 @@ class ControllerNode(Node):
         self.pending.pop(item_id, None)
         if self.emergency_stopped:
             return
+        # Items are independent, but the MECHANISM is shared. A second item
+        # routed to the same zone within hold_s used to inherit the first item's
+        # return chain: that retract (scheduled hold_s after the FIRST fire)
+        # pulled the paddle/blade back mid-push, and item 2 rode on to the belt
+        # end. Drop the stale return chain — the mechanism stays engaged until
+        # hold_s after the LAST fire on this zone.
+        self._cancel_return(zone)
         self.fired[item_id] = zone
         self.get_logger().info(
             f"item {item_id}: pusher_{zone.lower()} FIRED at t={self.now_s():.2f}s")
         self.pusher_pubs[zone].publish(Float64(data=_PUSH_SPEED_M_S))
-        self.one_shot(self.hold_s, lambda z=zone: self.retract(z))
+        self.returning[zone] = self.one_shot(self.hold_s, lambda z=zone: self.retract(z))
 
     def retract(self, zone):
+        self.returning.pop(zone, None)  # this timer is the one firing right now
         if self.emergency_stopped:
             return
         self.pusher_pubs[zone].publish(Float64(data=-_PUSH_SPEED_M_S))
-        self.one_shot(_STROKE_S, lambda z=zone: self.pusher_pubs[z].publish(Float64(data=0.0)))
+        self.returning[zone] = self.one_shot(_STROKE_S, lambda z=zone: self.stop(z))
+
+    def stop(self, zone):
+        self.returning.pop(zone, None)
+        self.pusher_pubs[zone].publish(Float64(data=0.0))
+
+    def _cancel_return(self, zone):
+        """Drop a pending retract/stop of `zone` (a fresh item took the mechanism).
+
+        Safe from fire(): the timer retired here belongs to the PREVIOUS item's
+        return chain, never to the callback currently executing.
+        """
+        timer = self.returning.pop(zone, None)
+        if timer is not None:
+            self._retire(timer)
 
     def on_emergency_stop(self, msg):
         """Latch an immediate safe stop; False explicitly rearms soft-start."""
@@ -157,6 +180,7 @@ class ControllerNode(Node):
             for timer in tuple(self.one_shot_timers):
                 self._retire(timer)
             self.pending.clear()
+            self.returning.clear()  # its timers were just retired — no stale refs
             stop = Float64(data=0.0)
             self.belt_pub.publish(stop)
             for publisher in self.pusher_pubs.values():
