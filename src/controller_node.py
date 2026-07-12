@@ -21,7 +21,7 @@ Runs inside the ROS 2 environment (needs rclpy and the built ros_msgs overlay):
 """
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Float64
+from std_msgs.msg import Bool, Float64
 
 from ros_msgs.msg import ItemClassification
 
@@ -60,12 +60,17 @@ class ControllerNode(Node):
         self.done_items = set()         # decided B / missed (log dedupe; a fresher C/D overrides)
         self.pending = {}               # item_id -> scheduled fire timer (replannable)
         self.one_shot_timers = set()    # keep one-shot timers alive (Node.timers is taken)
+        self.emergency_stopped = False  # latched until an explicit False command
         self.ramp_step = 0
         self.ramp_timer = self.create_timer(_RAMP_PERIOD_S, self.on_ramp)
         self.create_subscription(ItemClassification, "/item/classification",
                                  self.on_classification, 10)
+        self.create_subscription(Bool, "/emergency_stop",
+                                 self.on_emergency_stop, 10)
 
     def on_ramp(self):
+        if self.emergency_stopped:
+            return
         self.ramp_step += 1
         self.belt_pub.publish(Float64(data=BELT_SPEED_M_S * self.ramp_step / _RAMP_STEPS))
         if self.ramp_step >= _RAMP_STEPS:
@@ -76,6 +81,8 @@ class ControllerNode(Node):
         return self.get_clock().now().nanoseconds / 1e9
 
     def on_classification(self, msg):
+        if self.emergency_stopped:
+            return
         if msg.item_id in self.fired:
             # too late to act, but a contradiction must be visible in the log
             if msg.category != self.fired[msg.item_id]:
@@ -124,6 +131,8 @@ class ControllerNode(Node):
 
     def fire(self, zone, item_id):
         self.pending.pop(item_id, None)
+        if self.emergency_stopped:
+            return
         self.fired[item_id] = zone
         self.get_logger().info(
             f"item {item_id}: pusher_{zone.lower()} FIRED at t={self.now_s():.2f}s")
@@ -131,8 +140,33 @@ class ControllerNode(Node):
         self.one_shot(self.hold_s, lambda z=zone: self.retract(z))
 
     def retract(self, zone):
+        if self.emergency_stopped:
+            return
         self.pusher_pubs[zone].publish(Float64(data=-_PUSH_SPEED_M_S))
         self.one_shot(_STROKE_S, lambda z=zone: self.pusher_pubs[z].publish(Float64(data=0.0)))
+
+    def on_emergency_stop(self, msg):
+        """Latch an immediate safe stop; False explicitly rearms soft-start."""
+        requested = bool(msg.data)
+        if requested == self.emergency_stopped:
+            return
+
+        self.emergency_stopped = requested
+        if requested:
+            self.ramp_timer.cancel()
+            for timer in tuple(self.one_shot_timers):
+                self._retire(timer)
+            self.pending.clear()
+            stop = Float64(data=0.0)
+            self.belt_pub.publish(stop)
+            for publisher in self.pusher_pubs.values():
+                publisher.publish(stop)
+            self.get_logger().error("E-STOP active: belt and mechanisms stopped")
+            return
+
+        self.ramp_step = 0
+        self.ramp_timer.reset()
+        self.get_logger().warn("E-STOP reset: restarting belt with soft-start")
 
     def one_shot(self, delay_s, callback):
         """rclpy timers repeat; wrap to fire once (sim-time aware)."""

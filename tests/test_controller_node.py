@@ -10,7 +10,7 @@ import pytest
 rclpy = pytest.importorskip("rclpy")
 msgs = pytest.importorskip("ros_msgs.msg")
 
-from std_msgs.msg import Float64  # noqa: E402
+from std_msgs.msg import Bool, Float64  # noqa: E402
 
 from src.constants import BELT_SPEED_M_S  # noqa: E402
 from src.controller_node import _PUSH_SPEED_M_S, ControllerNode  # noqa: E402
@@ -234,6 +234,58 @@ def test_b_does_not_touch_pushers():
         _spin_both(node, probe, 1.5)
 
         assert fired == []
+
+        probe.destroy_node()
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def test_emergency_stop_cancels_motion_and_reset_soft_starts_belt():
+    rclpy.init()
+    try:
+        node = ControllerNode()
+        probe = rclpy.create_node("probe_estop")
+        belt_cmds, pusher_c_cmds, pusher_d_cmds = [], [], []
+        probe.create_subscription(Float64, "/conveyor/cmd_vel",
+                                  lambda m: belt_cmds.append(m.data), 10)
+        probe.create_subscription(Float64, "/pusher_c/cmd",
+                                  lambda m: pusher_c_cmds.append(m.data), 10)
+        probe.create_subscription(Float64, "/pusher_d/cmd",
+                                  lambda m: pusher_d_cmds.append(m.data), 10)
+        classification_pub = probe.create_publisher(
+            ItemClassification, "/item/classification", 10)
+        estop_pub = probe.create_publisher(Bool, "/emergency_stop", 10)
+        _spin_both(node, probe, 0.3)
+
+        # Schedule a future push, then stop before its timer can fire.
+        classification_pub.publish(
+            _classification(node, 20, "C", PUSHER_X_M["C"] - 1.0))
+        _spin_both(node, probe, 0.1)
+        estop_pub.publish(Bool(data=True))
+        _spin_both(node, probe, 1.2)
+
+        assert node.emergency_stopped
+        assert node.pending == {}
+        assert belt_cmds[-1] == 0.0
+        assert pusher_c_cmds == [0.0], pusher_c_cmds
+        assert pusher_d_cmds == [0.0], pusher_d_cmds
+
+        # Classifications are ignored while latched. Reset is explicit and the
+        # belt must ramp again instead of jumping straight to full speed.
+        classification_pub.publish(
+            _classification(node, 21, "D", PUSHER_X_M["D"] - 0.15))
+        _spin_both(node, probe, 0.3)
+        assert pusher_d_cmds == [0.0], pusher_d_cmds
+
+        reset_at = len(belt_cmds)
+        estop_pub.publish(Bool(data=False))
+        _spin_both(node, probe, 0.7)
+        resumed = belt_cmds[reset_at:]
+        assert not node.emergency_stopped
+        assert resumed
+        assert 0.0 < resumed[0] < BELT_SPEED_M_S / 2
+        assert resumed == sorted(resumed)
 
         probe.destroy_node()
         node.destroy_node()
