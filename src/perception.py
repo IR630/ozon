@@ -33,7 +33,16 @@ BELT_DEPTH_M = CAMERA_Z_M - BELT_TOP_Z_M
 # square pixels: fy == fx (verified against the real frame, ±3 mm on Короб 300)
 FX = FY = (IMG_W / 2.0) / np.tan(HFOV_RAD / 2.0)
 
-_MIN_ITEM_PX = 200    # ignore specks; a real item covers thousands of pixels
+# Reject specks, but the thinnest item in the task is only a few pixels wide: at
+# 1.5 m the camera resolves 2.72 mm/px, so Ручка (148x13x9 mm) covers just
+# 155..179 px lying on the belt — the old 200 px gate silently dropped it on EVERY
+# pose (matrix pen 0/3 "no measurement" -> default B instead of C, day 4). The
+# floor this gate must clear is the empty belt, and that is measured at exactly
+# 0 px (the 5 mm margin below already suppresses the ~1 mm belt depth spread), so
+# 24 px sits an order of magnitude above the noise and 6x below the pen.
+# A pen standing on its end (15 px, tallest 149 mm) stays below detection —
+# documented limit, not a fix target: on the moving belt it topples flat.
+_MIN_ITEM_PX = 24
 # Mask margin above the belt plane: must clear the thinnest item (Ручка, 9 mm)
 # while staying above the empty-belt depth spread (<=1 mm on the saved real
 # frames — sim depth is clean; 20 mm silently swallowed items under 20 mm).

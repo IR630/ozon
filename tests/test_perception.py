@@ -20,6 +20,7 @@ OFFSET_PNG = IMG_DIR / "day2_offset_x1.8_y0.1_depth.png"
 BOTTLE_PNG = IMG_DIR / "day4_bottle_depth.png"
 BAG_PNG = IMG_DIR / "day4_bag_depth.png"
 PLATE_PNG = IMG_DIR / "day4_plate_depth.png"
+PEN_PNG = IMG_DIR / "day4_pen_depth.png"
 
 
 def _synthetic_box(rows=slice(100, 200), cols=slice(150, 250), top=1.3):
@@ -294,6 +295,36 @@ def test_measure_real_plate_frame_stays_round():
     m = measure_item(load_depth_png(PLATE_PNG))
     assert m is not None
     assert m.k > 0.8, f"flat round plate must read round (-> D): K={m.k}"
+
+
+def test_measure_real_pen_frame_is_seen_and_routed_to_c():
+    # Real top-down depth of Ручка (148x13x9 mm) settled on the belt (Gazebo, day 4).
+    # The thinnest item in the task: its mask is only ~179 px, so the old 200 px
+    # min-px gate returned None on every pose — the item was never measured and the
+    # contour defaulted it to B (matrix pen 0/3). It must now be SEEN.
+    #
+    # The 9 mm dimension is 3.3 px at this camera (2.72 mm/px), so it measures
+    # 10.7 mm — straddling the very 10 mm limit that decides its category. That tie
+    # is NOT resolvable by the camera and must not be resolved by a tuned threshold:
+    # the conservative policy owns it (a "fits" dim within 5 mm of a bound -> C).
+    # This test therefore asserts the CONTOUR's verdict, not a lucky measurement.
+    pytest.importorskip("cv2")
+    from src.classification import classify_conservative
+    from src.perception import load_depth_png
+
+    m = measure_item(load_depth_png(PEN_PNG))
+    assert m is not None, "the pen must be detected at all (regression: 200 px gate)"
+    assert max(m.dims_mm) == pytest.approx(148.0, abs=10.0), f"pen length: {m.dims_mm}"
+    assert classify_conservative(m.dims_mm, m.k) == "C", (
+        f"pen must route to C (min dim near the 10 mm bound): {m.dims_mm}, K={m.k}"
+    )
+
+
+def test_empty_belt_is_not_an_item():
+    # Guard for lowering the min-px gate to 24: the belt itself must never look like
+    # an item. Measured on real empty-belt frames the mask is 0 px (Gazebo, day 4);
+    # this locks the invariant against a future margin/threshold change.
+    assert measure_item(np.full((480, 640), 1.5)) is None
 
 
 def test_load_depth_png_from_unicode_path(tmp_path):
