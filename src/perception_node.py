@@ -32,6 +32,8 @@ class PerceptionNode(Node):
         super().__init__("perception")
         self.fx = None  # from CameraInfo; None -> perception.py defaults
         self.fy = None
+        self.cx = None  # principal point from CameraInfo; None -> image center
+        self.cy = None
         self.item_id = 0
         self.gap = _GAP_FRAMES  # start "empty long enough": first item gets a fresh id
         self.pub = self.create_publisher(ItemMeasurement, "/item/measurement", 10)
@@ -41,6 +43,8 @@ class PerceptionNode(Node):
     def on_info(self, msg):
         self.fx = float(msg.k[0])  # K = [fx 0 cx; 0 fy cy; 0 0 1]
         self.fy = float(msg.k[4])
+        self.cx = float(msg.k[2])
+        self.cy = float(msg.k[5])
 
     def on_depth(self, msg):
         if msg.encoding != "32FC1":
@@ -51,7 +55,7 @@ class PerceptionNode(Node):
 
         kwargs = {}
         if self.fx is not None:
-            kwargs = {"fx": self.fx, "fy": self.fy}
+            kwargs = {"fx": self.fx, "fy": self.fy, "cx": self.cx, "cy": self.cy}
         m = measure_item(depth.astype(np.float64), **kwargs)
         if m is None:
             self.gap += 1

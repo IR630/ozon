@@ -139,7 +139,11 @@ def _min_enclosing_radius(pts):
         # circumcircle via the perpendicular-bisector determinant formula
         d = 2.0 * (a[0] * (b[1] - c[1]) + b[0] * (c[1] - a[1]) + c[0] * (a[1] - b[1]))
         if abs(d) < 1e-12:
-            return None  # collinear
+            # collinear: the minimal enclosing circle is the diameter of the two
+            # farthest points (it covers the middle one). Return that instead of
+            # a 2-point circle that could leave the third point uncovered.
+            p, q = max(((a, b), (a, c), (b, c)), key=lambda pq: dist(pq[0], pq[1]))
+            return circle2(p, q)
         ux = ((a[0] ** 2 + a[1] ** 2) * (b[1] - c[1]) + (b[0] ** 2 + b[1] ** 2) * (c[1] - a[1])
               + (c[0] ** 2 + c[1] ** 2) * (a[1] - b[1])) / d
         uy = ((a[0] ** 2 + a[1] ** 2) * (c[0] - b[0]) + (b[0] ** 2 + b[1] ** 2) * (a[0] - c[0])
@@ -163,9 +167,7 @@ def _min_enclosing_radius(pts):
             circle = circle2(p, q)
             for s in pts[:j]:
                 if not contains(circle, s):
-                    c3 = circle3(p, q, s)
-                    if c3 is not None:
-                        circle = c3
+                    circle = circle3(p, q, s)
     return circle[1]
 
 
@@ -299,14 +301,15 @@ def _obb_dims_px(hull_vertices):
 
 
 def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK_MARGIN_M,
-                 camera_x_m=CAMERA_X_M, camera_y_m=CAMERA_Y_M):
+                 camera_x_m=CAMERA_X_M, camera_y_m=CAMERA_Y_M, cx=None, cy=None):
     """Measurement of the single item on the belt, or None (empty / partial view).
 
     depth_m: HxW depth image in meters (0 = no return). Two lateral dims come
     from the oriented bounding box (yaw-invariant footprint) at the item's
     top-face depth; height from how far the top rises above the belt. K from the
     top-view hull; position from the mask centroid via the verified pixel->world
-    mapping.
+    mapping. cx/cy: principal point (px); default to the image center — the node
+    passes CameraInfo's k[2]/k[5] so a shifted principal point is honored.
     """
     found = _find_item(depth_m, belt_depth_m, margin_m)
     if found is None:
@@ -335,7 +338,10 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK
     dz_mm = (belt_depth_m - float(np.percentile(depth_m[mask], 1.0))) * 1000.0
     dims = sorted([dx_mm, dy_mm, dz_mm], reverse=True)
 
-    cx, cy = depth_m.shape[1] / 2.0, depth_m.shape[0] / 2.0
+    if cx is None:
+        cx = depth_m.shape[1] / 2.0
+    if cy is None:
+        cy = depth_m.shape[0] / 2.0
     world_x = camera_x_m - (float(ys.mean()) - cy) * top_depth_m / fy
     world_y = camera_y_m - (float(xs.mean()) - cx) * top_depth_m / fx
     world_z = BELT_TOP_Z_M + dz_mm / 1000.0 / 2.0

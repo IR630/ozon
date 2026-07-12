@@ -46,7 +46,7 @@ class ControllerNode(Node):
         self.fired = {}                 # item_id -> zone; irreversible once fired
         self.done_items = set()         # decided B / missed (log dedupe; a fresher C/D overrides)
         self.pending = {}               # item_id -> scheduled fire timer (replannable)
-        self.one_shot_timers = []       # keep one-shot timers alive (Node.timers is taken)
+        self.one_shot_timers = set()    # keep one-shot timers alive (Node.timers is taken)
         self.ramp_step = 0
         self.ramp_timer = self.create_timer(_RAMP_PERIOD_S, self.on_ramp)
         self.create_subscription(ItemClassification, "/item/classification",
@@ -90,7 +90,7 @@ class ControllerNode(Node):
         if plan is None:
             old = self.pending.pop(msg.item_id, None)  # C/D -> B flip: drop the push
             if old is not None:
-                old.cancel()
+                self._retire(old)
             if msg.item_id not in self.done_items:
                 self.done_items.add(msg.item_id)
                 self.get_logger().info(f"item {msg.item_id}: B — rides to belt end")
@@ -101,7 +101,7 @@ class ControllerNode(Node):
         self.done_items.discard(msg.item_id)  # B -> C/D flip: the push is back on
         old = self.pending.pop(msg.item_id, None)
         if old is not None:
-            old.cancel()
+            self._retire(old)
         delay_s = max(fire_at_s - self.now_s(), 0.0)
         self.get_logger().info(
             f"item {msg.item_id}: {zone} — firing pusher_{zone.lower()} in {delay_s:.2f}s")
@@ -125,12 +125,23 @@ class ControllerNode(Node):
         timer = None
 
         def cb():
+            # drop our ref to the fired timer so one_shot_timers stays bounded;
+            # don't destroy_timer from inside its own callback — it's reclaimed on
+            # destroy_node(). Superseded timers are freed eagerly via _retire.
             timer.cancel()
+            self.one_shot_timers.discard(timer)
             callback()
 
         timer = self.create_timer(max(delay_s, 1e-3), cb)
-        self.one_shot_timers.append(timer)
+        self.one_shot_timers.add(timer)
         return timer
+
+    def _retire(self, timer):
+        """Cancel and free a superseded one-shot (replan / C-D->B flip). Called
+        outside the timer's own callback, so destroy_timer is safe here."""
+        timer.cancel()
+        self.one_shot_timers.discard(timer)
+        self.destroy_timer(timer)
 
 
 def main():

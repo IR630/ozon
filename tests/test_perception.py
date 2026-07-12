@@ -217,6 +217,29 @@ def test_position_synthetic():
     assert z == pytest.approx(0.4 + 0.1, abs=1e-6)  # belt top + height/2
 
 
+def test_min_enclosing_radius_collinear():
+    # Degenerate hull: three collinear points. The enclosing circle must be the
+    # diameter of the two farthest (r = half the span), not a 2-point circle that
+    # leaves the third uncovered (circle3 collinear-branch hardening).
+    from src.perception import _min_enclosing_radius
+
+    pts = np.array([[0.0, 0.0], [5.0, 0.0], [10.0, 0.0]])
+    assert _min_enclosing_radius(pts) == pytest.approx(5.0)
+
+
+def test_position_honors_principal_point():
+    # cx/cy default to image center; a shifted principal point must move the
+    # recovered world position. Locks that measure_item CONSUMES cx/cy (regression:
+    # perception_node adopted fx/fy from CameraInfo but dropped k[2]/k[5]).
+    depth = _synthetic_box()          # mask centroid (xs=199.5, ys=149.5) px
+    cx, cy = 300.0, 220.0             # shifted 20 px from the 320/240 center
+    m = measure_item(depth, belt_depth_m=1.5, fx=500.0, fy=500.0, cx=cx, cy=cy)
+    x, y, z = m.position_m
+    # world_x = camera_x - (ys - cy)*depth/fy ; world_y = camera_y - (xs - cx)*depth/fx
+    assert x == pytest.approx(1.5 - (149.5 - cy) * 1.3 / 500.0, abs=1e-6)
+    assert y == pytest.approx(0.0 - (199.5 - cx) * 1.3 / 500.0, abs=1e-6)
+
+
 def test_measure_real_frame():
     pytest.importorskip("cv2")
     from src.perception import load_depth_png

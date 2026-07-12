@@ -161,6 +161,35 @@ def test_c_then_d_flip_cancels_c_and_fires_d_once():
         rclpy.shutdown()
 
 
+def test_superseded_timers_do_not_accumulate():
+    # each C schedules a one-shot timer, the following B cancels it; cancelled
+    # timers must not pile up in one_shot_timers (regression: the list grew
+    # without bound — every fire/retract/replan leaked a timer reference)
+    rclpy.init()
+    try:
+        node = ControllerNode()
+        probe = rclpy.create_node("probe")
+        pub = probe.create_publisher(ItemClassification, "/item/classification", 10)
+        _spin_both(node, probe, 0.3)  # discovery
+
+        for i in range(1, 21):
+            # x a full metre before the pusher -> ~0.9 s fire window; the B that
+            # follows cancels the scheduled timer long before it could fire. Spin
+            # after each publish so stamps stay fresh (no backlog shrinking the
+            # window into a race).
+            pub.publish(_classification(node, i, "C", PUSHER_X_M["C"] - 1.0))
+            _spin_both(node, probe, 0.03)
+            pub.publish(_classification(node, i, "B", PUSHER_X_M["C"] - 1.0))
+            _spin_both(node, probe, 0.03)
+
+        assert len(node.one_shot_timers) <= 2, len(node.one_shot_timers)
+
+        probe.destroy_node()
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
 def test_b_does_not_touch_pushers():
     rclpy.init()
     try:
