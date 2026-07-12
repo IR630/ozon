@@ -62,3 +62,19 @@ def test_plan_push_custom_lead_fires_earlier():
     _, when_pusher = plan_push("C", 1.5, 10.0)
     _, when_diverter = plan_push("C", 1.5, 10.0, actuation_latency_s=0.5)
     assert when_diverter == pytest.approx(when_pusher - (0.5 - ACTUATION_LATENCY_S))
+
+
+def test_diverter_fires_before_the_item_enters_the_blade_sweep_zone():
+    # Calibration lock, NOT a coincidence: for the diverter the fire is planned
+    # against PUSHER_X_M["C"]=2.5 with a 0.5 s lead, which means "command the
+    # blade when the item is at x=2.0" — upstream of the sweep zone, where the
+    # blade tip sweeps the item's lane (x 2.45..2.61, docs/decisions.md).
+    #
+    # The blade's PIVOT is at x=3.25 (cell_diverter.sdf), and planning against
+    # THAT looks like the obvious fix — it is not: the fire would then move to
+    # x=2.75, with the item already inside the sweep zone, and the tip would
+    # smack it mid-swing (measured 134 m/s^2, the day-5 blocker).
+    _, when = plan_push("C", 1.0, 10.0, actuation_latency_s=0.5)
+    fire_x = position_at(1.0, 10.0, when)
+    assert fire_x == pytest.approx(2.0)
+    assert fire_x < 2.45  # the wall forms before the item reaches the sweep zone

@@ -160,12 +160,18 @@ def diagnose(cell: Cell) -> Cell:
         return cell
 
     # Stage 3 — category right, item in the wrong place: the mechanism failed.
+    #
+    # NOTE on the missing-FIRED case: a log without a "FIRED" line does NOT prove
+    # the mechanism stayed put — killing the launch on verdict truncates node
+    # stdout, and the pen cells lost every controller line that way while the
+    # item plainly HAD been swept off the belt. So the pose decides: only an item
+    # still riding the belt can be called a no-fire.
     if cell.expected == "B":
         cell.cause = "false_divert"
         cell.detail = f"B item left the belt (pose x={x:.2f} y={y:.2f} z={z:.2f})"
-    elif cell.fired is None:
+    elif cell.fired is None and z >= BELT_Z_MIN:
         cell.cause = "no_fire"
-        cell.detail = f"classified {cell.category} but the mechanism never fired"
+        cell.detail = f"classified {cell.category}, no fire logged, item still on the belt"
     elif z >= BELT_Z_MIN:
         cell.cause = "mech_miss"
         cell.detail = f"fired, but the item stayed at belt height (z={z:.2f}, x={x:.2f})"
