@@ -78,7 +78,7 @@ for i in $(seq "$START_ITEM" "$END_ITEM"); do
             echo "ABORT: spawn_orientations.py failed (seed=$SEED item=$i oi=$oi)" >&2
             exit 1
         }
-        read OX OY OZ OW SZ <<< "$quat"
+        read OX OY OZ OW SZ SY <<< "$quat"
         if [ -z "$OW" ]; then
             echo "ABORT: orientation generator returned <4 values (seed=$SEED item=$i oi=$oi): '$quat'" >&2
             exit 1
@@ -91,7 +91,8 @@ for i in $(seq "$START_ITEM" "$END_ITEM"); do
             continue
         fi
         rc=0
-        ORIENT_X=$OX ORIENT_Y=$OY ORIENT_Z=$OZ ORIENT_W=$OW SPAWN_Z=${SZ:-0.5} \
+        ORIENT_X=$OX ORIENT_Y=$OY ORIENT_Z=$OZ ORIENT_W=$OW \
+            SPAWN_Z=${SZ:-0.5} SPAWN_Y=${SY:-0} \
             timeout --kill-after=15 "$CELL_TIMEOUT" $SKELETON "$slug" "$zone" \
             > "$log" 2>&1 || rc=$?
         if [ "$rc" = 0 ]; then

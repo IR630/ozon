@@ -86,3 +86,61 @@ def test_spawn_height_rests_the_item_on_the_belt_not_inside_it():
     for slug, idx, oi in [("box_400x400x300", 2, 0), ("box_400x400x300", 2, 2),
                           ("helmet", 10, 2), ("pouf", 6, 2), ("plate", 8, 0)]:
         assert belt_gap_m(slug, idx, oi) == pytest.approx(SPAWN_CLEARANCE_M, abs=1e-4)
+
+
+def test_spawn_offset_centres_the_rotated_body_on_the_belt_not_the_origin():
+    """Synthetic mirror of the helmet defect, so CI covers it without the STLs.
+
+    set_belt_origin centres the model on its DEFAULT-pose box, and Gazebo rotates
+    about that origin — so for an ASYMMETRIC shape the rotated body is no longer
+    centred on it. Spawn the origin at y=0 and the body lands off the belt centre:
+    the helmet in orient 2 ends up 154 mm to one side, inside the 252 mm infeed rail.
+    A cone shows the same thing exactly: stand it up, tip it over, and its bulk
+    swings to one side of the pivot.
+    """
+    trimesh = pytest.importorskip("trimesh")
+    from spawn_orientations import spawn_pose_for_mesh_m
+
+    cone = trimesh.creation.cone(radius=100, height=300)
+    tipped_over = (0.70710678, 0.0, 0.0, 0.70710678)  # 90 deg about +X
+
+    _, offset_y_m = spawn_pose_for_mesh_m(cone.copy(), tipped_over)
+
+    # laid down, the cone spans y in [-300, 0] about the origin -> body 150 mm off
+    assert offset_y_m == pytest.approx(0.150, abs=1e-3)
+
+    # ...and applying the offset does put the body on the belt centre.
+    placed = cone.copy()
+    from build_item_models import set_belt_origin
+    set_belt_origin(placed)
+    placed.apply_transform(trimesh.transformations.quaternion_matrix(
+        [tipped_over[3], tipped_over[0], tipped_over[1], tipped_over[2]]))
+    placed.apply_translation([0, offset_y_m * 1000.0, 0])
+    body_mid_mm = (placed.bounds[0][1] + placed.bounds[1][1]) / 2.0
+    assert body_mid_mm == pytest.approx(0.0, abs=1e-3)
+
+
+def test_every_seeded_cell_lands_with_its_body_centred_across_the_belt():
+    pytest.importorskip("trimesh")
+    import trimesh
+
+    from build_item_models import ITEMS, STL_DIR, set_belt_origin
+    from spawn_orientations import spawn_offset_y_m
+
+    first_stem = next(iter(ITEMS.values()))[0]
+    if not (STL_DIR / f"{first_stem}.stl").exists():
+        pytest.skip("organizer STL artifacts are not present")
+
+    for item_index, slug in enumerate(ITEMS):
+        for orient_index in range(3):
+            quat = orientation_quat(0, item_index, orient_index)
+            mesh = trimesh.load(str(STL_DIR / f"{ITEMS[slug][0]}.stl"), force="mesh")
+            set_belt_origin(mesh)
+            x, y, z, w = quat
+            mesh.apply_transform(trimesh.transformations.quaternion_matrix([w, x, y, z]))
+            lo, hi = mesh.bounds[0][1] / 1000.0, mesh.bounds[1][1] / 1000.0
+
+            body_mid_m = (lo + hi) / 2.0 + spawn_offset_y_m(slug, quat)
+
+            assert body_mid_m == pytest.approx(0.0, abs=1e-6), (
+                f"{slug} oi={orient_index} lands {body_mid_m * 1000:.0f} mm off the belt centre")

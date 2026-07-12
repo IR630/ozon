@@ -58,6 +58,12 @@ SPAWN_X=${3:--1.5}
 # seed-0 census). run_matrix.sh computes it per cell from the item's true lowest
 # point in that orientation (spawn_orientations.spawn_height_m).
 SPAWN_Z=${SPAWN_Z:-0.5}
+# Spawn Y is not 0 either: the model origin is not the item's centre, so spawning
+# the ORIGIN on the belt centre puts the BODY off it — a rotated helmet lands 154 mm
+# to one side, inside the infeed rail, and the solver extrudes it upward for 40 s
+# instead of the belt carrying it (the helmet's stable census failure). run_matrix.sh
+# takes this per cell from spawn_orientations.spawn_offset_y_m.
+SPAWN_Y=${SPAWN_Y:-0}
 # Mechanism seam: default = ballistic pusher (cell.sdf). scripts/compare_mechanisms.sh
 # swaps in the diverter world; the command topics are identical so nodes are unchanged.
 WORLD=${WORLD:-sim/worlds/cell.sdf}
@@ -116,7 +122,7 @@ sleep 1
 # window (x ~0.9) already settled at full belt speed
 ign service -s /world/cell/create --reqtype ignition.msgs.EntityFactory \
     --reptype ignition.msgs.Boolean --timeout 5000 \
-    --req "sdf_filename: \"$PWD/$ITEM_MODEL_ROOT/$SLUG/model.sdf\", name: \"item\", pose: {position: {x: $SPAWN_X, y: 0, z: $SPAWN_Z}, orientation: {x: $OX, y: $OY, z: $OZ, w: $OW}}" > /dev/null
+    --req "sdf_filename: \"$PWD/$ITEM_MODEL_ROOT/$SLUG/model.sdf\", name: \"item\", pose: {position: {x: $SPAWN_X, y: $SPAWN_Y, z: $SPAWN_Z}, orientation: {x: $OX, y: $OY, z: $OZ, w: $OW}}" > /dev/null
 sleep 2
 
 # record the item's dynamic pose for the whole episode (gentleness metric)

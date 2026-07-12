@@ -66,19 +66,22 @@ mkdir -p "$LOGDIR"
 
 # Resolve every spawn pose BEFORE the episode: spawn_orientations.py loads the
 # STL through trimesh (~1 s), which must not be paid inside the timed feed.
-SLUGS=(); ZONES=(); DELAYS=(); SPAWN_X=(); SPAWN_Z=(); QUATS=()
+SLUGS=(); ZONES=(); DELAYS=(); SPAWN_X=(); SPAWN_Y=(); SPAWN_Z=(); QUATS=()
 while read -r INDEX SLUG ZONE X DELAY; do
     QUAT=$("$PYTHON" scripts/spawn_orientations.py "$SEED" "$INDEX" "$ORIENT_INDEX" "$SLUG") || {
         echo "ABORT: spawn_orientations.py failed (seed=$SEED item=$INDEX)" >&2
         exit 1
     }
-    read -r OX OY OZ OW SZ <<< "$QUAT"
-    if [ -z "$SZ" ]; then
-        echo "ABORT: orientation generator returned no spawn height for $SLUG: '$QUAT'" >&2
+    # ...and the sideways offset that centres the item's BODY on the belt: the model
+    # origin is not its centre, so spawning the origin at y=0 lands a rotated item
+    # off the belt centre (see spawn_orientations.py).
+    read -r OX OY OZ OW SZ SY <<< "$QUAT"
+    if [ -z "$SY" ]; then
+        echo "ABORT: orientation generator returned no spawn pose for $SLUG: '$QUAT'" >&2
         exit 1
     fi
     SLUGS+=("$SLUG"); ZONES+=("$ZONE"); DELAYS+=("$DELAY")
-    SPAWN_X+=("$X"); SPAWN_Z+=("$SZ"); QUATS+=("$OX $OY $OZ $OW")
+    SPAWN_X+=("$X"); SPAWN_Y+=("$SY"); SPAWN_Z+=("$SZ"); QUATS+=("$OX $OY $OZ $OW")
 done <<< "$PLAN"
 
 pkill -f "ign gazebo" 2>/dev/null || true
@@ -125,7 +128,7 @@ T0=$(date +%s.%N)
         read -r OX OY OZ OW <<< "${QUATS[$i]}"
         ign service -s /world/cell/create --reqtype ignition.msgs.EntityFactory \
             --reptype ignition.msgs.Boolean --timeout 5000 \
-            --req "sdf_filename: \"$PWD/$ITEM_MODEL_ROOT/${SLUGS[$i]}/model.sdf\", name: \"item$i\", pose: {position: {x: ${SPAWN_X[$i]}, y: 0, z: ${SPAWN_Z[$i]}}, orientation: {x: $OX, y: $OY, z: $OZ, w: $OW}}" > /dev/null
+            --req "sdf_filename: \"$PWD/$ITEM_MODEL_ROOT/${SLUGS[$i]}/model.sdf\", name: \"item$i\", pose: {position: {x: ${SPAWN_X[$i]}, y: ${SPAWN_Y[$i]}, z: ${SPAWN_Z[$i]}}, orientation: {x: $OX, y: $OY, z: $OZ, w: $OW}}" > /dev/null
         echo "fed item$i: ${SLUGS[$i]} -> ${ZONES[$i]} at t=${DELAYS[$i]}s"
     done
 ) &
