@@ -334,3 +334,31 @@ def test_second_item_to_same_zone_is_not_cut_short_by_the_first_retract():
         node.destroy_node()
     finally:
         rclpy.shutdown()
+
+
+def test_two_items_schedule_c_and_d_without_cross_fire():
+    rclpy.init()
+    try:
+        node = ControllerNode()
+        probe = rclpy.create_node("probe_two_items")
+        pusher_c_cmds, pusher_d_cmds = [], []
+        probe.create_subscription(Float64, "/pusher_c/cmd",
+                                  lambda m: pusher_c_cmds.append(m.data), 10)
+        probe.create_subscription(Float64, "/pusher_d/cmd",
+                                  lambda m: pusher_d_cmds.append(m.data), 10)
+        pub = probe.create_publisher(ItemClassification, "/item/classification", 10)
+        _spin_both(node, probe, 0.3)
+
+        pub.publish(_classification(node, 30, "C", PUSHER_X_M["C"] - 0.15))
+        pub.publish(_classification(node, 31, "D", PUSHER_X_M["D"] - 0.15))
+        _spin_both(node, probe, 2.0)
+
+        assert pusher_c_cmds.count(_PUSH_SPEED_M_S) == 1, pusher_c_cmds
+        assert pusher_d_cmds.count(_PUSH_SPEED_M_S) == 1, pusher_d_cmds
+        assert node.fired[30] == "C"
+        assert node.fired[31] == "D"
+
+        probe.destroy_node()
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
