@@ -20,6 +20,35 @@ ROS_INSTALL_ROOT=${ROS_INSTALL_ROOT:-install}
 source "$ROS_INSTALL_ROOT/setup.bash"
 set -e
 
+# Every matrix cell starts a fresh Gazebo server.  A plain TERM-only `pkill`
+# occasionally left the server alive after an early `set -e` exit (for example,
+# a timed-out create service).  The next cell then talked to competing
+# `/world/cell/create` services and produced a false TIMEOUT.  Keep cleanup on
+# EXIT as well as on the normal path, wait for TERM, and escalate only stale
+# processes that did not stop.
+LAUNCH=""
+DYN_PID=""
+GAZEBO_PATTERN='^ign gazebo( |$)'
+cleanup() {
+    set +e
+    [ -n "$DYN_PID" ] && kill "$DYN_PID" 2>/dev/null
+    [ -n "$LAUNCH" ] && kill "$LAUNCH" 2>/dev/null
+    pkill -f "skeleton.launch" 2>/dev/null || true
+    pkill -f "src\..*_node" 2>/dev/null || true
+    pkill -f parameter_bridge 2>/dev/null || true
+    pkill -TERM -f "$GAZEBO_PATTERN" 2>/dev/null || true
+    for _ in {1..20}; do
+        pgrep -f "$GAZEBO_PATTERN" >/dev/null 2>&1 || return 0
+        sleep 0.1
+    done
+    pkill -KILL -f "$GAZEBO_PATTERN" 2>/dev/null || true
+    for _ in {1..20}; do
+        pgrep -f "$GAZEBO_PATTERN" >/dev/null 2>&1 || return 0
+        sleep 0.1
+    done
+}
+trap cleanup EXIT
+
 SLUG=${1:?usage: run_skeleton.sh <slug> <B|C|D> [spawn_x]}
 EXPECT=${2:?expected zone B|C|D}
 SPAWN_X=${3:--1.5}
@@ -61,11 +90,7 @@ OY=${ORIENT_Y:-0}
 OZ=${ORIENT_Z:-0}
 OW=${ORIENT_W:-1}
 
-pkill -f "ign gazebo" 2>/dev/null || true
-pkill -f "skeleton.launch" 2>/dev/null || true
-pkill -f "src\..*_node" 2>/dev/null || true
-pkill -f parameter_bridge 2>/dev/null || true
-sleep 2
+cleanup
 
 ign gazebo -s -r -v 0 "$WORLD" > /tmp/gz_e2e.log 2>&1 &
 sleep 10
@@ -91,7 +116,6 @@ ign service -s /world/cell/create --reqtype ignition.msgs.EntityFactory \
 sleep 2
 
 # record the item's dynamic pose for the whole episode (gentleness metric)
-DYN_PID=""
 if [ "$CAPTURE_DYNAMICS" = 1 ]; then
     ign topic -e -t /world/cell/dynamic_pose/info > /tmp/dyn_trace.log 2>&1 &
     DYN_PID=$!
@@ -140,10 +164,4 @@ if [ -n "$DYN_PID" ]; then
     python3 scripts/capture_dynamics.py /tmp/dyn_trace.log --mass "${MASS:-1.0}" || true
 fi
 
-kill $LAUNCH 2>/dev/null || true
-sleep 1
-pkill -f "skeleton.launch" 2>/dev/null || true
-pkill -f "src\..*_node" 2>/dev/null || true
-pkill -f parameter_bridge 2>/dev/null || true
-pkill -f "ign gazebo" 2>/dev/null || true
 [ "$VERDICT" = PASS ]

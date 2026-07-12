@@ -137,7 +137,11 @@ def diagnose(cell: Cell) -> Cell:
     x, y, z = cell.pose if cell.pose else (float("nan"),) * 3
 
     # Stage 1 — did the item even reach the camera?
-    if cell.dims_mm is None:
+    # Missing perception stdout does not prove missing perception: killing the
+    # launch on verdict can truncate that line while the classifier/controller
+    # decision survives.  Only call it no_detect when no downstream route exists
+    # either; a surviving route is stronger evidence that the item was seen.
+    if cell.dims_mm is None and cell.category is None:
         if x < CAMERA_REACH_X:
             cell.cause = "feed_jam"
             cell.detail = f"never reached the camera (final x={x:.2f})"
@@ -184,7 +188,15 @@ def diagnose(cell: Cell) -> Cell:
 def census_in_flight() -> bool:
     """Is a matrix episode running right now? (Gazebo alive = a cell in flight.)"""
     try:
-        return subprocess.run(["pgrep", "-f", "ign gazebo"], capture_output=True).returncode == 0
+        # Anchor at argv[0]: an unanchored pattern also matches a parent shell
+        # whose command merely contains a later `pgrep ... ign gazebo` check,
+        # making the completed final cell look RUNNING forever.
+        return (
+            subprocess.run(
+                ["pgrep", "-f", r"^ign gazebo( |$)"], capture_output=True
+            ).returncode
+            == 0
+        )
     except OSError:  # no pgrep (e.g. triaging a copied logdir on Windows)
         return False
 
