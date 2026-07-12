@@ -13,7 +13,12 @@ msgs = pytest.importorskip("ros_msgs.msg")
 from std_msgs.msg import Bool, Float64  # noqa: E402
 
 from src.constants import BELT_SPEED_M_S  # noqa: E402
-from src.controller_node import _PUSH_SPEED_M_S, ControllerNode  # noqa: E402
+from src.controller_node import (  # noqa: E402
+    _COMPLETED_TTL_S,
+    _MAX_COMPLETED_ITEMS,
+    _PUSH_SPEED_M_S,
+    ControllerNode,
+)
 from src.tracking import PUSHER_X_M  # noqa: E402
 
 ItemClassification = msgs.ItemClassification
@@ -331,6 +336,65 @@ def test_second_item_to_same_zone_is_not_cut_short_by_the_first_retract():
             f"item 2's push was cut short by item 1's retract — {cmds}")
 
         probe.destroy_node()
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def test_two_items_schedule_c_and_d_without_cross_fire():
+    rclpy.init()
+    try:
+        node = ControllerNode()
+        probe = rclpy.create_node("probe_two_items")
+        pusher_c_cmds, pusher_d_cmds = [], []
+        probe.create_subscription(Float64, "/pusher_c/cmd",
+                                  lambda m: pusher_c_cmds.append(m.data), 10)
+        probe.create_subscription(Float64, "/pusher_d/cmd",
+                                  lambda m: pusher_d_cmds.append(m.data), 10)
+        pub = probe.create_publisher(ItemClassification, "/item/classification", 10)
+        _spin_both(node, probe, 0.3)
+
+        pub.publish(_classification(node, 30, "C", PUSHER_X_M["C"] - 0.15))
+        pub.publish(_classification(node, 31, "D", PUSHER_X_M["D"] - 0.15))
+        _spin_both(node, probe, 2.0)
+
+        assert pusher_c_cmds.count(_PUSH_SPEED_M_S) == 1, pusher_c_cmds
+        assert pusher_d_cmds.count(_PUSH_SPEED_M_S) == 1, pusher_d_cmds
+        assert node.fired[30] == "C"
+        assert node.fired[31] == "D"
+
+        probe.destroy_node()
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def test_completed_item_history_has_ttl_and_hard_bound():
+    rclpy.init()
+    try:
+        node = ControllerNode()
+        node.fired = {1: "C", 2: "D"}
+        node.done_items = {3}
+        node._completed_at = {
+            1: 0.0,
+            2: _COMPLETED_TTL_S,
+            3: _COMPLETED_TTL_S,
+        }
+
+        node._prune_completed(now_s=_COMPLETED_TTL_S + 1.0)
+        assert 1 not in node.fired
+        assert node.fired == {2: "D"}
+        assert node.done_items == {3}
+
+        # Paused/broken sim time cannot make terminal state grow forever.
+        node._completed_at = {
+            item_id: 100.0 for item_id in range(_MAX_COMPLETED_ITEMS + 2)}
+        node.done_items = set(node._completed_at)
+        node._prune_completed(now_s=100.0)
+        assert len(node._completed_at) == _MAX_COMPLETED_ITEMS
+        assert 0 not in node.done_items
+        assert 1 not in node.done_items
+
         node.destroy_node()
     finally:
         rclpy.shutdown()
