@@ -10,6 +10,20 @@ source /opt/ros/humble/setup.bash
 source install/setup.bash
 set -eu
 
+# This smoke runs the DIVERTER world, so the controller must speak the diverter's
+# vocabulary (angles, not speeds) exactly as run_skeleton.sh sets it — otherwise a
+# fire would publish 2.5 as an ANGLE. Nothing fires here (the E-stop lands first),
+# but leaving the mismatch in place is a trap for whoever extends this file.
+export HOLD_S=${HOLD_S:-2.5}
+export FIRE_LEAD_S=${FIRE_LEAD_S:-0.5}
+export ENGAGE_CMD=${ENGAGE_CMD:-0.90}
+export RETRACT_CMD=${RETRACT_CMD:-0.0}
+# The blade is parked when this smoke stops the cell, so freezing it and zeroing it
+# are the same command (0.0) — the probe below sees a zero either way. The BUSY-cell
+# case, where the difference is a blade swinging out from under an item, is
+# scripts/smoke_estop_stream.sh.
+export ESTOP_HOLD_MECHANISM=${ESTOP_HOLD_MECHANISM:-true}
+
 cleanup() {
     kill "${LAUNCH:-}" 2>/dev/null || true
     pkill -f "skeleton.launch" 2>/dev/null || true

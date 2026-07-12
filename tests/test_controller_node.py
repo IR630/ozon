@@ -298,6 +298,54 @@ def test_emergency_stop_cancels_motion_and_reset_soft_starts_belt():
         rclpy.shutdown()
 
 
+def test_emergency_stop_freezes_an_engaged_diverter_blade_instead_of_parking_it():
+    """On the POSITION-driven diverter, 0.0 is not "stop" — it is "go home".
+
+    Zeroing the topic on E-stop would swing an engaged blade back across the belt,
+    possibly out from under the item leaning on it: motion during an emergency
+    stop. The blade must instead be re-commanded to the angle it already holds.
+    The velocity-driven pusher keeps its old behaviour (0.0 = paddle freezes) and
+    is covered by the test above.
+    """
+    from rclpy.parameter import Parameter
+
+    rclpy.init()
+    try:
+        node = ControllerNode(parameter_overrides=[
+            Parameter("engage_cmd", value=0.90),      # engaged blade angle, rad
+            Parameter("retract_cmd", value=0.0),      # parked angle
+            Parameter("estop_hold_mechanism", value=True),
+            Parameter("hold_s", value=10.0),          # still engaged when we stop it
+        ])
+        probe = rclpy.create_node("probe_estop_hold")
+        blade_cmds = []
+        probe.create_subscription(Float64, "/pusher_c/cmd",
+                                  lambda m: blade_cmds.append(m.data), 10)
+        classification_pub = probe.create_publisher(
+            ItemClassification, "/item/classification", 10)
+        estop_pub = probe.create_publisher(Bool, "/emergency_stop", 10)
+        _spin_both(node, probe, 0.3)
+
+        # Fire the blade: it is now a wall across the belt at 0.90 rad.
+        classification_pub.publish(
+            _classification(node, 40, "C", PUSHER_X_M["C"] - 0.05))
+        _spin_both(node, probe, 0.6)
+        assert blade_cmds == [0.90], blade_cmds
+
+        estop_pub.publish(Bool(data=True))
+        _spin_both(node, probe, 1.0)
+
+        assert node.emergency_stopped
+        # The blade was NOT sent home: its commanded angle never left 0.90.
+        assert blade_cmds[-1] == 0.90, blade_cmds
+        assert 0.0 not in blade_cmds, blade_cmds
+
+        probe.destroy_node()
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
 def test_second_item_to_same_zone_is_not_cut_short_by_the_first_retract():
     # Multi-item flow (PLAN-WEEK2 day 10): "действие одного товара не отменяет
     # другое". Two items routed to the SAME zone closer together than hold_s.

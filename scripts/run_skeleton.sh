@@ -79,6 +79,10 @@ case "$WORLD" in *diverter*)
     export FIRE_LEAD_S=${FIRE_LEAD_S:-0.5}
     export ENGAGE_CMD=${ENGAGE_CMD:-0.90}
     export RETRACT_CMD=${RETRACT_CMD:-0.0}
+    # E-stop must FREEZE the blade, not send it home: on a positional mechanism a
+    # 0.0 command is "park", which would swing the blade out from under the item
+    # leaning on it — motion during an emergency stop.
+    export ESTOP_HOLD_MECHANISM=${ESTOP_HOLD_MECHANISM:-true}
 ;; esac
 # Gentleness metric seam (opt-in): dump the item's dynamic pose during the episode
 # and print a peak speed/accel/impulse line. Off by default so the matrix and the

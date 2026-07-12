@@ -43,6 +43,8 @@ export FIRE_LEAD_S=${FIRE_LEAD_S:-0.5}
 # RETRACT_CMD is the parked angle. See src/controller_node.py.
 export ENGAGE_CMD=${ENGAGE_CMD:-0.90}
 export RETRACT_CMD=${RETRACT_CMD:-0.0}
+# E-stop freezes the blade where it is instead of parking it (see run_skeleton.sh).
+export ESTOP_HOLD_MECHANISM=${ESTOP_HOLD_MECHANISM:-true}
 # Wall-clock poll budget: a stream outlives a single-item episode (the last item
 # is still crossing the belt long after the first has landed).
 POLL_ITERS=${RUN_STREAM_POLL_ITERS:-150}

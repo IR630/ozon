@@ -64,6 +64,16 @@ class ControllerNode(Node):
             self.declare_parameter("engage_cmd", _PUSH_SPEED_M_S).value)
         self.retract_cmd = float(
             self.declare_parameter("retract_cmd", -_PUSH_SPEED_M_S).value)
+        # What an E-STOP means for the mechanism. For the velocity-driven pusher,
+        # "stop" is 0.0 — the paddle freezes mid-stroke. For the POSITION-driven
+        # diverter, 0.0 is not "stop", it is "go to the parked angle": an E-stop
+        # would SWING the blade home, possibly out from under the item leaning on
+        # it. Motion during an emergency stop defeats the whole point, so a
+        # positional mechanism is instead re-commanded to the angle it already
+        # holds — it freezes exactly where it is.
+        self.estop_hold_mechanism = bool(
+            self.declare_parameter("estop_hold_mechanism", False).value)
+        self.mech_cmd = {"C": 0.0, "D": 0.0}  # last command sent to each mechanism
         self.belt_pub = self.create_publisher(Float64, "/conveyor/cmd_vel", 10)
         self.pusher_pubs = {
             "C": self.create_publisher(Float64, "/pusher_c/cmd", 10),
@@ -161,7 +171,7 @@ class ControllerNode(Node):
         self._remember_completed(item_id, fired=True)
         self.get_logger().info(
             f"item {item_id}: pusher_{zone.lower()} FIRED at t={self.now_s():.2f}s")
-        self.pusher_pubs[zone].publish(Float64(data=self.engage_cmd))
+        self.command_mechanism(zone, self.engage_cmd)
         self.returning[zone] = self.one_shot(self.hold_s, lambda z=zone: self.retract(z))
 
     def retract(self, zone):
@@ -174,13 +184,19 @@ class ControllerNode(Node):
         # (day 10). Log both ends of the stroke.
         self.get_logger().info(
             f"pusher_{zone.lower()} RETRACT at t={self.now_s():.2f}s")
-        self.pusher_pubs[zone].publish(Float64(data=self.retract_cmd))
+        self.command_mechanism(zone, self.retract_cmd)
         self.returning[zone] = self.one_shot(_STROKE_S, lambda z=zone: self.stop(z))
 
     def stop(self, zone):
         self.returning.pop(zone, None)
         self.get_logger().info(f"pusher_{zone.lower()} STOP at t={self.now_s():.2f}s")
-        self.pusher_pubs[zone].publish(Float64(data=0.0))
+        self.command_mechanism(zone, 0.0)
+
+    def command_mechanism(self, zone, value):
+        """Every mechanism command goes through here, so the controller always
+        knows what it is currently holding — which is what an E-stop must keep."""
+        self.mech_cmd[zone] = value
+        self.pusher_pubs[zone].publish(Float64(data=value))
 
     def _cancel_return(self, zone):
         """Drop a pending retract/stop of `zone` (a fresh item took the mechanism).
@@ -226,10 +242,12 @@ class ControllerNode(Node):
                 self._retire(timer)
             self.pending.clear()
             self.returning.clear()  # its timers were just retired — no stale refs
-            stop = Float64(data=0.0)
-            self.belt_pub.publish(stop)
-            for publisher in self.pusher_pubs.values():
-                publisher.publish(stop)
+            self.belt_pub.publish(Float64(data=0.0))
+            for zone in self.pusher_pubs:
+                # freeze, do not re-park: on a positional mechanism 0.0 would SWING
+                # the blade home mid-emergency (see estop_hold_mechanism)
+                halt = self.mech_cmd[zone] if self.estop_hold_mechanism else 0.0
+                self.command_mechanism(zone, halt)
             self.get_logger().error("E-STOP active: belt and mechanisms stopped")
             return
 
