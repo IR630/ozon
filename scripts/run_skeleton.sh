@@ -12,13 +12,18 @@
 # overrides it per cell via ORIENT_{X,Y,Z,W} env vars from a seeded generator
 # (scripts/spawn_orientations.py) — that is the run's seed source (day 4).
 #
-# Zone success criteria (world frame, mirrors sim/worlds/cell.sdf):
+# Zone success criteria (world frame, the union over both mechanism worlds —
+# the pusher drops the item at its paddle x (cell.sdf patches at C=2.5, D=3.0),
+# the diverter funnels it to its pivot x (cell_diverter.sdf patches at C=3.0,
+# D=3.5), so the x bands span both; day-4 retro also asked for wider tolerances
+# (box_400 was routed correctly but FAILed by millimetres):
 #   B: rode past the pushers on the belt (x >= 3.5, still at belt height)
-#   C: landed in the zone C roll-cage (x 1.9..3.1, y 0.5..1.4, on the floor)
-#   D: landed in the zone D roll-cage (x 2.4..3.6, y -1.4..-0.5, on the floor)
+#   C: landed in the zone C roll-cage (x 1.9..3.6, y 0.5..1.4, on the floor)
+#   D: landed in the zone D roll-cage (x 2.4..4.1, y -1.4..-0.5, on the floor)
 # The y/z bounds carry cage slack over the flat patch footprint (patch edge
 # y=1.3/-1.3, physical cage wall at y=1.5/-1.5; z<0.25 clears a 400 mm-tall box
 # standing on its base at center z~0.2 yet stays well under belt height z~0.45).
+# B stays unambiguous: C/D require the floor (z<0.25), B requires belt height.
 cd "$(dirname "$0")/.."
 export LIBGL_ALWAYS_SOFTWARE=1
 source /opt/ros/humble/setup.bash
@@ -31,6 +36,16 @@ SPAWN_X=${3:--1.5}
 # Mechanism seam: default = ballistic pusher (cell.sdf). scripts/compare_mechanisms.sh
 # swaps in the diverter world; the command topics are identical so nodes are unchanged.
 WORLD=${WORLD:-sim/worlds/cell.sdf}
+# Diverter semantics on those same topics (forwarded by skeleton.launch.py as
+# controller parameters): the blade is a WALL — it must finish forming BEFORE
+# the item's front edge enters its sweep zone (FIRE_LEAD_S; pusher timing
+# smacks the item mid-swing, measured 134 m/s^2) and stay engaged while the
+# belt slides the item off its edge (HOLD_S; a 0.6 s pusher stroke drops the
+# wall in front of the item).
+case "$WORLD" in *diverter*)
+    export HOLD_S=${HOLD_S:-2.5}
+    export FIRE_LEAD_S=${FIRE_LEAD_S:-0.5}
+;; esac
 # Gentleness metric seam (opt-in): dump the item's dynamic pose during the episode
 # and print a peak speed/accel/impulse line. Off by default so the matrix and the
 # pusher baseline are not slowed; compare_mechanisms.sh turns it on.
@@ -97,8 +112,8 @@ for _ in $(seq 1 "$POLL_ITERS"); do
 x, y, z = float('$X'), float('$Y'), float('$Z')
 checks = {
     'B': x >= 3.5 and 0.35 <= z <= 1.0,
-    'C': 1.9 <= x <= 3.1 and 0.5 <= y <= 1.4 and z < 0.25,
-    'D': 2.4 <= x <= 3.6 and -1.4 <= y <= -0.5 and z < 0.25,
+    'C': 1.9 <= x <= 3.6 and 0.5 <= y <= 1.4 and z < 0.25,
+    'D': 2.4 <= x <= 4.1 and -1.4 <= y <= -0.5 and z < 0.25,
 }
 print('YES' if checks['$EXPECT'] else 'no')
 ")

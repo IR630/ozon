@@ -190,6 +190,35 @@ def test_superseded_timers_do_not_accumulate():
         rclpy.shutdown()
 
 
+def test_hold_s_parameter_delays_retract():
+    # the diverter (same command topics) is a wall, not a stroke: the blade must
+    # stay engaged while the belt slides the item off (~1.2-1.5 s), so the
+    # fire->retract delay is the hold_s parameter. With a long hold the retract
+    # (-v) must NOT arrive at the pusher-default _STROKE_S=0.6 s after the fire.
+    from rclpy.parameter import Parameter
+
+    rclpy.init()
+    try:
+        node = ControllerNode(parameter_overrides=[Parameter("hold_s", value=10.0)])
+        probe = rclpy.create_node("probe")
+        pusher_c_cmds = []
+        probe.create_subscription(Float64, "/pusher_c/cmd",
+                                  lambda m: pusher_c_cmds.append(m.data), 10)
+        pub = probe.create_publisher(ItemClassification, "/item/classification", 10)
+        _spin_both(node, probe, 0.3)
+
+        pub.publish(_classification(node, 12, "C", PUSHER_X_M["C"] - 0.15))
+        _spin_both(node, probe, 2.0)  # fire ~0 s in; default would retract at 0.6 s
+
+        assert pusher_c_cmds.count(_PUSH_SPEED_M_S) == 1, pusher_c_cmds
+        assert -_PUSH_SPEED_M_S not in pusher_c_cmds, pusher_c_cmds
+
+        probe.destroy_node()
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
 def test_b_does_not_touch_pushers():
     rclpy.init()
     try:

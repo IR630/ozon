@@ -5,6 +5,9 @@
 #
 #   bash scripts/dump_item_frame.sh <slug> [outdir]
 #   ORIENT_{X,Y,Z,W}=... bash scripts/dump_item_frame.sh <slug>   # seeded pose
+#   WORLD=sim/worlds/cell_diverter.sdf bash scripts/dump_item_frame.sh <slug>
+# The WORLD seam mirrors run_skeleton.sh: day-5 check that the diverter world's
+# parked blades stay out of the camera frame (they broke perception when in it).
 cd "$(dirname "$0")/.."
 export LIBGL_ALWAYS_SOFTWARE=1
 source /opt/ros/humble/setup.bash
@@ -19,7 +22,8 @@ pkill -f "ign gazebo" 2>/dev/null || true
 pkill -f parameter_bridge 2>/dev/null || true
 sleep 2
 
-ign gazebo -s -r -v 0 sim/worlds/cell.sdf > /tmp/gz_dump.log 2>&1 &
+WORLD=${WORLD:-sim/worlds/cell.sdf}
+ign gazebo -s -r -v 0 "$WORLD" > /tmp/gz_dump.log 2>&1 &
 sleep 10
 
 # spawn directly under the camera and let it settle to its rest pose; belt is

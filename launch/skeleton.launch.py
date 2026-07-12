@@ -35,9 +35,19 @@ def generate_launch_description():
     )
     # src/ is not a ROS package: run the nodes as modules from the repo root so
     # `src.*` and the sourced `ros_msgs.msg` overlay both resolve on sys.path.
+    def node_cmd(mod):
+        cmd = ["python3", "-m", f"src.{mod}"] + SIM_TIME
+        # mechanism seam: the diverter world needs the blade held engaged and
+        # fired with a sweep lead (run_skeleton.sh exports HOLD_S/FIRE_LEAD_S),
+        # the pusher default needs nothing
+        if mod == "controller_node":
+            for env, param in (("HOLD_S", "hold_s"), ("FIRE_LEAD_S", "fire_lead_s")):
+                if os.environ.get(env):
+                    cmd += ["-p", f"{param}:={os.environ[env]}"]
+        return cmd
+
     nodes = [
-        ExecuteProcess(cmd=["python3", "-m", f"src.{mod}"] + SIM_TIME,
-                       cwd=REPO_ROOT, output="screen")
+        ExecuteProcess(cmd=node_cmd(mod), cwd=REPO_ROOT, output="screen")
         for mod in ("perception_node", "classifier_node", "controller_node")
     ]
     return LaunchDescription([bridge, *nodes])

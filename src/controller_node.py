@@ -26,7 +26,7 @@ from std_msgs.msg import Float64
 from ros_msgs.msg import ItemClassification
 
 from src.constants import BELT_SPEED_M_S
-from src.tracking import plan_push
+from src.tracking import ACTUATION_LATENCY_S, plan_push
 
 _RAMP_STEPS = 8          # soft-start fractions of BELT_SPEED_M_S
 _RAMP_PERIOD_S = 0.3
@@ -36,8 +36,21 @@ _MAX_STAMP_AGE_S = 1.0
 
 
 class ControllerNode(Node):
-    def __init__(self):
-        super().__init__("controller")
+    def __init__(self, **node_kwargs):
+        super().__init__("controller", **node_kwargs)
+        # How long the actuator stays engaged after fire before the return
+        # command. The pusher is a stroke: +v, then -v after _STROKE_S. The
+        # diverter answers the SAME topics but is a wall: the blade must stay
+        # across the belt while the belt slides the item off its edge (~1.2-1.5 s
+        # for box_400), so the hold is a mechanism parameter, not a constant —
+        # run_skeleton.sh sets it for the diverter world via skeleton.launch.py.
+        self.hold_s = float(self.declare_parameter("hold_s", _STROKE_S).value)
+        # How long BEFORE the item reaches the actuator line to command it.
+        # Pusher: its 0.1 s paddle response. Diverter: ~0.5 s — the blade tip
+        # sweeps across the belt while engaging, so the wall must be formed
+        # before the item's front edge enters the sweep zone (src.tracking).
+        self.fire_lead_s = float(
+            self.declare_parameter("fire_lead_s", ACTUATION_LATENCY_S).value)
         self.belt_pub = self.create_publisher(Float64, "/conveyor/cmd_vel", 10)
         self.pusher_pubs = {
             "C": self.create_publisher(Float64, "/pusher_c/cmd", 10),
@@ -81,7 +94,8 @@ class ControllerNode(Node):
             return
 
         try:
-            plan = plan_push(msg.category, msg.position.x, stamp_s)
+            plan = plan_push(msg.category, msg.position.x, stamp_s,
+                             actuation_latency_s=self.fire_lead_s)
         except ValueError as e:
             if msg.item_id not in self.pending and msg.item_id not in self.done_items:
                 self.done_items.add(msg.item_id)  # never even scheduled
@@ -114,7 +128,7 @@ class ControllerNode(Node):
         self.get_logger().info(
             f"item {item_id}: pusher_{zone.lower()} FIRED at t={self.now_s():.2f}s")
         self.pusher_pubs[zone].publish(Float64(data=_PUSH_SPEED_M_S))
-        self.one_shot(_STROKE_S, lambda z=zone: self.retract(z))
+        self.one_shot(self.hold_s, lambda z=zone: self.retract(z))
 
     def retract(self, zone):
         self.pusher_pubs[zone].publish(Float64(data=-_PUSH_SPEED_M_S))

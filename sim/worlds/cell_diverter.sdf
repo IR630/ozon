@@ -134,13 +134,24 @@
          swings ~45 deg (0.79 rad) across the belt; the moving belt then guides
          the item off the near edge onto the zone patch at belt speed. Staggered
          in x so the parked blades never wall off each other's path, exactly like
-         the pushers. Pivot x aligns with tracking.PUSHER_X_M (C=2.5, D=3.0) so
-         the dead-reckoning fire timing carries over unchanged.
+         the pushers.
+         PIVOT X IS CAMERA-CONSTRAINED, not PUSHER_X_M-aligned: the top-down
+         camera (x=1.5, z=1.9, hfov 1.05) sees world x up to
+         1.5 + tan(0.525)*(1.9 - z); at the blade's bottom (z=0.35) that is
+         x=2.40. A parked blade inside the frame stands above the belt plane,
+         its mask blob touches the frame border and perception returns None on
+         EVERY frame (the day-5 full-loop blocker: box_400 rode to B with zero
+         "item N:" lines). So the parked blade (pivot - 0.8 m) must start at
+         x >= 2.4 -> pivot C at 3.25, D staggered +0.5 at 3.75. Fire timing:
+         the controller fires FIRE_LEAD_S=0.5 s before the item reaches
+         PUSHER_X_M (fire_lead_s parameter) so the sweeping blade tip never
+         meets the item mid-swing; the wall is fully formed ~0.4 s later with
+         the item's front edge still upstream of the sweep zone.
          diverter_c: pivot at the +Y edge, axis +Z -> +v deflects toward zone C.
          diverter_d: pivot at the -Y edge, axis -Z -> +v deflects toward zone D
          (mirror of the pusher_d axis trick: one convention, +v = engage). -->
     <model name="diverter_c">
-      <pose>2.75 0.28 0.5 0 0 0</pose>
+      <pose>3.25 0.28 0.5 0 0 0</pose>
       <link name="blade">
         <inertial><mass>5</mass><inertia><ixx>0.1</ixx><iyy>0.1</iyy><izz>0.1</izz></inertia></inertial>
         <collision name="collision">
@@ -174,7 +185,7 @@
       </plugin>
     </model>
     <model name="diverter_d">
-      <pose>3.25 -0.28 0.5 0 0 0</pose>
+      <pose>3.75 -0.28 0.5 0 0 0</pose>
       <link name="blade">
         <inertial><mass>5</mass><inertia><ixx>0.1</ixx><iyy>0.1</iyy><izz>0.1</izz></inertia></inertial>
         <collision name="collision">
@@ -224,12 +235,14 @@
     </model>
 
     <!-- zones C/D: landing patches + roll-cage 1200x800x800 visuals. Same
-         geometry as cell.sdf, x-aligned with the diverter pivots. The item
-         leaves the belt at belt speed here (not launched), so it lands on the
-         near part of the patch — the physical cage wall still backstops it. -->
+         patch geometry as cell.sdf but x-aligned with the diverter pivots
+         (C=3.25, D=3.75): the blade funnels the item to its anchored (pivot)
+         edge, so it leaves the belt near the pivot x at belt speed (not
+         launched) and lands on the near part of the patch — the physical cage
+         wall still backstops it. -->
     <model name="zone_c">
       <static>true</static>
-      <pose>2.5 0.9 0.005 0 0 0</pose>
+      <pose>3.0 0.9 0.005 0 0 0</pose>
       <link name="link">
         <collision name="collision"><geometry><box><size>1.2 0.8 0.01</size></box></geometry></collision>
         <visual name="visual">
@@ -249,7 +262,7 @@
     </model>
     <model name="zone_d">
       <static>true</static>
-      <pose>3.0 -0.9 0.005 0 0 0</pose>
+      <pose>3.5 -0.9 0.005 0 0 0</pose>
       <link name="link">
         <collision name="collision"><geometry><box><size>1.2 0.8 0.01</size></box></geometry></collision>
         <visual name="visual">

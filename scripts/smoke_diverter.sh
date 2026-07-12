@@ -38,8 +38,10 @@ episode() {
     sleep 1
     # belt carries the item downstream into the engaged blade; 1.0 m/s from the
     # domain constant, forward long enough to reach the blade and be deflected
+    # (4 s: the camera-clearance pivots C=3.25/D=3.75 put the wall ~0.5 m
+    # further downstream than the original layout)
     ign topic -t /conveyor/cmd_vel -m ignition.msgs.Double -p "data: 1.0" > /dev/null
-    sleep 3
+    sleep 4
     ign topic -t /conveyor/cmd_vel -m ignition.msgs.Double -p "data: 0" > /dev/null
     sleep 1
     item_y "$name"
@@ -49,7 +51,8 @@ episode() {
     sleep 2
 }
 
-# spawn well upstream of each pivot (C pivot x=2.75, D pivot x=3.25) so the
+# spawn well upstream of each pivot (C pivot x=3.25, D pivot x=3.75 — parked
+# blades start past the camera frame edge x=2.4, see cell_diverter.sdf) so the
 # moving belt carries the item into the blade face and slides it off the edge
 echo "--- diverter_c: box -> zone C (+Y)"
 YC=$(episode pusher_c box_300x200x200 box1 1.7)

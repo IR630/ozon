@@ -53,3 +53,12 @@ def test_plan_push_c_and_d_use_staggered_pushers():
 def test_plan_push_item_past_pusher_raises():
     with pytest.raises(ValueError):
         plan_push("C", PUSHER_X_M["C"] + 0.1, 10.0)
+
+
+def test_plan_push_custom_lead_fires_earlier():
+    # the diverter's blade sweeps across the belt while engaging, so its wall
+    # must form before the item's front edge enters the sweep zone: the same
+    # plan, commanded fire_lead_s earlier (controller parameter fire_lead_s)
+    _, when_pusher = plan_push("C", 1.5, 10.0)
+    _, when_diverter = plan_push("C", 1.5, 10.0, actuation_latency_s=0.5)
+    assert when_diverter == pytest.approx(when_pusher - (0.5 - ACTUATION_LATENCY_S))
