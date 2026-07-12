@@ -73,13 +73,24 @@ CONFIG_TEMPLATE = """<?xml version="1.0"?>
 """
 
 
+def set_belt_origin(mesh):
+    """Move a mesh IN PLACE to the model/spawn origin: XY at the bounding-box
+    centre, Z=0 at the lowest point (items sit ON the belt).
+
+    Single source of this convention: the generated models are built about this
+    origin, and scripts/spawn_orientations.py measures the spawn height about the
+    SAME origin. Gazebo rotates the model about it, so the two MUST agree — a
+    mismatch computes the height for a different pivot than physics uses.
+    """
+    lo, hi = mesh.bounds
+    mesh.apply_translation([-(lo[0] + hi[0]) / 2, -(lo[1] + hi[1]) / 2, -lo[2]])
+    return mesh
+
+
 def build_item(slug, stem, mass_kg):
     """Generate one model dir; returns stats dict for the log."""
     mesh = trimesh.load(str(STL_DIR / f"{stem}.stl"), force="mesh")
-    # origin: XY bbox center, lowest point at Z=0
-    lo, hi = mesh.bounds
-    shift = [-(lo[0] + hi[0]) / 2, -(lo[1] + hi[1]) / 2, -lo[2]]
-    mesh.apply_translation(shift)
+    set_belt_origin(mesh)
     # collision hull on 5mm-quantized vertices: physics wants hundreds of
     # faces, not thousands; ±2.5 mm shape error is fine for routing
     quantized = np.unique(np.round(mesh.vertices / 5.0) * 5.0, axis=0)

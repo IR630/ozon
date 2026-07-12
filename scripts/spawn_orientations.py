@@ -17,12 +17,13 @@ Usage (called per cell from scripts/run_matrix.sh):
     python3 scripts/spawn_orientations.py <seed> <item_index> <orient_index> [slug]
     -> prints "x y z w" — plus, given the slug, the spawn HEIGHT for that pose.
 
-The height is not a constant. Gazebo creates the item at its CENTRE, so a fixed
-z=0.5 buries anything over 200 mm tall inside the belt (top surface at 0.4) and
-the solver ejects it: box_400 turned on edge is 579 mm tall in its oi=2 pose —
-it starts 190 mm INSIDE the belt and never leaves the spawn. That, not the rail
-gap, is what the seed-0 census scored as feed_jam (proven by replaying the cell
-with only this number changed: z=0.5 FAIL at the spawn, z=0.71 PASS).
+The height is not a constant. The generated model's origin is its default-pose
+BOTTOM (build_item_models.set_belt_origin: Z=0 at the lowest point), and Gazebo
+rotates the model about that origin — so a fixed z buries turned/tall items
+inside the belt (top surface at 0.4) and the solver ejects them at the spawn
+(the seed-0 census feed_jams). spawn_height_m measures the item's true lowest
+point in each pose and drops the origin so that point rests one clearance above
+the belt — so the item lies ON the belt in every orientation, not in it.
 """
 import sys
 from pathlib import Path
@@ -32,15 +33,14 @@ import numpy as np
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))          # build_item_models (sibling script)
 sys.path.insert(0, str(_HERE.parent))   # src/ (running as a script, cwd is not on the path)
-from build_item_models import ITEMS, STL_DIR  # noqa: E402  (slug -> STL, single source)
+from build_item_models import ITEMS, STL_DIR, set_belt_origin  # noqa: E402  (slug -> STL + origin, single source)
 
 from src.perception import BELT_TOP_Z_M  # noqa: E402  (belt top, single source)
 
-# Air gap under the item at spawn. Keep it SMALL: the item is dropped from this
-# gap, and 20 mm was enough to bounce round bodies (pouf, helmet) hard enough to
-# blow their contacts up — physics_wedge/TIMEOUT cells appeared right after the
-# spawn fix landed. Replaying pouf oi=1 with only this number changed: 20 mm
-# FAIL (wedged on the chute, cycle 123 s), 5 mm PASS (cycle 69 s).
+# Real air gap under the item's lowest point at spawn: enough to clear solver
+# jitter, small enough that the item lies onto the belt rather than dropping. It
+# is a TRUE gap in every pose because spawn_height_m measures the lowest point
+# per orientation (see there), not a fudge factor over a mis-centred origin.
 SPAWN_CLEARANCE_M = 0.005
 
 
@@ -66,15 +66,22 @@ def orientation_quat(seed, item_index, orient_index):
 
 
 def spawn_height_m(slug, quat):
-    """Centre height that rests the item ON the belt in this orientation, not in it."""
+    """Origin height that rests the item ON the belt in this orientation, not in it.
+
+    The model's origin is its default-pose bottom (build_item_models.set_belt_origin),
+    and Gazebo rotates the model about that origin, so the lowest point after
+    rotation is NOT -height/2 below it — it must be measured on the same recentred
+    mesh. Drop the origin so that measured lowest point sits one clearance up.
+    """
     import trimesh  # heavy; only the matrix needs it
 
     stem, _ = ITEMS[slug]
     mesh = trimesh.load(str(STL_DIR / f"{stem}.stl"), force="mesh")
+    set_belt_origin(mesh)
     x, y, z, w = quat
     mesh.apply_transform(trimesh.transformations.quaternion_matrix([w, x, y, z]))
-    height_m = (mesh.bounds[1][2] - mesh.bounds[0][2]) / 1000.0  # STL is in mm
-    return BELT_TOP_Z_M + height_m / 2 + SPAWN_CLEARANCE_M
+    lowest_m = mesh.bounds[0][2] / 1000.0  # STL is in mm; rel. to the model origin
+    return BELT_TOP_Z_M + SPAWN_CLEARANCE_M - lowest_m
 
 
 def main():

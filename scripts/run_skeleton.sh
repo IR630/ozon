@@ -34,11 +34,11 @@ set -e
 SLUG=${1:?usage: run_skeleton.sh <slug> <B|C|D> [spawn_x]}
 EXPECT=${2:?expected zone B|C|D}
 SPAWN_X=${3:--1.5}
-# Spawn HEIGHT is not a constant: the item is created at its CENTRE, so a fixed
-# z=0.5 buries anything taller than 200 mm inside the belt (top surface z=0.4)
-# and the solver ejects it. box_400 in its oi=2 pose is 579 mm tall -> it starts
-# 190 mm INSIDE the belt and never leaves the spawn (feed_jam, seed-0 census).
-# run_matrix.sh computes it per cell from the item's height in that orientation.
+# Spawn HEIGHT is not a constant: the model's origin is its default-pose bottom
+# and Gazebo rotates about it, so a fixed z=0.5 buries turned/tall items inside
+# the belt (top surface z=0.4) and the solver ejects them at the spawn (feed_jam,
+# seed-0 census). run_matrix.sh computes it per cell from the item's true lowest
+# point in that orientation (spawn_orientations.spawn_height_m).
 SPAWN_Z=${SPAWN_Z:-0.5}
 # Mechanism seam: default = ballistic pusher (cell.sdf). scripts/compare_mechanisms.sh
 # swaps in the diverter world; the command topics are identical so nodes are unchanged.

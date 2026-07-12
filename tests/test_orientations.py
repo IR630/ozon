@@ -38,23 +38,33 @@ def test_canonical_hemisphere():
 
 
 def test_spawn_height_rests_the_item_on_the_belt_not_inside_it():
-    # Regression (seed-0 census feed_jams): Gazebo creates the item at its CENTRE,
-    # so the old fixed z=0.5 buried anything over 200 mm tall inside the belt
-    # (top surface 0.4) and the solver ejected it at the spawn. Replaying box_400
-    # oi=2 with only this number changed: z=0.5 FAIL at the spawn, z=0.71 PASS.
+    # Regression (origin mismatch): the model's origin is its default-pose BOTTOM
+    # (build_item_models.set_belt_origin, Z=0 at the lowest point) and Gazebo
+    # rotates the model about that origin. The old formula used height/2 (a
+    # CENTRE-origin assumption), so at seed 0 items spawned up to 250 mm ABOVE the
+    # belt (box_400 oi=0, pouf oi=0 -> dropped) or ~90 mm INSIDE it (helmet oi=2,
+    # pouf oi=2 -> wedged at the spawn). The contract: the item's lowest point in
+    # EVERY pose rests exactly one clearance above the belt top.
     pytest.importorskip("trimesh")
+    import trimesh
+
+    from build_item_models import ITEMS, STL_DIR, set_belt_origin
     from spawn_orientations import SPAWN_CLEARANCE_M, spawn_height_m
 
     from src.perception import BELT_TOP_Z_M
 
-    # box_400 on edge in its oi=2 pose is the tallest cell of the matrix (579 mm)
-    quat = orientation_quat(0, 2, 2)
-    z = spawn_height_m("box_400x400x300", quat)
-    assert z > BELT_TOP_Z_M + 0.25  # its half-height alone clears the belt by far
-    assert z == pytest.approx(0.71, abs=0.02)
+    def belt_gap_m(slug, item_index, orient_index):
+        quat = orientation_quat(0, item_index, orient_index)
+        mesh = trimesh.load(str(STL_DIR / f"{ITEMS[slug][0]}.stl"), force="mesh")
+        set_belt_origin(mesh)
+        x, y, z, w = quat
+        mesh.apply_transform(trimesh.transformations.quaternion_matrix([w, x, y, z]))
+        lowest_world = spawn_height_m(slug, quat) + mesh.bounds[0][2] / 1000.0
+        return lowest_world - BELT_TOP_Z_M
 
-    # An upright flat item barely needs any lift — the height must track the pose,
-    # not be a new constant.
-    z_flat = spawn_height_m("plate", orientation_quat(0, 8, 0))
-    assert z_flat < z
-    assert z_flat >= BELT_TOP_Z_M + SPAWN_CLEARANCE_M
+    # a cell the old formula floated (box_400 upright, +205 mm) and cells it buried
+    # (box_400 on edge -55 mm, helmet turned -89 mm, pouf turned -74 mm) all now
+    # rest exactly one clearance above the belt.
+    for slug, idx, oi in [("box_400x400x300", 2, 0), ("box_400x400x300", 2, 2),
+                          ("helmet", 10, 2), ("pouf", 6, 2), ("plate", 8, 0)]:
+        assert belt_gap_m(slug, idx, oi) == pytest.approx(SPAWN_CLEARANCE_M, abs=1e-4)
