@@ -188,7 +188,15 @@ def diagnose(cell: Cell) -> Cell:
 def census_in_flight() -> bool:
     """Is a matrix episode running right now? (Gazebo alive = a cell in flight.)"""
     try:
-        return subprocess.run(["pgrep", "-f", "ign gazebo"], capture_output=True).returncode == 0
+        # Anchor at argv[0]: an unanchored pattern also matches a parent shell
+        # whose command merely contains a later `pgrep ... ign gazebo` check,
+        # making the completed final cell look RUNNING forever.
+        return (
+            subprocess.run(
+                ["pgrep", "-f", r"^ign gazebo( |$)"], capture_output=True
+            ).returncode
+            == 0
+        )
     except OSError:  # no pgrep (e.g. triaging a copied logdir on Windows)
         return False
 

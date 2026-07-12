@@ -6,7 +6,8 @@ day-6 mechanism decision is read against exactly that split: a misroute is our
 rule/perception, a feed jam or an overshoot is the mechanism. These lock the
 rules on synthetic episode logs shaped like the real ones (scripts/run_skeleton.sh).
 """
-from triage_matrix import diagnose, parse_cell
+import triage_matrix
+from triage_matrix import census_in_flight, diagnose, parse_cell
 
 PERCEPTION = "[python3-2] [INFO] [178.0] [perception]: item 1: {dims} mm K={k} at (1.76, 0.00)"
 CLASSIFIER = "[python3-3] [INFO] [178.0] [classifier]: item 1: {cat} (k={k}, conf=0.99, n=9)"
@@ -210,6 +211,24 @@ def test_a_cell_still_running_is_not_scored_as_a_wedge(tmp_path):
     cell = parse_cell(write_cell(tmp_path, "helmet", 2, ["[python3-2] [INFO] booting gazebo"]))
     cell.verdict = "RUNNING"
     assert diagnose(cell).cause == "in_progress"
+
+
+def test_in_flight_probe_only_matches_a_real_gazebo_command(monkeypatch):
+    calls = []
+
+    class Result:
+        returncode = 0
+
+    def fake_run(args, **kwargs):
+        calls.append((args, kwargs))
+        return Result()
+
+    monkeypatch.setattr(triage_matrix.subprocess, "run", fake_run)
+
+    assert census_in_flight()
+    assert calls == [
+        (["pgrep", "-f", r"^ign gazebo( |$)"], {"capture_output": True})
+    ]
 
 
 def test_killed_episode_without_a_verdict_line_is_a_physics_wedge(tmp_path):
