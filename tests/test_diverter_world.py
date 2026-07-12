@@ -76,6 +76,30 @@ def test_chute_spans_the_belt_edge_to_the_patch(chute, side):
     assert 0.5 <= abs(bottom_y) <= 1.3
 
 
+@pytest.mark.parametrize("blade", ["diverter_c", "diverter_d"])
+def test_the_blade_rides_above_the_belt_and_does_not_cut_through_it(blade):
+    """The blade's bottom edge was 50 mm INSIDE the belt slab (day 10).
+
+    It swings in past the belt edge, so a blade whose bottom is below the belt
+    surface collides with the conveyor — and stalls at 0.04 rad the moment the
+    joint is force-controlled. It never showed up under velocity control, because
+    a velocity command in Gazebo is a kinematic servo that overrides contact and
+    simply bulldozed the blade through the belt. Everything measured about this
+    mechanism before day 10 was measured with a blade cutting the conveyor.
+
+    The clearance stays SMALL on purpose: the thinnest item is the 9 mm pen, which
+    a blade riding high would pass straight under.
+    """
+    bottom_z = blade_bottom_z(blade)
+    clearance_mm = (bottom_z - BELT_TOP_Z) * 1000
+
+    assert clearance_mm > 0, (
+        f"{blade} bottom z={bottom_z:.3f} is inside the belt (top z={BELT_TOP_Z}) "
+        "— it will grind the conveyor as it swings in")
+    assert clearance_mm <= 5, (
+        f"{blade} rides {clearance_mm:.0f} mm above the belt — the 9 mm pen slips under")
+
+
 @pytest.mark.parametrize("chute", ["chute_c", "chute_d"])
 def test_chute_stays_out_of_the_camera_window(chute):
     # A chute inside the frame is segmented as the item and blinds perception —

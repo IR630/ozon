@@ -41,7 +41,8 @@ def generate_launch_description():
         # fired with a sweep lead (run_skeleton.sh exports HOLD_S/FIRE_LEAD_S),
         # the pusher default needs nothing
         if mod == "controller_node":
-            for env, param in (("HOLD_S", "hold_s"), ("FIRE_LEAD_S", "fire_lead_s")):
+            for env, param in (("HOLD_S", "hold_s"), ("FIRE_LEAD_S", "fire_lead_s"),
+                               ("ENGAGE_CMD", "engage_cmd"), ("RETRACT_CMD", "retract_cmd")):
                 if os.environ.get(env):
                     cmd += ["-p", f"{param}:={os.environ[env]}"]
         return cmd

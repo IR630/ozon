@@ -51,6 +51,17 @@ class ControllerNode(Node):
         # before the item's front edge enters the sweep zone (src.tracking).
         self.fire_lead_s = float(
             self.declare_parameter("fire_lead_s", ACTUATION_LATENCY_S).value)
+        # What "engage" and "return" MEAN on the mechanism's command topic. The
+        # pusher is velocity-driven (m/s, +stroke then -stroke). The diverter is
+        # POSITION-driven (rad): a velocity-commanded blade held against its 0.95
+        # limit stopped accepting commands altogether and stayed across the belt
+        # for the rest of the episode (docs/decisions.md, day 10) — so its world
+        # runs a JointPositionController and these carry the engage angle and the
+        # parked angle. Defaults keep the pusher exactly as it was.
+        self.engage_cmd = float(
+            self.declare_parameter("engage_cmd", _PUSH_SPEED_M_S).value)
+        self.retract_cmd = float(
+            self.declare_parameter("retract_cmd", -_PUSH_SPEED_M_S).value)
         self.belt_pub = self.create_publisher(Float64, "/conveyor/cmd_vel", 10)
         self.pusher_pubs = {
             "C": self.create_publisher(Float64, "/pusher_c/cmd", 10),
@@ -144,18 +155,25 @@ class ControllerNode(Node):
         self.fired[item_id] = zone
         self.get_logger().info(
             f"item {item_id}: pusher_{zone.lower()} FIRED at t={self.now_s():.2f}s")
-        self.pusher_pubs[zone].publish(Float64(data=_PUSH_SPEED_M_S))
+        self.pusher_pubs[zone].publish(Float64(data=self.engage_cmd))
         self.returning[zone] = self.one_shot(self.hold_s, lambda z=zone: self.retract(z))
 
     def retract(self, zone):
         self.returning.pop(zone, None)  # this timer is the one firing right now
         if self.emergency_stopped:
             return
-        self.pusher_pubs[zone].publish(Float64(data=-_PUSH_SPEED_M_S))
+        # The mechanism's RETURN was invisible in the log — only its fire was —
+        # so a diverter blade that stayed across the belt for a whole episode
+        # looked exactly like a working one until a stream of items ran into it
+        # (day 10). Log both ends of the stroke.
+        self.get_logger().info(
+            f"pusher_{zone.lower()} RETRACT at t={self.now_s():.2f}s")
+        self.pusher_pubs[zone].publish(Float64(data=self.retract_cmd))
         self.returning[zone] = self.one_shot(_STROKE_S, lambda z=zone: self.stop(z))
 
     def stop(self, zone):
         self.returning.pop(zone, None)
+        self.get_logger().info(f"pusher_{zone.lower()} STOP at t={self.now_s():.2f}s")
         self.pusher_pubs[zone].publish(Float64(data=0.0))
 
     def _cancel_return(self, zone):

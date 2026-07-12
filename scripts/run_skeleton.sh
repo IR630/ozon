@@ -12,18 +12,7 @@
 # overrides it per cell via ORIENT_{X,Y,Z,W} env vars from a seeded generator
 # (scripts/spawn_orientations.py) — that is the run's seed source (day 4).
 #
-# Zone success criteria (world frame, the union over both mechanism worlds —
-# the pusher drops the item at its paddle x (cell.sdf patches at C=2.5, D=3.0),
-# the diverter funnels it to its pivot x (cell_diverter.sdf patches at C=3.0,
-# D=3.5), so the x bands span both; day-4 retro also asked for wider tolerances
-# (box_400 was routed correctly but FAILed by millimetres):
-#   B: rode past the pushers on the belt (x >= 3.5, still at belt height)
-#   C: landed in the zone C roll-cage (x 1.9..3.6, y 0.5..1.4, on the floor)
-#   D: landed in the zone D roll-cage (x 2.4..4.1, y -1.4..-0.5, on the floor)
-# The y/z bounds carry cage slack over the flat patch footprint (patch edge
-# y=1.3/-1.3, physical cage wall at y=1.5/-1.5; z<0.25 clears a 400 mm-tall box
-# standing on its base at center z~0.2 yet stays well under belt height z~0.45).
-# B stays unambiguous: C/D require the floor (z<0.25), B requires belt height.
+# Zone success criteria: scripts/zone_verdict.py (shared with run_stream.sh).
 cd "$(dirname "$0")/.."
 export LIBGL_ALWAYS_SOFTWARE=1
 source /opt/ros/humble/setup.bash
@@ -52,9 +41,15 @@ ITEM_MODEL_ROOT=${ITEM_MODEL_ROOT:-sim/models/items}
 # smacks the item mid-swing, measured 134 m/s^2) and stay engaged while the
 # belt slides the item off its edge (HOLD_S; a 0.6 s pusher stroke drops the
 # wall in front of the item).
+# The blade is POSITION-driven (rad), not velocity-driven: held against its 0.95
+# limit by a velocity command it stopped accepting commands and never returned
+# (day 10). ENGAGE_CMD is the engaged angle — just inside the limit, so the PID
+# never sits on the hard stop — and RETRACT_CMD is the parked angle.
 case "$WORLD" in *diverter*)
     export HOLD_S=${HOLD_S:-2.5}
     export FIRE_LEAD_S=${FIRE_LEAD_S:-0.5}
+    export ENGAGE_CMD=${ENGAGE_CMD:-0.90}
+    export RETRACT_CMD=${RETRACT_CMD:-0.0}
 ;; esac
 # Gentleness metric seam (opt-in): dump the item's dynamic pose during the episode
 # and print a peak speed/accel/impulse line. Off by default so the matrix and the
@@ -75,8 +70,14 @@ sleep 2
 ign gazebo -s -r -v 0 "$WORLD" > /tmp/gz_e2e.log 2>&1 &
 sleep 10
 
-# pre-roll the belt to its -3.2 m joint limit: full 6.4 m of travel for the run
-ign topic -t /conveyor/cmd_vel -m ignition.msgs.Double -p "data: -1.0" > /dev/null
+# Pre-roll the belt against its LOWER joint limit: the prismatic slab's stroke is
+# the episode's fuel (it stops dead at the limit), so every run must start with
+# the full stroke ahead of it. Reverse at 3 m/s — faster than belt speed, nothing
+# is on the belt yet — so the joint reaches the limit and PINS there within these
+# 4 s in either world (cell.sdf: -3.2 m, cell_diverter.sdf: -10 m). At 1 m/s the
+# old -1.0 command left the slab wherever the sleep ended, which only happened to
+# be the limit because the stroke was short.
+ign topic -t /conveyor/cmd_vel -m ignition.msgs.Double -p "data: -3.0" > /dev/null
 sleep 4
 ign topic -t /conveyor/cmd_vel -m ignition.msgs.Double -p "data: 0" > /dev/null
 sleep 1
@@ -118,15 +119,7 @@ POLL_ITERS=${RUN_SKELETON_POLL_ITERS:-60}
 VERDICT=FAIL
 for _ in $(seq 1 "$POLL_ITERS"); do
     read X Y Z <<< "$(item_pose)"
-    OK=$(python3 -c "
-x, y, z = float('$X'), float('$Y'), float('$Z')
-checks = {
-    'B': x >= 3.5 and 0.35 <= z <= 1.0,
-    'C': 1.9 <= x <= 3.6 and 0.5 <= y <= 1.4 and z < 0.25,
-    'D': 2.4 <= x <= 4.1 and -1.4 <= y <= -0.5 and z < 0.25,
-}
-print('YES' if checks['$EXPECT'] else 'no')
-")
+    OK=$(python3 scripts/zone_verdict.py "$EXPECT" "$X" "$Y" "$Z")
     if [ "$OK" = YES ]; then
         VERDICT=PASS
         break
