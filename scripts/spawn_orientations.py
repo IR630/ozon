@@ -36,9 +36,12 @@ from build_item_models import ITEMS, STL_DIR  # noqa: E402  (slug -> STL, single
 
 from src.perception import BELT_TOP_Z_M  # noqa: E402  (belt top, single source)
 
-# Air gap under the item at spawn: enough to clear solver jitter, small enough
-# that the drop does not bounce the item off the belt.
-SPAWN_CLEARANCE_M = 0.02
+# Air gap under the item at spawn. Keep it SMALL: the item is dropped from this
+# gap, and 20 mm was enough to bounce round bodies (pouf, helmet) hard enough to
+# blow their contacts up — physics_wedge/TIMEOUT cells appeared right after the
+# spawn fix landed. Replaying pouf oi=1 with only this number changed: 20 mm
+# FAIL (wedged on the chute, cycle 123 s), 5 mm PASS (cycle 69 s).
+SPAWN_CLEARANCE_M = 0.005
 
 
 def orientation_quat(seed, item_index, orient_index):
