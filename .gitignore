@@ -5,12 +5,19 @@ __pycache__/
 venv/
 .ipynb_checkpoints/
 
-# venv provisioned in the repo root (non-standard location on some dev hosts)
+# venv provisioned in the repo root (non-standard location on some dev hosts).
+# NOT `/Scripts/`: on NTFS-backed clones (WSL repo on D:) git sets
+# core.ignorecase=true, so `/Scripts/` also swallowed our `scripts/` and every
+# new script needed `git add -f`. Match the venv by its contents instead.
 /Lib/
-/Scripts/
 /Include/
 /share/
 /pyvenv.cfg
+/Scripts/*.exe
+/Scripts/*.bat
+/Scripts/*.ps1
+/Scripts/activate
+/Scripts/python*
 CACHEDIR.TAG
 
 # ROS 2 colcon build artifacts (ros_msgs is rebuilt from source)
