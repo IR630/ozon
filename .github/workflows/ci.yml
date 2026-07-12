@@ -48,3 +48,30 @@ jobs:
           source /opt/ros/humble/setup.bash
           source install/setup.bash
           python3 -m pytest -q
+
+  e2e-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build ROS + Gazebo runtime image
+        run: docker build -t ozon-e2e -f docker/Dockerfile .
+
+      - name: Full contour smoke (camera to final diverter world)
+        run: |
+          docker run --name ozon-e2e-run --network host --shm-size=1g \
+            -v "$GITHUB_WORKSPACE:/ws" ozon-e2e bash scripts/ci_e2e.sh
+
+      - name: Collect simulator logs on failure
+        if: failure()
+        run: |
+          mkdir -p ci-logs
+          docker cp ozon-e2e-run:/tmp/gz_e2e.log ci-logs/ 2>/dev/null || true
+          docker cp ozon-e2e-run:/tmp/skeleton_e2e.log ci-logs/ 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-smoke-logs
+          path: ci-logs/

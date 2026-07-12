@@ -27,7 +27,8 @@
 cd "$(dirname "$0")/.."
 export LIBGL_ALWAYS_SOFTWARE=1
 source /opt/ros/humble/setup.bash
-source install/setup.bash
+ROS_INSTALL_ROOT=${ROS_INSTALL_ROOT:-install}
+source "$ROS_INSTALL_ROOT/setup.bash"
 set -e
 
 SLUG=${1:?usage: run_skeleton.sh <slug> <B|C|D> [spawn_x]}
@@ -36,6 +37,9 @@ SPAWN_X=${3:--1.5}
 # Mechanism seam: default = ballistic pusher (cell.sdf). scripts/compare_mechanisms.sh
 # swaps in the diverter world; the command topics are identical so nodes are unchanged.
 WORLD=${WORLD:-sim/worlds/cell.sdf}
+# Generated organizer models are intentionally gitignored. CI points this seam
+# at a text-only geometric fixture with the same domain dimensions and mass.
+ITEM_MODEL_ROOT=${ITEM_MODEL_ROOT:-sim/models/items}
 # Diverter semantics on those same topics (forwarded by skeleton.launch.py as
 # controller parameters): the blade is a WALL — it must finish forming BEFORE
 # the item's front edge enters its sweep zone (FIRE_LEAD_S; pusher timing
@@ -76,7 +80,7 @@ sleep 1
 # window (x ~0.9) already settled at full belt speed
 ign service -s /world/cell/create --reqtype ignition.msgs.EntityFactory \
     --reptype ignition.msgs.Boolean --timeout 5000 \
-    --req "sdf_filename: \"$PWD/sim/models/items/$SLUG/model.sdf\", name: \"item\", pose: {position: {x: $SPAWN_X, y: 0, z: 0.5}, orientation: {x: $OX, y: $OY, z: $OZ, w: $OW}}" > /dev/null
+    --req "sdf_filename: \"$PWD/$ITEM_MODEL_ROOT/$SLUG/model.sdf\", name: \"item\", pose: {position: {x: $SPAWN_X, y: 0, z: 0.5}, orientation: {x: $OX, y: $OY, z: $OZ, w: $OW}}" > /dev/null
 sleep 2
 
 # record the item's dynamic pose for the whole episode (gentleness metric)
@@ -132,7 +136,7 @@ grep -E "item [0-9]+:" /tmp/skeleton_e2e.log | tail -3 || true
 
 if [ -n "$DYN_PID" ]; then
     kill "$DYN_PID" 2>/dev/null || true
-    MASS=$(grep -m1 '<mass>' "sim/models/items/$SLUG/model.sdf" \
+    MASS=$(grep -m1 '<mass>' "$ITEM_MODEL_ROOT/$SLUG/model.sdf" \
            | sed -E 's/.*<mass>([0-9.]+)<.*/\1/')
     python3 scripts/capture_dynamics.py /tmp/dyn_trace.log --mass "${MASS:-1.0}" || true
 fi

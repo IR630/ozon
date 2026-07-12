@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<sdf version="1.8">
+  <!-- Text-only CI fixture: same 300x200x200 mm box and 1.5 kg mass as the
+       generated artifact, but no organizer-provided binary STL in git. -->
+  <model name="item_box_300x200x200">
+    <link name="link">
+      <inertial>
+        <pose>0 0 0.1 0 0 0</pose>
+        <mass>1.5</mass>
+        <inertia>
+          <ixx>0.010000000</ixx><iyy>0.016250000</iyy><izz>0.016250000</izz>
+          <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
+        </inertia>
+      </inertial>
+      <collision name="collision">
+        <pose>0 0 0.1 0 0 0</pose>
+        <geometry><box><size>0.3 0.2 0.2</size></box></geometry>
+        <surface><friction><ode><mu>0.8</mu><mu2>0.8</mu2></ode></friction></surface>
+      </collision>
+      <visual name="visual">
+        <pose>0 0 0.1 0 0 0</pose>
+        <geometry><box><size>0.3 0.2 0.2</size></box></geometry>
+        <material><ambient>0.65 0.45 0.2 1</ambient><diffuse>0.65 0.45 0.2 1</diffuse></material>
+      </visual>
+    </link>
+  </model>
+</sdf>
+
