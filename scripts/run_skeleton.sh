@@ -28,6 +28,9 @@ set -e
 SLUG=${1:?usage: run_skeleton.sh <slug> <B|C|D> [spawn_x]}
 EXPECT=${2:?expected zone B|C|D}
 SPAWN_X=${3:--1.5}
+# Mechanism seam: default = ballistic pusher (cell.sdf). scripts/compare_mechanisms.sh
+# swaps in the diverter world; the command topics are identical so nodes are unchanged.
+WORLD=${WORLD:-sim/worlds/cell.sdf}
 # Spawn orientation quaternion (identity by default); run_matrix.sh sets these.
 OX=${ORIENT_X:-0}
 OY=${ORIENT_Y:-0}
@@ -40,7 +43,7 @@ pkill -f "src\..*_node" 2>/dev/null || true
 pkill -f parameter_bridge 2>/dev/null || true
 sleep 2
 
-ign gazebo -s -r -v 0 sim/worlds/cell.sdf > /tmp/gz_e2e.log 2>&1 &
+ign gazebo -s -r -v 0 "$WORLD" > /tmp/gz_e2e.log 2>&1 &
 sleep 10
 
 # pre-roll the belt to its -3.2 m joint limit: full 6.4 m of travel for the run
