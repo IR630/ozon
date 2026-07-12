@@ -34,6 +34,12 @@ set -e
 SLUG=${1:?usage: run_skeleton.sh <slug> <B|C|D> [spawn_x]}
 EXPECT=${2:?expected zone B|C|D}
 SPAWN_X=${3:--1.5}
+# Spawn HEIGHT is not a constant: the item is created at its CENTRE, so a fixed
+# z=0.5 buries anything taller than 200 mm inside the belt (top surface z=0.4)
+# and the solver ejects it. box_400 in its oi=2 pose is 579 mm tall -> it starts
+# 190 mm INSIDE the belt and never leaves the spawn (feed_jam, seed-0 census).
+# run_matrix.sh computes it per cell from the item's height in that orientation.
+SPAWN_Z=${SPAWN_Z:-0.5}
 # Mechanism seam: default = ballistic pusher (cell.sdf). scripts/compare_mechanisms.sh
 # swaps in the diverter world; the command topics are identical so nodes are unchanged.
 WORLD=${WORLD:-sim/worlds/cell.sdf}
@@ -80,7 +86,7 @@ sleep 1
 # window (x ~0.9) already settled at full belt speed
 ign service -s /world/cell/create --reqtype ignition.msgs.EntityFactory \
     --reptype ignition.msgs.Boolean --timeout 5000 \
-    --req "sdf_filename: \"$PWD/$ITEM_MODEL_ROOT/$SLUG/model.sdf\", name: \"item\", pose: {position: {x: $SPAWN_X, y: 0, z: 0.5}, orientation: {x: $OX, y: $OY, z: $OZ, w: $OW}}" > /dev/null
+    --req "sdf_filename: \"$PWD/$ITEM_MODEL_ROOT/$SLUG/model.sdf\", name: \"item\", pose: {position: {x: $SPAWN_X, y: 0, z: $SPAWN_Z}, orientation: {x: $OX, y: $OY, z: $OZ, w: $OW}}" > /dev/null
 sleep 2
 
 # record the item's dynamic pose for the whole episode (gentleness metric)

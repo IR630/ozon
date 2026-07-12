@@ -71,11 +71,14 @@ for i in $(seq "$START_ITEM" "$END_ITEM"); do
         # ORIENT_* vars empty and run_skeleton.sh would silently fall back to the
         # identity pose (${ORIENT_X:-0}...), so every oi>0 cell would re-run the
         # default pose while still scoring PASS/FAIL — a silent, wrong matrix.
-        quat=$("$PYTHON" scripts/spawn_orientations.py "$SEED" "$i" "$oi") || {
+        # The slug makes the generator also return the spawn HEIGHT for this pose:
+        # a fixed z buries tall/turned items inside the belt and the solver ejects
+        # them at the spawn (the census feed_jams — see spawn_orientations.py).
+        quat=$("$PYTHON" scripts/spawn_orientations.py "$SEED" "$i" "$oi" "$slug") || {
             echo "ABORT: spawn_orientations.py failed (seed=$SEED item=$i oi=$oi)" >&2
             exit 1
         }
-        read OX OY OZ OW _ <<< "$quat"
+        read OX OY OZ OW SZ <<< "$quat"
         if [ -z "$OW" ]; then
             echo "ABORT: orientation generator returned <4 values (seed=$SEED item=$i oi=$oi): '$quat'" >&2
             exit 1
@@ -88,7 +91,7 @@ for i in $(seq "$START_ITEM" "$END_ITEM"); do
             continue
         fi
         rc=0
-        ORIENT_X=$OX ORIENT_Y=$OY ORIENT_Z=$OZ ORIENT_W=$OW \
+        ORIENT_X=$OX ORIENT_Y=$OY ORIENT_Z=$OZ ORIENT_W=$OW SPAWN_Z=${SZ:-0.5} \
             timeout --kill-after=15 "$CELL_TIMEOUT" $SKELETON "$slug" "$zone" \
             > "$log" 2>&1 || rc=$?
         if [ "$rc" = 0 ]; then
