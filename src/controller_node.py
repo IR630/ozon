@@ -33,6 +33,8 @@ _RAMP_PERIOD_S = 0.3
 _PUSH_SPEED_M_S = 2.5    # ejection speed: item must LAND on the zone patch
 _STROKE_S = 0.6          # 1.5 m stroke at 2.5 m/s
 _MAX_STAMP_AGE_S = 1.0
+_COMPLETED_TTL_S = 30.0  # late camera frames are irrelevant after leaving the cell
+_MAX_COMPLETED_ITEMS = 256  # safety bound if sim time is paused / malformed
 
 
 class ControllerNode(Node):
@@ -69,6 +71,7 @@ class ControllerNode(Node):
         }
         self.fired = {}                 # item_id -> zone; irreversible once fired
         self.done_items = set()         # decided B / missed (log dedupe; a fresher C/D overrides)
+        self._completed_at = {}         # item_id -> sim time; bounds long-running streams
         self.pending = {}               # item_id -> scheduled fire timer (replannable)
         self.returning = {}             # zone -> pending retract/stop timer of the SHARED mechanism
         self.one_shot_timers = set()    # keep one-shot timers alive (Node.timers is taken)
@@ -95,6 +98,7 @@ class ControllerNode(Node):
     def on_classification(self, msg):
         if self.emergency_stopped:
             return
+        self._prune_completed()
         if msg.item_id in self.fired:
             # too late to act, but a contradiction must be visible in the log
             if msg.category != self.fired[msg.item_id]:
@@ -117,7 +121,7 @@ class ControllerNode(Node):
                              actuation_latency_s=self.fire_lead_s)
         except ValueError as e:
             if msg.item_id not in self.pending and msg.item_id not in self.done_items:
-                self.done_items.add(msg.item_id)  # never even scheduled
+                self._remember_completed(msg.item_id)  # never even scheduled
                 self.get_logger().error(f"item {msg.item_id}: MISSED — {e}")
             return
         if plan is None:
@@ -125,13 +129,14 @@ class ControllerNode(Node):
             if old is not None:
                 self._retire(old)
             if msg.item_id not in self.done_items:
-                self.done_items.add(msg.item_id)
+                self._remember_completed(msg.item_id)
                 self.get_logger().info(f"item {msg.item_id}: B — rides to belt end")
             return
 
         # (re)schedule: cancel the previous plan, trust the freshest measurement
         zone, fire_at_s = plan
         self.done_items.discard(msg.item_id)  # B -> C/D flip: the push is back on
+        self._completed_at.pop(msg.item_id, None)
         old = self.pending.pop(msg.item_id, None)
         if old is not None:
             self._retire(old)
@@ -153,6 +158,7 @@ class ControllerNode(Node):
         # hold_s after the LAST fire on this zone.
         self._cancel_return(zone)
         self.fired[item_id] = zone
+        self._remember_completed(item_id, fired=True)
         self.get_logger().info(
             f"item {item_id}: pusher_{zone.lower()} FIRED at t={self.now_s():.2f}s")
         self.pusher_pubs[zone].publish(Float64(data=self.engage_cmd))
@@ -185,6 +191,27 @@ class ControllerNode(Node):
         timer = self.returning.pop(zone, None)
         if timer is not None:
             self._retire(timer)
+
+    def _remember_completed(self, item_id, fired=False):
+        if not fired:
+            self.done_items.add(item_id)
+        # Refresh insertion order when a state changes; dict order gives a cheap
+        # deterministic oldest-first cap without assuming numeric ID order.
+        self._completed_at.pop(item_id, None)
+        self._completed_at[item_id] = self.now_s()
+        self._prune_completed()
+
+    def _prune_completed(self, now_s=None):
+        """Forget terminal items after TTL; never touches pending/active timers."""
+        now_s = self.now_s() if now_s is None else float(now_s)
+        expired = [item_id for item_id, completed_s in self._completed_at.items()
+                   if now_s - completed_s > _COMPLETED_TTL_S]
+        overflow = max(len(self._completed_at) - _MAX_COMPLETED_ITEMS, 0)
+        expired.extend(list(self._completed_at)[:overflow])
+        for item_id in dict.fromkeys(expired):
+            self._completed_at.pop(item_id, None)
+            self.fired.pop(item_id, None)
+            self.done_items.discard(item_id)
 
     def on_emergency_stop(self, msg):
         """Latch an immediate safe stop; False explicitly rearms soft-start."""

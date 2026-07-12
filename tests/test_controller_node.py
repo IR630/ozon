@@ -13,7 +13,12 @@ msgs = pytest.importorskip("ros_msgs.msg")
 from std_msgs.msg import Bool, Float64  # noqa: E402
 
 from src.constants import BELT_SPEED_M_S  # noqa: E402
-from src.controller_node import _PUSH_SPEED_M_S, ControllerNode  # noqa: E402
+from src.controller_node import (  # noqa: E402
+    _COMPLETED_TTL_S,
+    _MAX_COMPLETED_ITEMS,
+    _PUSH_SPEED_M_S,
+    ControllerNode,
+)
 from src.tracking import PUSHER_X_M  # noqa: E402
 
 ItemClassification = msgs.ItemClassification
@@ -359,6 +364,37 @@ def test_two_items_schedule_c_and_d_without_cross_fire():
         assert node.fired[31] == "D"
 
         probe.destroy_node()
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def test_completed_item_history_has_ttl_and_hard_bound():
+    rclpy.init()
+    try:
+        node = ControllerNode()
+        node.fired = {1: "C", 2: "D"}
+        node.done_items = {3}
+        node._completed_at = {
+            1: 0.0,
+            2: _COMPLETED_TTL_S,
+            3: _COMPLETED_TTL_S,
+        }
+
+        node._prune_completed(now_s=_COMPLETED_TTL_S + 1.0)
+        assert 1 not in node.fired
+        assert node.fired == {2: "D"}
+        assert node.done_items == {3}
+
+        # Paused/broken sim time cannot make terminal state grow forever.
+        node._completed_at = {
+            item_id: 100.0 for item_id in range(_MAX_COMPLETED_ITEMS + 2)}
+        node.done_items = set(node._completed_at)
+        node._prune_completed(now_s=100.0)
+        assert len(node._completed_at) == _MAX_COMPLETED_ITEMS
+        assert 0 not in node.done_items
+        assert 1 not in node.done_items
+
         node.destroy_node()
     finally:
         rclpy.shutdown()
