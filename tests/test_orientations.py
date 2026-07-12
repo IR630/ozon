@@ -37,6 +37,20 @@ def test_canonical_hemisphere():
         assert orientation_quat(3, 2, oi)[3] >= 0.0  # w >= 0
 
 
+def test_spawn_height_contract_on_clean_checkout():
+    trimesh = pytest.importorskip("trimesh")
+    from spawn_orientations import SPAWN_CLEARANCE_M, spawn_height_for_mesh_m
+
+    from src.perception import BELT_TOP_Z_M
+
+    # Organizer STL files are intentionally gitignored. This synthetic mesh
+    # keeps the origin/pivot contract covered in CI: identity pose of a tall
+    # bottom-based model still needs only the real clearance, not height/2.
+    mesh = trimesh.creation.box(extents=(300, 200, 400))
+    spawn_z = spawn_height_for_mesh_m(mesh, (0.0, 0.0, 0.0, 1.0))
+    assert spawn_z == pytest.approx(BELT_TOP_Z_M + SPAWN_CLEARANCE_M)
+
+
 def test_spawn_height_rests_the_item_on_the_belt_not_inside_it():
     # Regression (origin mismatch): the model's origin is its default-pose BOTTOM
     # (build_item_models.set_belt_origin, Z=0 at the lowest point) and Gazebo
@@ -52,6 +66,10 @@ def test_spawn_height_rests_the_item_on_the_belt_not_inside_it():
     from spawn_orientations import SPAWN_CLEARANCE_M, spawn_height_m
 
     from src.perception import BELT_TOP_Z_M
+
+    first_stem = next(iter(ITEMS.values()))[0]
+    if not (STL_DIR / f"{first_stem}.stl").exists():
+        pytest.skip("organizer STL artifacts are not present")
 
     def belt_gap_m(slug, item_index, orient_index):
         quat = orientation_quat(0, item_index, orient_index)

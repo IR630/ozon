@@ -65,23 +65,24 @@ def orientation_quat(seed, item_index, orient_index):
     return (float(x), float(y), float(z), float(w))
 
 
-def spawn_height_m(slug, quat):
-    """Origin height that rests the item ON the belt in this orientation, not in it.
-
-    The model's origin is its default-pose bottom (build_item_models.set_belt_origin),
-    and Gazebo rotates the model about that origin, so the lowest point after
-    rotation is NOT -height/2 below it — it must be measured on the same recentred
-    mesh. Drop the origin so that measured lowest point sits one clearance up.
-    """
+def spawn_height_for_mesh_m(mesh, quat):
+    """Origin height that rests a source mesh just above the belt in this pose."""
     import trimesh  # heavy; only the matrix needs it
 
-    stem, _ = ITEMS[slug]
-    mesh = trimesh.load(str(STL_DIR / f"{stem}.stl"), force="mesh")
     set_belt_origin(mesh)
     x, y, z, w = quat
     mesh.apply_transform(trimesh.transformations.quaternion_matrix([w, x, y, z]))
     lowest_m = mesh.bounds[0][2] / 1000.0  # STL is in mm; rel. to the model origin
     return BELT_TOP_Z_M + SPAWN_CLEARANCE_M - lowest_m
+
+
+def spawn_height_m(slug, quat):
+    """Load an organizer STL and calculate its pose-dependent spawn height."""
+    import trimesh
+
+    stem, _ = ITEMS[slug]
+    mesh = trimesh.load(str(STL_DIR / f"{stem}.stl"), force="mesh")
+    return spawn_height_for_mesh_m(mesh, quat)
 
 
 def main():
