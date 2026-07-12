@@ -3,3 +3,4 @@ line-length = 120
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["slow: full-contour Gazebo episodes (~1 min each), opt-in via RUN_E2E=1"]
