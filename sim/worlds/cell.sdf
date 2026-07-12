@@ -43,6 +43,41 @@
       </link>
     </model>
 
+    <!-- Operational safety marking (visual-only, no collision/physics effect).
+         Red perimeter encloses the moving belt, camera and routing/landing area;
+         green strip is the operator-side safe walkway outside that perimeter. -->
+    <model name="safety_marking">
+      <static>true</static>
+      <link name="link">
+        <visual name="hazard_north">
+          <pose>1.5 1.55 0.012 0 0 0</pose>
+          <geometry><box><size>6.0 0.08 0.02</size></box></geometry>
+          <material><ambient>0.9 0.05 0.05 1</ambient><diffuse>0.9 0.05 0.05 1</diffuse></material>
+        </visual>
+        <visual name="hazard_south">
+          <pose>1.5 -1.55 0.012 0 0 0</pose>
+          <geometry><box><size>6.0 0.08 0.02</size></box></geometry>
+          <material><ambient>0.9 0.05 0.05 1</ambient><diffuse>0.9 0.05 0.05 1</diffuse></material>
+        </visual>
+        <visual name="hazard_infeed">
+          <pose>-1.5 0 0.012 0 0 0</pose>
+          <geometry><box><size>0.08 3.1 0.02</size></box></geometry>
+          <material><ambient>0.9 0.05 0.05 1</ambient><diffuse>0.9 0.05 0.05 1</diffuse></material>
+        </visual>
+        <visual name="hazard_outfeed">
+          <pose>4.5 0 0.012 0 0 0</pose>
+          <geometry><box><size>0.08 3.1 0.02</size></box></geometry>
+          <material><ambient>0.9 0.05 0.05 1</ambient><diffuse>0.9 0.05 0.05 1</diffuse></material>
+        </visual>
+        <visual name="operator_safe_walkway">
+          <pose>1.5 2.3 0.006 0 0 0</pose>
+          <geometry><box><size>6.0 0.7 0.01</size></box></geometry>
+          <material><ambient>0.1 0.65 0.15 0.45</ambient><diffuse>0.1 0.65 0.15 0.45</diffuse></material>
+          <transparency>0.55</transparency>
+        </visual>
+      </link>
+    </model>
+
     <!-- infeed conveyor A: belt top at z = 0.4, working section x = 0..3.
          Implementation: a long platform on a prismatic joint driven at
          constant velocity (JointController). Real friction carries items —

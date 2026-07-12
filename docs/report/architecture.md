@@ -41,7 +41,7 @@ Gazebo (sim/worlds/cell.sdf)                          ROS 2 (launch/skeleton.lau
 | `ros_gz_bridge` | топики Gazebo | топики ROS 2 | камера, `/clock`, команды ленты и толкателей (`sim/bridge.yaml`) |
 | `perception_node` (`src/perception.py`) | depth-кадр 15 Гц | `ItemMeasurement` | сегментация по высоте над лентой, габариты в мм, K = r_вписанной/R_описанной по хулу вида сверху, позиция в мире; частично видимые кадры отбрасываются |
 | `classifier_node` (`src/classifier_node.py`) | `ItemMeasurement` | `ItemClassification` | правила задачи (пороги 10×10×10 и 450×320×320 мм, K > 0.8) из `src/constants.py` — единственного источника доменных констант |
-| `controller_node` (`src/controller_node.py`) | `ItemClassification` | `/conveyor/cmd_vel`, `/pusher_{c,d}/cmd` | мягкий пуск ленты (рамп 8 шагов — ступенька 0→1 м/с подбрасывает круглые товары); B — едет до конца ленты, C/D — выстрел толкателя по dead-reckoning (`src/tracking.py`) |
+| `controller_node` (`src/controller_node.py`) | `ItemClassification`, `/emergency_stop` (`Bool`) | `/conveyor/cmd_vel`, `/pusher_{c,d}/cmd` | мягкий пуск ленты; B — едет до конца, C/D — команда механизму по dead-reckoning; защёлкнутый E-stop отменяет таймеры и обнуляет все приводы |
 
 Контракты — типизированные сообщения `ros_msgs/` (`ItemMeasurement` без
 категории, `ItemClassification` с категорией): владение полями явное,
