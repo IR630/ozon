@@ -26,6 +26,10 @@ cd "$(dirname "$0")/.."
 SEED=${1:-0}
 N=${2:-3}
 PYTHON=${PYTHON:-python3}
+# Episode logs live in the repo, NOT in /tmp: a WSL distro shuts down when its
+# last process exits and wipes /tmp on the next boot — the seed-0 diverter census
+# lost all 33 episode logs that way, minutes after finishing. runs/ is gitignored.
+LOGDIR=${LOGDIR:-runs/matrix_$(date +%Y%m%d_%H%M%S)_seed${SEED}}
 # Per-cell wall-clock ceiling (s) and the runner it caps. SKELETON is overridable
 # so tests can inject a stub, exactly like the PYTHON seam above.
 CELL_TIMEOUT=${CELL_TIMEOUT:-180}
@@ -47,6 +51,10 @@ if ((START_ITEM > END_ITEM || END_ITEM >= ${#SLUGS[@]})); then
     echo "ABORT: item range must fit 0..$((${#SLUGS[@]} - 1)), got '$START_ITEM..$END_ITEM'" >&2
     exit 2
 fi
+
+# Only now, past argument validation and only for a real run: an ABORT or a
+# dry-run must not leave an empty log directory behind.
+[ "${MATRIX_DRY_RUN:-0}" = 1 ] || mkdir -p "$LOGDIR"
 
 pass=0
 total=0
@@ -72,7 +80,7 @@ for i in $(seq "$START_ITEM" "$END_ITEM"); do
             echo "ABORT: orientation generator returned <4 values (seed=$SEED item=$i oi=$oi): '$quat'" >&2
             exit 1
         fi
-        log="/tmp/matrix_${slug}_${oi}.log"
+        log="$LOGDIR/matrix_${slug}_${oi}.log"
         total=$((total + 1))
         item_total[$slug]=$((item_total[$slug] + 1))
         if [ "${MATRIX_DRY_RUN:-0}" = 1 ]; then
@@ -104,9 +112,12 @@ if [ "${MATRIX_DRY_RUN:-0}" = 1 ]; then
     exit 0
 fi
 
-echo "=== matrix seed=$SEED N=$N: routing correctness $pass/$total ==="
-for i in $(seq "$START_ITEM" "$END_ITEM"); do
-    slug=${SLUGS[$i]}
-    echo "  $slug -> ${ZONES[$i]}: ${item_pass[$slug]}/${item_total[$slug]}"
-done
+{
+    echo "=== matrix seed=$SEED N=$N: routing correctness $pass/$total ==="
+    for i in $(seq "$START_ITEM" "$END_ITEM"); do
+        slug=${SLUGS[$i]}
+        echo "  $slug -> ${ZONES[$i]}: ${item_pass[$slug]}/${item_total[$slug]}"
+    done
+} | tee "$LOGDIR/summary.log"
+echo "logs: $LOGDIR (triage: python3 scripts/triage_matrix.py --logdir $LOGDIR)"
 [ "$pass" = "$total" ]

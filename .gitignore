@@ -26,6 +26,10 @@ venv/
 /Scripts/python*
 CACHEDIR.TAG
 
+# Логи прогонов матрицы (scripts/run_matrix.sh) — держим на диске, а не в /tmp
+# (WSL чистит его при выключении дистрибутива), но в гит не кладём
+runs/
+
 # ROS 2 colcon build artifacts (ros_msgs is rebuilt from source)
 build/
 install/

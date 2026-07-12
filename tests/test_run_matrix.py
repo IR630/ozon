@@ -58,6 +58,7 @@ def test_cell_timeout_bounds_a_wedged_episode(tmp_path):
 
     env.pop("MATRIX_DRY_RUN", None)  # actually execute the (stub) cell
     env["CELL_TIMEOUT"] = "1"
+    env["LOGDIR"] = tmp_path.as_posix()  # keep episode logs out of the repo's runs/
     stub = tmp_path / "hang.sh"  # runner that outlives the 1 s cap
     stub.write_text("#!/usr/bin/env bash\nsleep 8\n")
     env["SKELETON"] = f"bash {stub.as_posix()}"
