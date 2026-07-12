@@ -107,21 +107,22 @@ def _item_mask(depth_m, belt_depth_m, margin_m):
 
 
 def _find_item(depth_m, belt_depth_m, margin_m):
-    """(mask, bbox) of the single item, or None.
+    """(mask, bbox) of the LARGEST item on the belt, or None.
 
-    None when the belt is empty OR the item touches the frame border — a
-    partially visible item (riding into/out of view) yields garbage dims, so
-    the caller must wait for the next frame (camera runs at 15 Hz).
+    None when the belt is empty OR every item is only partially visible (an item
+    touching the frame border is riding into/out of view and yields garbage
+    dims, so the caller waits for the next frame — camera runs at 15 Hz).
+
+    Largest COMPONENT, not the whole above-belt mask: the mask version fused two
+    items in frame into one convex hull and reported the dims of their union, so
+    every single-item caller (measure_dims_mm, item_bbox_px, save_overlay's
+    debug overlay, scripts/dump_camera.py) quietly described one item that does
+    not exist. Callers that must see all items use measure_items().
     """
-    mask = _item_mask(depth_m, belt_depth_m, margin_m)
-    ys, xs = np.where(mask)
-    if xs.size < _MIN_ITEM_PX:
+    found = _find_items(depth_m, belt_depth_m, margin_m)
+    if not found:
         return None
-    h, w = depth_m.shape
-    x0, y0, x1, y1 = int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
-    if x0 == 0 or y0 == 0 or x1 == w - 1 or y1 == h - 1:
-        return None
-    return mask, (x0, y0, x1, y1)
+    return max(found, key=lambda mask_bbox: int(mask_bbox[0].sum()))
 
 
 def _find_items(depth_m, belt_depth_m, margin_m):

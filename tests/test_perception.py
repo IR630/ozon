@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from src.perception import BELT_DEPTH_M, measure_dims_mm, measure_item
+from src.perception import BELT_DEPTH_M, measure_dims_mm, measure_item, measure_items
 
 IMG_DIR = Path(__file__).resolve().parents[1] / "docs" / "report" / "img"
 DEPTH_PNG = IMG_DIR / "day1_camera_depth.png"
@@ -184,6 +184,47 @@ def test_measure_items_returns_two_disconnected_products():
     assert len(measured) == 2
     assert measured[0].position_m[0] < measured[1].position_m[0]
     assert all(measurement.dims_mm[0] > 150 for measurement in measured)
+
+
+def _two_boxes(belt=1.5, top=1.3):
+    """100x100 px item at rows 100..199, 60x60 px item at rows 320..379."""
+    depth = np.full((480, 640), belt)
+    depth[100:200, 150:250] = top
+    depth[320:380, 300:360] = top
+    return depth
+
+
+_BIG_DIMS = [260.0, 260.0, 200.0]     # (99+1) px * 1.3 / 500 * 1000; height 200 mm
+_SMALL_DIMS = [200.0, 156.0, 156.0]   # (59+1) px * 1.3 / 500 * 1000, sorted desc
+
+
+def test_measure_items_keeps_each_items_own_dims():
+    # stronger than "two items with dims > 150": each item must carry its OWN
+    # footprint. A hull fused over both would span rows 100..379 and report a
+    # single ~700 mm blob — the exact numbers are what lock the split.
+    items = measure_items(_two_boxes(), belt_depth_m=1.5, fx=500.0, fy=500.0)
+    assert [i.dims_mm for i in items] == [pytest.approx(_SMALL_DIMS),
+                                          pytest.approx(_BIG_DIMS)]
+
+
+def test_measure_item_returns_largest_not_fused_union():
+    # the single-item entry point still feeds the debug overlay and the offline
+    # scripts. On a two-item frame it must degrade to "the largest item", never
+    # to the garbage dims of both items' union.
+    m = measure_item(_two_boxes(), belt_depth_m=1.5, fx=500.0, fy=500.0)
+    assert m.dims_mm == pytest.approx(_BIG_DIMS)
+
+
+def test_partial_item_does_not_suppress_its_visible_neighbour():
+    # an item riding into view touches the border and is refused (garbage dims),
+    # but it must not blind perception to the item already fully in frame
+    depth = np.full((480, 640), 1.5)
+    depth[0:60, 150:250] = 1.3       # entering the frame: touches row 0
+    depth[200:300, 300:400] = 1.3    # fully visible
+    items = measure_items(depth, belt_depth_m=1.5, fx=500.0, fy=500.0)
+    assert len(items) == 1
+    assert items[0].dims_mm == pytest.approx(_BIG_DIMS)
+    assert measure_item(depth, belt_depth_m=1.5, fx=500.0, fy=500.0) is not None
 
 
 def test_solidity_filled_square_is_one():
