@@ -85,6 +85,15 @@ bash scripts/check_sdf.sh     # валидность мира и 11 моделе
 bash scripts/smoke_belt.sh    # короб физически едет по ленте 1 м/с
 ```
 
+Свежий WSL-дистрибутив нередко не резолвит DNS через WSL-шлюз (`apt-get update`
+отдаёт сплошные `Ign`). Лечится один раз, до провижна:
+
+```bash
+printf '[boot]\nsystemd=true\n\n[network]\ngenerateResolvConf = false\n' > /etc/wsl.conf
+printf 'nameserver 8.8.8.8\nnameserver 1.1.1.1\n' > /etc/resolv.conf
+# затем из PowerShell: wsl --terminate <distro>
+```
+
 Headless-запуски Gazebo на программном GL требуют `LIBGL_ALWAYS_SOFTWARE=1`
 (обоснование — `docs/decisions.md`); скрипты выставляют это сами.
 

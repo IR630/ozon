@@ -6,6 +6,11 @@
 set -euxo pipefail
 
 export DEBIAN_FRONTEND=noninteractive
+
+# WSL2 has no routable IPv6: apt resolves packages.ros.org to AAAA records first
+# and every .deb fetch dies with "Network is unreachable" mid-install.
+echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4
+
 apt-get update
 apt-get install -y curl gnupg lsb-release locales
 locale-gen en_US.UTF-8
