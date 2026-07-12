@@ -16,7 +16,13 @@ venv/
 /Scripts/*.exe
 /Scripts/*.bat
 /Scripts/*.ps1
+/Scripts/*.pyd
+/Scripts/*.dll
 /Scripts/activate
+/Scripts/activate.fish
+/Scripts/activate.nu
+/Scripts/activate_this.py
+/Scripts/deactivate.bat
 /Scripts/python*
 CACHEDIR.TAG
 
