@@ -31,6 +31,10 @@ SPAWN_X=${3:--1.5}
 # Mechanism seam: default = ballistic pusher (cell.sdf). scripts/compare_mechanisms.sh
 # swaps in the diverter world; the command topics are identical so nodes are unchanged.
 WORLD=${WORLD:-sim/worlds/cell.sdf}
+# Gentleness metric seam (opt-in): dump the item's dynamic pose during the episode
+# and print a peak speed/accel/impulse line. Off by default so the matrix and the
+# pusher baseline are not slowed; compare_mechanisms.sh turns it on.
+CAPTURE_DYNAMICS=${CAPTURE_DYNAMICS:-0}
 # Spawn orientation quaternion (identity by default); run_matrix.sh sets these.
 OX=${ORIENT_X:-0}
 OY=${ORIENT_Y:-0}
@@ -59,6 +63,13 @@ ign service -s /world/cell/create --reqtype ignition.msgs.EntityFactory \
     --reptype ignition.msgs.Boolean --timeout 5000 \
     --req "sdf_filename: \"$PWD/sim/models/items/$SLUG/model.sdf\", name: \"item\", pose: {position: {x: $SPAWN_X, y: 0, z: 0.5}, orientation: {x: $OX, y: $OY, z: $OZ, w: $OW}}" > /dev/null
 sleep 2
+
+# record the item's dynamic pose for the whole episode (gentleness metric)
+DYN_PID=""
+if [ "$CAPTURE_DYNAMICS" = 1 ]; then
+    ign topic -e -t /world/cell/dynamic_pose/info > /tmp/dyn_trace.log 2>&1 &
+    DYN_PID=$!
+fi
 
 T0=$(date +%s.%N)
 ros2 launch launch/skeleton.launch.py > /tmp/skeleton_e2e.log 2>&1 &
@@ -103,6 +114,13 @@ CYCLE=$(python3 -c "print(f'{$T1 - $T0:.1f}')")
 read X Y Z <<< "$(item_pose)"
 echo "$SLUG -> $EXPECT: $VERDICT (pose x=$X y=$Y z=$Z, cycle ${CYCLE}s from launch)"
 grep -E "item [0-9]+:" /tmp/skeleton_e2e.log | tail -3 || true
+
+if [ -n "$DYN_PID" ]; then
+    kill "$DYN_PID" 2>/dev/null || true
+    MASS=$(grep -m1 '<mass>' "sim/models/items/$SLUG/model.sdf" \
+           | sed -E 's/.*<mass>([0-9.]+)<.*/\1/')
+    python3 scripts/capture_dynamics.py /tmp/dyn_trace.log --mass "${MASS:-1.0}" || true
+fi
 
 kill $LAUNCH 2>/dev/null || true
 sleep 1
