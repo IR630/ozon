@@ -298,6 +298,75 @@ def test_emergency_stop_cancels_motion_and_reset_soft_starts_belt():
         rclpy.shutdown()
 
 
+def test_a_stalled_item_latches_the_cell_instead_of_being_fired_at():
+    """An item the camera still sees but that stops advancing is wedged.
+
+    The belt runs at a known speed, so an item under the camera must move. The
+    safe reaction is to latch the stop and name the cause — never to keep firing
+    a mechanism at goods that are stuck.
+    """
+    from rclpy.parameter import Parameter
+
+    rclpy.init()
+    try:
+        node = ControllerNode(parameter_overrides=[
+            Parameter("jam_timeout_s", value=0.5)])  # keep the test quick
+        probe = rclpy.create_node("probe_jam")
+        belt_cmds, fired = [], []
+        probe.create_subscription(Float64, "/conveyor/cmd_vel",
+                                  lambda m: belt_cmds.append(m.data), 10)
+        probe.create_subscription(Float64, "/pusher_c/cmd",
+                                  lambda m: fired.append(m.data), 10)
+        classification_pub = probe.create_publisher(
+            ItemClassification, "/item/classification", 10)
+        _spin_both(node, probe, 0.3)
+
+        # Same item, same x, frame after frame: the belt is moving, it is not.
+        stuck_x_m = PUSHER_X_M["C"] - 1.0
+        for _ in range(6):
+            classification_pub.publish(_classification(node, 50, "C", stuck_x_m))
+            _spin_both(node, probe, 0.2)
+
+        assert node.emergency_stopped, "a stalled item did not latch the cell"
+        assert belt_cmds[-1] == 0.0
+        assert 0.0 not in [c for c in fired if c == _PUSH_SPEED_M_S], fired
+        assert node.pending == {}, "a push was still scheduled at a jammed item"
+
+        probe.destroy_node()
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def test_an_item_riding_the_belt_normally_is_not_a_jam():
+    """The anchor re-arms on every real advance, so a moving item never trips it."""
+    from rclpy.parameter import Parameter
+
+    rclpy.init()
+    try:
+        node = ControllerNode(parameter_overrides=[
+            Parameter("jam_timeout_s", value=0.5)])
+        probe = rclpy.create_node("probe_no_jam")
+        classification_pub = probe.create_publisher(
+            ItemClassification, "/item/classification", 10)
+        _spin_both(node, probe, 0.3)
+
+        # Belt speed is 1 m/s and the frames are 0.2 s apart: 0.2 m of travel each.
+        x_m = PUSHER_X_M["C"] - 2.0
+        for _ in range(6):
+            classification_pub.publish(_classification(node, 51, "C", x_m))
+            _spin_both(node, probe, 0.2)
+            x_m += 0.2
+
+        assert not node.emergency_stopped, "a normally moving item was called a jam"
+        assert 51 in node.pending, "the push for a healthy item was dropped"
+
+        probe.destroy_node()
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
 def test_emergency_stop_freezes_an_engaged_diverter_blade_instead_of_parking_it():
     """On the POSITION-driven diverter, 0.0 is not "stop" — it is "go home".
 

@@ -35,6 +35,11 @@ _STROKE_S = 0.6          # 1.5 m stroke at 2.5 m/s
 _MAX_STAMP_AGE_S = 1.0
 _COMPLETED_TTL_S = 30.0  # late camera frames are irrelevant after leaving the cell
 _MAX_COMPLETED_ITEMS = 256  # safety bound if sim time is paused / malformed
+# Jam detection. At BELT_SPEED_M_S the item crosses 1 m every second, so 5 cm is
+# well under a single camera frame's travel and far above pose jitter: an item
+# that has not made even that in _JAM_TIMEOUT_S is not moving, it is wedged.
+_JAM_PROGRESS_M = 0.05
+_JAM_TIMEOUT_S = 2.0
 
 
 class ControllerNode(Node):
@@ -74,6 +79,12 @@ class ControllerNode(Node):
         self.estop_hold_mechanism = bool(
             self.declare_parameter("estop_hold_mechanism", False).value)
         self.mech_cmd = {"C": 0.0, "D": 0.0}  # last command sent to each mechanism
+        # How long an item may fail to advance before the cell calls it a jam. The
+        # soft-start ramp alone takes 2.4 s, but an item only reaches the camera at
+        # full belt speed, so the default needs no ramp allowance.
+        self.jam_timeout_s = float(
+            self.declare_parameter("jam_timeout_s", _JAM_TIMEOUT_S).value)
+        self.jam_anchor = {}            # item_id -> (x_m, stamp_s) of its last real progress
         self.belt_pub = self.create_publisher(Float64, "/conveyor/cmd_vel", 10)
         self.pusher_pubs = {
             "C": self.create_publisher(Float64, "/pusher_c/cmd", 10),
@@ -124,6 +135,9 @@ class ControllerNode(Node):
             self.get_logger().error(
                 f"item {msg.item_id}: stamp age {age_s:.2f}s — wall/sim clock mix? "
                 "run with use_sim_time:=true and the /clock bridge")
+            return
+
+        if self.detect_jam(msg.item_id, msg.position.x, stamp_s):
             return
 
         try:
@@ -192,6 +206,47 @@ class ControllerNode(Node):
         self.get_logger().info(f"pusher_{zone.lower()} STOP at t={self.now_s():.2f}s")
         self.command_mechanism(zone, 0.0)
 
+    def detect_jam(self, item_id, x_m, stamp_s):
+        """A jam is an item the camera still sees that has stopped advancing.
+
+        The belt runs at a known constant speed, so an item under the camera MUST
+        move — roughly BELT_SPEED_M_S per second. One that does not is wedged
+        (against a rail, a blade, or a stalled belt), and the cell must not keep
+        feeding items into it. The reaction is deliberately the safe one: latch
+        the emergency stop, name the cause, and wait for a human — an automatic
+        re-fire at a jammed item is how a sorter breaks the goods it is sorting.
+
+        Progress resets the anchor, so a normally moving item never trips this.
+        Returns True when a jam was declared (the caller must stop handling msg).
+
+        LIMITATION: this only sees jams INSIDE the camera window. An item wedged on
+        the infeed never reaches perception at all (the census `feed_jam` class,
+        e.g. the pouf at x=-1.47) and is invisible here — catching those needs a
+        sensor at the infeed, which the cell does not have. Recorded, not hidden.
+        """
+        anchor = self.jam_anchor.get(item_id)
+        if anchor is None:
+            self.jam_anchor[item_id] = (x_m, stamp_s)
+            return False
+
+        anchor_x_m, anchor_s = anchor
+        if x_m - anchor_x_m >= _JAM_PROGRESS_M:
+            self.jam_anchor[item_id] = (x_m, stamp_s)  # moving: re-anchor
+            return False
+        if stamp_s - anchor_s < self.jam_timeout_s:
+            return False                                # not stalled long enough yet
+
+        stalled_s = stamp_s - anchor_s
+        self.get_logger().error(
+            f"JAM: item {item_id} advanced {x_m - anchor_x_m:+.3f} m in {stalled_s:.1f}s "
+            f"at x={x_m:.2f} (belt runs {BELT_SPEED_M_S} m/s) — latching emergency stop")
+        self.latch_emergency_stop()
+        return True
+
+    def latch_emergency_stop(self):
+        """The safe state, whether a human or the jam detector asked for it."""
+        self.on_emergency_stop(Bool(data=True))
+
     def command_mechanism(self, zone, value):
         """Every mechanism command goes through here, so the controller always
         knows what it is currently holding — which is what an E-stop must keep."""
@@ -228,6 +283,7 @@ class ControllerNode(Node):
             self._completed_at.pop(item_id, None)
             self.fired.pop(item_id, None)
             self.done_items.discard(item_id)
+            self.jam_anchor.pop(item_id, None)
 
     def on_emergency_stop(self, msg):
         """Latch an immediate safe stop; False explicitly rearms soft-start."""
@@ -251,6 +307,10 @@ class ControllerNode(Node):
             self.get_logger().error("E-STOP active: belt and mechanisms stopped")
             return
 
+        # Drop the stall anchors: they were taken before the stop, so the belt's
+        # own standstill is baked into them and the first frame after the reset
+        # would be read as a fresh jam, latching the cell straight back down.
+        self.jam_anchor.clear()
         self.ramp_step = 0
         self.ramp_timer.reset()
         self.get_logger().warn("E-STOP reset: restarting belt with soft-start")
