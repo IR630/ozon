@@ -22,8 +22,12 @@ WORLD = Path(__file__).resolve().parents[1] / "sim" / "worlds" / "cell_diverter.
 
 # Camera window: the frame's far edge at belt height (docs/decisions.md).
 CAMERA_WINDOW_FAR_X = 2.4
-BELT_EDGE_Y = 0.25
+BELT_EDGE_Y = 0.35  # belt widened to 700 mm (day 6, see test_infeed_gap_admits...)
 BELT_TOP_Z = 0.4
+# Widest any test item gets in its seeded spawn orientation: box_400 at oi=1
+# (568 mm — a 400x400 box turned in plan). Measured off the STL meshes, not
+# guessed; the infeed must admit it or the item jams before the camera.
+WIDEST_ITEM_M = 0.568
 
 
 def model_pose_and_size(name):
@@ -44,6 +48,23 @@ def chute_edges(name):
     dy, dz = (width / 2) * math.cos(roll), (width / 2) * math.sin(roll)
     a, b = (y0 - dy, z0 - dz), (y0 + dy, z0 + dz)
     return (a, b) if a[1] > b[1] else (b, a)  # (top, bottom)
+
+
+def infeed_rail():
+    """(|y| of a rail's centre, its thickness) — belt_guides holds both rails as
+    collisions inside one link, so the geometry lives on the collision, not the model."""
+    root = ET.parse(WORLD).getroot()
+    rails = root.find(".//model[@name='belt_guides']").findall(".//collision")
+    poses = [[float(v) for v in c.find("pose").text.split()] for c in rails]
+    sizes = [[float(v) for v in c.find("geometry/box/size").text.split()] for c in rails]
+    return abs(poses[0][1]), sizes[0][1]
+
+
+def blade_sweep_rad(name):
+    """The blade's engaged angle — read from the joint limit, never duplicated."""
+    root = ET.parse(WORLD).getroot()
+    model = root.find(f".//model[@name='{name}']")
+    return float(model.find(".//joint/axis/limit/upper").text)
 
 
 def blade_bottom_z(name):
@@ -82,3 +103,27 @@ def test_chute_stays_out_of_the_camera_window(chute):
     # the day-5 blocker that forced the blades downstream (docs/decisions.md).
     (x, _, _, _, _, _), (length, _, _) = model_pose_and_size(chute)
     assert x - length / 2 >= CAMERA_WINDOW_FAR_X
+
+
+def test_infeed_gap_admits_the_widest_item():
+    # The 500 mm belt with rails at +-0.272 left a 504 mm gap — narrower than the
+    # biggest items in a turned pose, and EVERY box_400/pouf failure of the seed-0
+    # census was one of those cells (568/544/523/528 mm wide): the item either
+    # jammed before the camera or squeezed through askew and blinded perception.
+    # The belt is now 700 mm and the gap 604 mm, with margin over the widest item.
+    rail_y, thickness = infeed_rail()
+    gap = 2 * (abs(rail_y) - thickness / 2)
+    assert gap > WIDEST_ITEM_M, f"infeed gap {gap*1000:.0f} mm jams the widest item"
+    # ...and the rails must still sit ON the belt, or round items roll off under them
+    assert abs(rail_y) + thickness / 2 <= BELT_EDGE_Y
+
+
+@pytest.mark.parametrize("blade", ["diverter_c", "diverter_d"])
+def test_blade_still_spans_the_wider_belt(blade):
+    # A blade that no longer reaches across the belt leaves a corridor the item
+    # rides straight through (the wall must be a wall).
+    (_, pivot_y, _, _, _, _), (length, _, _) = model_pose_and_size(blade)
+    reach_across = length * math.sin(blade_sweep_rad(blade))  # lateral span engaged
+    far_edge = abs(pivot_y) + BELT_EDGE_Y  # from the pivot to the opposite belt edge
+    assert reach_across >= far_edge, (
+        f"{blade} spans {reach_across:.2f} m, needs {far_edge:.2f} m to close the belt")

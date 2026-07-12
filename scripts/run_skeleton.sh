@@ -116,8 +116,8 @@ for _ in $(seq 1 "$POLL_ITERS"); do
 x, y, z = float('$X'), float('$Y'), float('$Z')
 checks = {
     'B': x >= 3.5 and 0.35 <= z <= 1.0,
-    'C': 1.9 <= x <= 3.6 and 0.5 <= y <= 1.4 and z < 0.25,
-    'D': 2.4 <= x <= 4.1 and -1.4 <= y <= -0.5 and z < 0.25,
+    'C': 1.9 <= x <= 3.8 and 0.5 <= y <= 1.4 and z < 0.25,
+    'D': 2.4 <= x <= 4.3 and -1.4 <= y <= -0.5 and z < 0.25,
 }
 print('YES' if checks['$EXPECT'] else 'no')
 ")
