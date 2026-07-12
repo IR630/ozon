@@ -86,6 +86,30 @@ def test_wrong_category_is_a_misroute(tmp_path):
     assert "expected B" in cell.detail
 
 
+def test_wrong_controller_route_beats_a_truncated_perception_line(tmp_path):
+    # Real Bag oi1: ROS stdout lost the perception line at shutdown, but the
+    # controller proves that a D decision existed.  This is a misroute, not a
+    # no-detect failure.
+    cell = diagnose(
+        parse_cell(
+            write_cell(
+                tmp_path,
+                "bag",
+                1,
+                [
+                    verdict("bag", "B", "FAIL", 3.63, -1.38, 0.08),
+                    "[python3-4] [INFO] [178.0] [controller]: item 1: D — firing pusher_d in 0.49s",
+                    FIRED.format(side="d"),
+                ],
+            )
+        )
+    )
+
+    assert cell.dims_mm is None
+    assert cell.category == "D"
+    assert cell.cause == "misroute"
+
+
 def test_correct_category_but_item_stayed_on_the_belt_is_a_mechanism_miss(tmp_path):
     # Classified C correctly, the mechanism fired, yet the item rode past at belt
     # height — the blade/paddle never took it (timing), an EXECUTION failure.
