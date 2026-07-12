@@ -387,42 +387,80 @@
       </link>
     </model>
 
+    <!-- Landing zones (roll-cages). Two defects, both found by the seed-0 census
+         once the mechanism and the spawn were fixed and nothing else was left to
+         blame (docs/decisions.md, 2026-07-13):
+
+         1. THE ZONE DID NOT COVER ITS OWN CHUTE. The C patch ran x 2.4..3.6 while
+            chute_c delivers over x 2.5..3.9 — the chute dropped goods 30 cm past
+            the end of the zone that was supposed to catch them, and a big item
+            (pouf) landed just outside the scored window (x=3.64 against 3.60). The
+            patch is now 1.6 m long and spans the chute's whole footprint.
+
+         2. A ROLL-CAGE WITH ONE WALL IS NOT A CAGE. There was a single wall, on the
+            far y side; nothing at all across x. A round item simply kept rolling out
+            of the container the way it came in (bottle at x=4.35, and the same
+            escape in the multi-item stream). Each cage now has an END wall
+            downstream, where the goods actually run out.
+
+         There is deliberately NO wall on the belt side: the chute enters there. And
+         none upstream either — goods never roll back up the belt, and a wall at
+         x=2.4 would stand at the far edge of the CAMERA WINDOW and be segmented as
+         an item, which is the day-5 blocker that already cost us the blades. -->
     <model name="zone_c">
       <static>true</static>
-      <pose>3.0 0.9 0.005 0 0 0</pose>
+      <pose>3.2 0.9 0.005 0 0 0</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>1.2 0.8 0.01</size></box></geometry></collision>
+        <collision name="collision"><geometry><box><size>1.6 0.8 0.01</size></box></geometry></collision>
         <visual name="visual">
-          <geometry><box><size>1.2 0.8 0.01</size></box></geometry>
+          <geometry><box><size>1.6 0.8 0.01</size></box></geometry>
           <material><ambient>0.2 0.3 0.8 1</ambient><diffuse>0.2 0.3 0.8 1</diffuse></material>
         </visual>
         <collision name="cage_wall">
           <pose>0 0.6 0.4 0 0 0</pose>
-          <geometry><box><size>1.2 0.05 0.8</size></box></geometry>
+          <geometry><box><size>1.6 0.05 0.8</size></box></geometry>
         </collision>
         <visual name="cage">
           <pose>0 0.6 0.4 0 0 0</pose>
-          <geometry><box><size>1.2 0.05 0.8</size></box></geometry>
+          <geometry><box><size>1.6 0.05 0.8</size></box></geometry>
+          <material><ambient>0.4 0.4 0.9 0.6</ambient><diffuse>0.4 0.4 0.9 0.6</diffuse></material>
+        </visual>
+        <collision name="end_wall">
+          <pose>0.8 0 0.4 0 0 0</pose>
+          <geometry><box><size>0.05 0.8 0.8</size></box></geometry>
+        </collision>
+        <visual name="end">
+          <pose>0.8 0 0.4 0 0 0</pose>
+          <geometry><box><size>0.05 0.8 0.8</size></box></geometry>
           <material><ambient>0.4 0.4 0.9 0.6</ambient><diffuse>0.4 0.4 0.9 0.6</diffuse></material>
         </visual>
       </link>
     </model>
     <model name="zone_d">
       <static>true</static>
-      <pose>3.5 -0.9 0.005 0 0 0</pose>
+      <pose>3.7 -0.9 0.005 0 0 0</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>1.2 0.8 0.01</size></box></geometry></collision>
+        <collision name="collision"><geometry><box><size>1.6 0.8 0.01</size></box></geometry></collision>
         <visual name="visual">
-          <geometry><box><size>1.2 0.8 0.01</size></box></geometry>
+          <geometry><box><size>1.6 0.8 0.01</size></box></geometry>
           <material><ambient>0.9 0.5 0.1 1</ambient><diffuse>0.9 0.5 0.1 1</diffuse></material>
         </visual>
         <collision name="cage_wall">
           <pose>0 -0.6 0.4 0 0 0</pose>
-          <geometry><box><size>1.2 0.05 0.8</size></box></geometry>
+          <geometry><box><size>1.6 0.05 0.8</size></box></geometry>
         </collision>
         <visual name="cage">
           <pose>0 -0.6 0.4 0 0 0</pose>
-          <geometry><box><size>1.2 0.05 0.8</size></box></geometry>
+          <geometry><box><size>1.6 0.05 0.8</size></box></geometry>
+          <material><ambient>0.9 0.6 0.3 0.6</ambient><diffuse>0.9 0.6 0.3 0.6</diffuse></material>
+        </visual>
+        <collision name="end_wall">
+          <pose>0.8 0 0.4 0 0 0</pose>
+          <geometry><box><size>0.05 0.8 0.8</size></box></geometry>
+        </collision>
+        <visual name="end">
+          <pose>0.8 0 0.4 0 0 0</pose>
+          <geometry><box><size>0.05 0.8 0.8</size></box></geometry>
           <material><ambient>0.9 0.6 0.3 0.6</ambient><diffuse>0.9 0.6 0.3 0.6</diffuse></material>
         </visual>
       </link>

@@ -106,3 +106,34 @@ def test_chute_stays_out_of_the_camera_window(chute):
     # the day-5 blocker that forced the blades downstream (docs/decisions.md).
     (x, _, _, _, _, _), (length, _, _) = model_pose_and_size(chute)
     assert x - length / 2 >= CAMERA_WINDOW_FAR_X
+
+
+@pytest.mark.parametrize(("chute", "zone"), [("chute_c", "zone_c"), ("chute_d", "zone_d")])
+def test_the_zone_covers_the_chute_that_feeds_it(chute, zone):
+    """The C patch used to end at x=3.6 while its chute delivered out to x=3.9.
+
+    The chute dropped goods 30 cm past the end of the zone meant to catch them, so a
+    big item (pouf) landed just outside the scored window — a defect invisible in a
+    diff and invisible to every single-item episode that happened to land short.
+    """
+    (chute_x, _, _, _, _, _), (chute_len, _, _) = model_pose_and_size(chute)
+    (zone_x, _, _, _, _, _), (zone_len, _, _) = model_pose_and_size(zone)
+
+    chute_from, chute_to = chute_x - chute_len / 2, chute_x + chute_len / 2
+    zone_from, zone_to = zone_x - zone_len / 2, zone_x + zone_len / 2
+
+    assert zone_from <= chute_from, (
+        f"{zone} starts at x={zone_from:.2f}, behind {chute} (x={chute_from:.2f})")
+    assert zone_to >= chute_to, (
+        f"{zone} ends at x={zone_to:.2f} but {chute} delivers out to x={chute_to:.2f} "
+        "— it drops goods past the zone that should catch them")
+
+
+@pytest.mark.parametrize("zone", ["zone_c", "zone_d"])
+def test_the_cage_has_an_end_wall_to_stop_a_rolling_item(zone):
+    """A roll-cage with one wall is not a cage: a bottle rolled straight out (x=4.35)."""
+    root = ET.parse(WORLD).getroot()
+    model = root.find(f".//model[@name='{zone}']")
+    walls = [c.get("name") for c in model.iter("collision")]
+
+    assert "end_wall" in walls, f"{zone} has no wall downstream — round goods roll out"
