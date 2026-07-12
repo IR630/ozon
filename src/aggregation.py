@@ -11,6 +11,7 @@ disagree. The classifier then decides on that stable aggregate, not on one frame
 
 Pure Python (no rclpy): unit-tested on synthetic frame sequences.
 """
+from collections import OrderedDict
 from dataclasses import dataclass
 
 import numpy as np
@@ -20,8 +21,11 @@ import numpy as np
 N_CONFIDENT = 5
 # Dispersion of K that maps agreement to 0 (std of 0.2 in K ~ fully unreliable).
 K_SPREAD_REF = 0.2
-# How many past items to retain (stream is sequential; keep current + previous).
-_KEEP_PREV = 1
+# Bound memory without assuming items are observed in numeric-ID order. Multi-item
+# frames interleave updates (1, 2, 3, 1, ...), so "newest_id - 1" silently erased
+# a still-visible item. Sixteen active/recent tracks is ample for a sequential
+# belt and keeps a broken tracker from growing history forever.
+MAX_TRACKED_ITEMS = 16
 
 # NOTE: algorithm parameters live here, NOT in src/constants.py — that file holds
 # only the jury-checked domain thresholds (0.8, 10, 450x320x320). Duplicating
@@ -48,14 +52,16 @@ class ItemAggregator:
     """
 
     def __init__(self):
-        self._dims = {}  # item_id -> list of (3,) arrays, sorted descending
-        self._k = {}     # item_id -> list of floats
+        self._dims = OrderedDict()  # item_id -> frames; order = least-recently used
+        self._k = {}                # item_id -> list of floats
 
     def update(self, item_id, dims_mm, k):
         if item_id not in self._dims:
             self._dims[item_id] = []
             self._k[item_id] = []
-            self._prune(item_id)
+        else:
+            self._dims.move_to_end(item_id)
+        self._prune()
         d = np.sort(np.asarray(dims_mm, dtype=float))[::-1]
         self._dims[item_id].append(d)
         self._k[item_id].append(float(k))
@@ -72,10 +78,9 @@ class ItemAggregator:
             n_frames=len(ks),
         )
 
-    def _prune(self, newest_id):
-        cutoff = newest_id - _KEEP_PREV
-        for stale in [i for i in self._dims if i < cutoff]:
-            del self._dims[stale]
+    def _prune(self):
+        while len(self._dims) > MAX_TRACKED_ITEMS:
+            stale, _ = self._dims.popitem(last=False)
             del self._k[stale]
 
 

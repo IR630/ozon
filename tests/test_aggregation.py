@@ -5,7 +5,7 @@ Pins the root fix for category dither: the running median must stay on the
 correct side even when single frames would flip, and confidence must grow with
 agreeing evidence and be damped by disagreement.
 """
-from src.aggregation import N_CONFIDENT, ItemAggregator
+from src.aggregation import MAX_TRACKED_ITEMS, N_CONFIDENT, ItemAggregator
 from src.classification import classify, classify_conservative
 
 
@@ -66,3 +66,38 @@ def test_new_item_id_resets_history():
     est2 = agg.update(2, [489.0, 489.0, 264.0], 1.0)  # Пуфик, fresh item
     assert est2.n_frames == 1
     assert est2.dims_mm == [489.0, 489.0, 264.0]
+
+
+def test_three_interleaved_items_keep_independent_histories():
+    agg = ItemAggregator()
+    items = {
+        1: ([300.0, 200.0, 200.0], 0.60),
+        2: ([489.0, 489.0, 264.0], 1.00),
+        3: ([435.0, 50.0, 43.0], 0.74),
+    }
+
+    estimates = {}
+    for _ in range(3):
+        for item_id, (dims, k) in items.items():
+            estimates[item_id] = agg.update(item_id, dims, k)
+
+    assert {item_id: est.n_frames for item_id, est in estimates.items()} == {
+        1: 3, 2: 3, 3: 3}
+    assert estimates[1].dims_mm == items[1][0]
+    assert estimates[2].dims_mm == items[2][0]
+    assert estimates[3].dims_mm == items[3][0]
+
+
+def test_track_history_is_lru_bounded_not_numeric_cutoff():
+    agg = ItemAggregator()
+    dims = [300.0, 200.0, 200.0]
+    for item_id in range(MAX_TRACKED_ITEMS):
+        agg.update(item_id, dims, 0.6)
+
+    # Refresh id=0, then add one track: id=1 is the least recently used and is
+    # evicted; active id=0 survives even though its numeric value is the oldest.
+    agg.update(0, dims, 0.6)
+    agg.update(MAX_TRACKED_ITEMS, dims, 0.6)
+    assert 0 in agg._dims
+    assert 1 not in agg._dims
+    assert len(agg._dims) == MAX_TRACKED_ITEMS
