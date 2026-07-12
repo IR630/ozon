@@ -240,6 +240,58 @@
          edge, so it leaves the belt near the pivot x at belt speed (not
          launched) and lands on the near part of the patch — the physical cage
          wall still backstops it. -->
+    <!-- CHUTES (day 6): the ramp from the belt edge down to the zone patch.
+         Without them the diverter's own two census failures are both the same:
+         it guides the item off the belt gently (no ballistic shove), the item
+         drops the full 0.4 m onto bare floor and STOPS 2-6 cm short of the
+         patch (bottle oi1/oi2 at y=-0.48/-0.44 against the -0.5 patch edge;
+         pen oi0 at y=0.464). The pusher only reached the patch by throwing the
+         item at 2.5 m/s — which is exactly the impact we rejected.
+         The same 0.4 m drop is also the gentleness ceiling: the peak of the
+         diverter's trace is the LANDING (109 m/s^2), not the wall contact
+         (68-77) — so the chute buys routing and manipulation quality at once.
+         Geometry: top edge at y=+-0.25 (the belt edge) but z=0.34 — deliberately
+         BELOW the blade's bottom edge (z=0.35, blade box 0.80x0.03x0.30 pivoted
+         at z=0.5). The first cut ran the chute up to belt height (z=0.4) and it
+         WEDGED the blade: parked at y=+-0.28 the blade sits inside the chute's
+         y-span, so at z=0.4 the plate cut straight through it and the diverter
+         could not swing at all (bottle rode the belt to the end, FAIL). The item
+         now steps 6 cm off the belt edge onto the chute instead of dropping 40.
+         Bottom edge on the patch (y=+-0.75, z=0) -> a 0.6 m slide at 34 deg
+         (roll -+0.597 rad). Low friction so the item slides, not sticks.
+         Starts at x=2.5 — BEHIND the camera window (its far edge is x~2.4 at
+         belt height): a chute inside the frame would be segmented as the item
+         and blind perception, the day-5 blocker that the blades already hit. -->
+    <model name="chute_c">
+      <static>true</static>
+      <pose>3.2 0.5 0.17 -0.597 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>1.4 0.605 0.02</size></box></geometry>
+          <surface><friction><ode><mu>0.2</mu><mu2>0.2</mu2></ode></friction></surface>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>1.4 0.605 0.02</size></box></geometry>
+          <material><ambient>0.6 0.6 0.65 1</ambient><diffuse>0.6 0.6 0.65 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="chute_d">
+      <static>true</static>
+      <pose>3.7 -0.5 0.17 0.597 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>1.4 0.605 0.02</size></box></geometry>
+          <surface><friction><ode><mu>0.2</mu><mu2>0.2</mu2></ode></friction></surface>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>1.4 0.605 0.02</size></box></geometry>
+          <material><ambient>0.6 0.6 0.65 1</ambient><diffuse>0.6 0.6 0.65 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
     <model name="zone_c">
       <static>true</static>
       <pose>3.0 0.9 0.005 0 0 0</pose>
