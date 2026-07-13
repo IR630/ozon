@@ -134,9 +134,14 @@ T0=$(date +%s.%N)
 ) &
 FEEDER=$!
 
-item_pose() {  # name -> "x y z"; an unfed item simply has no pose yet
-    ign model -m "$1" --pose 2>/dev/null | grep -A1 "XYZ" | tail -1 \
-        | tr -d "[]" | awk '{print $1, $2, $3}'
+# Position AND orientation, from ONE query: the verdict scores the item's BODY, and the
+# reported pose is only its ORIGIN — Gazebo rotates the model about the default pose's
+# bottom, so at ORIENT_INDEX>0 the two drift apart by up to 349 mm (zone_verdict.py).
+# At the default ORIENT_INDEX=0 the origin IS the contact point and the extra columns
+# simply confirm it.
+item_pose() {  # name -> "x y z roll pitch yaw"; an unfed item simply has no pose yet
+    ign model -m "$1" --pose 2>/dev/null | grep -A2 "XYZ" | tail -2 \
+        | tr -d "[]" | awk '{printf "%s %s %s ", $1, $2, $3}'
 }
 
 declare -A ARRIVED_AT
@@ -148,9 +153,10 @@ for _ in $(seq 1 "$POLL_ITERS"); do
         [ -n "${ARRIVED_AT[$NAME]:-}" ] && continue
         POSE=$(item_pose "$NAME")
         [ -z "$POSE" ] && continue          # not fed yet, or the CLI flaked — retry next lap
-        read -r X Y Z <<< "$POSE"
+        read -r X Y Z RR PP YY <<< "$POSE"
         LAST_POSE[$NAME]="x=$X y=$Y z=$Z"
-        if [ "$("$PYTHON" scripts/zone_verdict.py "${ZONES[$i]}" "$X" "$Y" "$Z")" = YES ]; then
+        if [ "$("$PYTHON" scripts/zone_verdict.py "${ZONES[$i]}" "$X" "$Y" "$Z" \
+                "${SLUGS[$i]}" "$RR" "$PP" "$YY" 2>/dev/null)" = YES ]; then
             NOW=$(date +%s.%N)
             ARRIVED_AT[$NAME]=$("$PYTHON" -c "print(f'{$NOW - $T0:.1f}')")
             LANDED=$((LANDED + 1))

@@ -135,20 +135,20 @@ T0=$(date +%s.%N)
 ros2 launch launch/skeleton.launch.py > /tmp/skeleton_e2e.log 2>&1 &
 LAUNCH=$!
 
-item_pose() {  # x y z, with retries against ign CLI flakes
+# Position AND orientation, from ONE query: the verdict scores the item's BODY, and
+# the reported pose is only its ORIGIN (the default pose's bottom — Gazebo rotates the
+# model about it, and for a turned bulky item the two are up to 349 mm apart). Two
+# separate `ign model` calls would sample a moving item at two different instants and
+# pair a pose with the wrong orientation.
+item_pose() {  # x y z roll pitch yaw, with retries against ign CLI flakes
     local out=""
     for _ in 1 2 3; do
-        out=$(ign model -m item --pose 2>/dev/null | grep -A1 "XYZ" | tail -1 \
-              | tr -d "[]" | awk '{print $1, $2, $3}')
+        out=$(ign model -m item --pose 2>/dev/null | grep -A2 "XYZ" | tail -2 \
+              | tr -d "[]" | awk '{printf "%s %s %s ", $1, $2, $3}')
         [ -n "$out" ] && break
         sleep 0.5
     done
-    echo "${out:-nan nan nan}"
-}
-
-item_rpy() {  # roll pitch yaw — the SECOND line of the same pose block
-    ign model -m item --pose 2>/dev/null | grep -A2 "XYZ" | tail -1 \
-        | tr -d "[]" | awk '{print $1, $2, $3}'
+    echo "${out:-nan nan nan nan nan nan}"
 }
 
 # verdict polling is WALL-clock; under render load (record_skeleton_video.sh)
@@ -157,8 +157,8 @@ POLL_ITERS=${RUN_SKELETON_POLL_ITERS:-60}
 
 VERDICT=FAIL
 for _ in $(seq 1 "$POLL_ITERS"); do
-    read X Y Z <<< "$(item_pose)"
-    OK=$(python3 scripts/zone_verdict.py "$EXPECT" "$X" "$Y" "$Z")
+    read X Y Z RR PP YY <<< "$(item_pose)"
+    OK=$(python3 scripts/zone_verdict.py "$EXPECT" "$X" "$Y" "$Z" "$SLUG" "$RR" "$PP" "$YY" 2>/dev/null)
     if [ "$OK" = YES ]; then
         VERDICT=PASS
         break
@@ -168,18 +168,19 @@ done
 T1=$(date +%s.%N)
 CYCLE=$(python3 -c "print(f'{$T1 - $T0:.1f}')")
 
-read X Y Z <<< "$(item_pose)"
+read X Y Z RR PP YY <<< "$(item_pose)"
 echo "$SLUG -> $EXPECT: $VERDICT (pose x=$X y=$Y z=$Z, cycle ${CYCLE}s from launch)"
-# The pose above is the model ORIGIN — the default pose's BOTTOM (build_item_models.
-# set_belt_origin), not the goods. Gazebo rotates about it, so for a bulky item at a
-# turned angle the origin sits up to 34 cm from the body (measured: pouf oi=1 268 mm,
-# pouf oi=2 342 mm). x/y/z alone therefore CANNOT tell "lying in the cage" from "hung
-# up on the chute" — the resting ORIENTATION closes that gap, and no run had ever
-# recorded it. Print both: the raw block (ground truth) and the body it implies.
-read RR PP YY <<< "$(item_rpy)"
 echo "  resting rpy: r=$RR p=$PP y=$YY"
 python3 scripts/body_pose.py "$SLUG" "$X" "$Y" "$Z" "$RR" "$PP" "$YY" 2>/dev/null \
     | sed 's/^/  /' || true
+# TRANSITION (day 11, remove after the re-census): the verdict above scores the BODY;
+# this line scores the ORIGIN, the way every census up to #3 did. Printing both makes
+# the cells that MOVED visible per cell, so the report can say how much of the "+-2-3
+# cells of physics noise" was really the ruler — 4 of the 33 cells could not pass the
+# old gate even lying perfectly in the cage (see scripts/zone_verdict.py).
+LEGACY=$(python3 scripts/zone_verdict.py "$EXPECT" "$X" "$Y" "$Z" 2>/dev/null)
+[ "$LEGACY" = YES ] && LEGACY=PASS || LEGACY=FAIL
+echo "  legacy origin-scored verdict: $LEGACY (body-scored: $VERDICT)"
 grep -E "item [0-9]+:" /tmp/skeleton_e2e.log | tail -3 || true
 
 if [ -n "$DYN_PID" ]; then

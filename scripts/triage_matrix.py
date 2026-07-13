@@ -24,6 +24,10 @@ import subprocess
 from collections import Counter
 from dataclasses import dataclass
 
+# The zone bands live in ONE place (they are the jury-visible success criterion):
+# triage asks the same question the verdict does, so it must not restate the numbers.
+from zone_verdict import FLOOR_Z, in_zone
+
 # The item is spawned at x=-1.5 and the camera window opens near x=1.5. An item
 # whose final pose never crossed this line never reached the camera at all — it
 # jammed on the infeed, which is an EXECUTION failure, not a perception one.
@@ -34,6 +38,12 @@ BELT_Z_MIN = 0.35
 VERDICT_RE = re.compile(
     r"^(?P<slug>\S+) -> (?P<zone>[BCD]): (?P<verdict>PASS|FAIL) "
     r"\(pose x=(?P<x>\S+) y=(?P<y>\S+) z=(?P<z>\S+), cycle (?P<cycle>[\d.]+)s"
+)
+# The goods, measured off the mesh in the resting orientation (scripts/body_pose.py).
+# Absent from logs written before day 11 — those fall back to the origin pose.
+BODY_RE = re.compile(
+    r"^\s+body: centre x=(?P<cx>\S+) y=(?P<cy>\S+) z=(?P<cz>\S+) \| lowest z=(?P<low>\S+)",
+    re.MULTILINE,
 )
 PERCEPTION_RE = re.compile(
     r"\[perception\]: item \d+: (?P<w>\d+)x(?P<h>\d+)x(?P<d>\d+) mm K=(?P<k>[\d.]+)"
@@ -65,6 +75,11 @@ class Cell:
     dims_mm: tuple[int, int, int] | None
     fired: str | None  # 'c' | 'd' | None
     pose: tuple[float, float, float] | None
+    # The GOODS: (centre x, centre y, lowest point z). `pose` above is the model
+    # ORIGIN, which Gazebo rotates the body about, so for a turned bulky item it is
+    # up to 349 mm off the item (scripts/zone_verdict.py) — enough to mis-assign a
+    # root cause, not just a verdict. None for logs written before day 11.
+    body: tuple[float, float, float] | None
     cycle_s: float | None
     cause: str = ""
     detail: str = ""
@@ -86,6 +101,7 @@ def parse_cell(path: str) -> Cell:
         return found
 
     verdict_m = last(VERDICT_RE)
+    body_m = last(BODY_RE)
     perception_m = last(PERCEPTION_RE)
     classifier_m = last(CLASSIFIER_RE)
     controller_m = last(CONTROLLER_RE)
@@ -114,6 +130,11 @@ def parse_cell(path: str) -> Cell:
             if verdict_m
             else None
         ),
+        body=(
+            (float(body_m["cx"]), float(body_m["cy"]), float(body_m["low"]))
+            if body_m
+            else None
+        ),
         cycle_s=float(verdict_m["cycle"]) if verdict_m else None,
     )
 
@@ -134,7 +155,12 @@ def diagnose(cell: Cell) -> Cell:
         cell.detail = "episode killed by per-cell timeout (no verdict line)"
         return cell
 
-    x, y, z = cell.pose if cell.pose else (float("nan"),) * 3
+    # Judge the GOODS. `pose` is the model origin, which Gazebo rotates the body about:
+    # a correctly diverted box_400 oi=2 lying in its cage reports an origin at z=0.349,
+    # one millimetre under BELT_Z_MIN — i.e. the old ruler was within a hair of calling
+    # a delivered item "still stuck at belt height". Pre-day-11 logs have no body line;
+    # they fall back to the origin, which is exact for their default-pose cells.
+    x, y, z = cell.body if cell.body else (cell.pose if cell.pose else (float("nan"),) * 3)
 
     # Stage 1 — did the item even reach the camera?
     # Missing perception stdout does not prove missing perception: killing the
@@ -179,6 +205,18 @@ def diagnose(cell: Cell) -> Cell:
     elif z >= BELT_Z_MIN:
         cell.cause = "mech_miss"
         cell.detail = f"fired, but the item stayed at belt height (z={z:.2f}, x={x:.2f})"
+    elif z >= FLOOR_Z and in_zone(cell.expected, x, y, 0.0):
+        # Inside the cage's x/y footprint, yet not resting on its floor: the item
+        # stalled on the chute that feeds the cage. A separate failure from an
+        # overshoot — the routing was RIGHT and the item is simply hung up on the
+        # ramp — and one the old origin-scored ruler could not even see.
+        # (in_zone is asked with z=0 so it tests the footprint only; the height is
+        # this branch's own condition.)
+        cell.cause = "chute_stick"
+        cell.detail = (
+            f"routed correctly but stalled on the chute: resting {z * 1000:.0f} mm "
+            f"above the cage floor (x={x:.2f} y={y:.2f})"
+        )
     else:
         cell.cause = "mech_overshoot"
         cell.detail = f"fired, item off the belt but outside the zone window (x={x:.2f} y={y:.2f})"

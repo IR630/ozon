@@ -28,6 +28,11 @@ def verdict(slug, zone, v, x, y, z):
     return f"{slug} -> {zone}: {v} (pose x={x} y={y} z={z}, cycle 25.8s from launch)"
 
 
+def body(cx, cy, lowest):
+    """The goods, as run_skeleton.sh prints them under the verdict line."""
+    return f"  body: centre x={cx} y={cy} z=0.200 | lowest z={lowest:+.3f} | origin-to-body dz=-0.1"
+
+
 def test_routed_item_is_ok(tmp_path):
     cell = diagnose(
         parse_cell(
@@ -131,13 +136,14 @@ def test_correct_category_but_item_stayed_on_the_belt_is_a_mechanism_miss(tmp_pa
 
 
 def test_correct_category_off_the_belt_but_outside_the_zone_is_an_overshoot(tmp_path):
+    # Past the cage's far wall (y=1.475): the item escaped the container entirely.
     assert (
         cause_of(
             tmp_path,
             "box_400x400x300",
             1,
             [
-                verdict("box_400x400x300", "C", "FAIL", 3.95, 1.10, 0.02),
+                verdict("box_400x400x300", "C", "FAIL", 3.95, 1.60, 0.02),
                 PERCEPTION.format(dims="416x400x299", k="0.60"),
                 CLASSIFIER.format(cat="C", k="0.607"),
                 FIRED.format(side="c"),
@@ -145,6 +151,49 @@ def test_correct_category_off_the_belt_but_outside_the_zone_is_an_overshoot(tmp_
         )
         == "mech_overshoot"
     )
+
+
+def test_an_item_stalled_on_the_chute_is_not_an_overshoot(tmp_path):
+    """pouf oi=1: routed correctly, diverted correctly, then hung up on the ramp.
+
+    It sits INSIDE zone C's footprint but 140 mm above the cage floor — a distinct
+    failure from an overshoot (which lands the item outside the zone), and one the
+    origin-scored ruler could not tell apart: the pouf's origin in this pose is
+    268 mm above its own contact point, so its height carried no information.
+    """
+    assert (
+        cause_of(
+            tmp_path,
+            "pouf",
+            1,
+            [
+                verdict("pouf", "C", "FAIL", 3.61, 0.535, 0.315),
+                body(3.37, 0.53, 0.14),
+                PERCEPTION.format(dims="489x489x264", k="0.97"),
+                CLASSIFIER.format(cat="C", k="0.970"),
+                FIRED.format(side="c"),
+            ],
+        )
+        == "chute_stick"
+    )
+
+
+def test_the_body_line_beats_the_origin_when_deciding_where_the_item_is(tmp_path):
+    """A turned box_400 lying in its cage reports an ORIGIN at belt height (z=0.35+).
+
+    Scored on the origin, triage would call a delivered item "stuck at belt height".
+    The body line says its lowest point is on the floor, and that is what must count.
+    """
+    lines = [
+        verdict("box_400x400x300", "C", "FAIL", 3.95, 1.60, 0.36),  # origin: belt height
+        body(3.95, 1.60, 0.00),                                      # body: on the floor
+        PERCEPTION.format(dims="416x400x299", k="0.60"),
+        CLASSIFIER.format(cat="C", k="0.607"),
+        FIRED.format(side="c"),
+    ]
+    assert cause_of(tmp_path, "box_400x400x300", 2, lines) == "mech_overshoot"
+    # ...and without the body line (a pre-day-11 log) the origin is all there is.
+    assert cause_of(tmp_path, "box_400x400x300", 2, lines[:1] + lines[2:]) == "mech_miss"
 
 
 def test_correct_category_that_never_fired_is_a_timing_failure(tmp_path):
