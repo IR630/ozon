@@ -9,7 +9,23 @@ right in the default pose — there the origin IS the contact point.
 """
 import pytest
 
-from zone_verdict import in_zone
+from zone_verdict import in_zone, in_zone_legacy
+
+
+def test_the_legacy_ruler_still_reproduces_both_of_its_bugs():
+    """The transition census prints old vs new per cell, so `in_zone_legacy` has to be
+    the OLD ruler verbatim — not the new thresholds fed an origin pose. (First cut of
+    the comparison line did exactly that and mislabelled box_400 oi=2 as a legacy FAIL
+    when the old ruler in fact passed it: a wrong before/after table is worse than none.)
+    """
+    # Bug 1 — a pouf lying on the cage floor, scored by its origin: FAIL.
+    assert not in_zone_legacy("C", 3.64, 0.57, 0.290)
+    assert in_zone("C", 3.64, 0.57, 0.290, body=(3.43, 0.68, 0.011))  # the goods: delivered
+    # Bug 2 — a D-bound item merely passing x=3.5 at belt height: PASS for B.
+    assert in_zone_legacy("B", 3.6, 0.0, 0.45)
+    assert not in_zone("B", 3.6, 0.0, 0.45)
+    # And where the old ruler was RIGHT it must keep saying so, or the diff is inflated.
+    assert in_zone_legacy("C", 3.36, 1.13, 0.16)   # box_400 oi=2: old ruler passed it
 
 
 def test_b_is_the_item_still_on_the_belt_past_the_mechanisms():

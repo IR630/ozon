@@ -95,6 +95,24 @@ def in_zone(zone, x, y, z, body=None):
     raise ValueError(f"zone must be B, C or D, got '{zone}'")
 
 
+def in_zone_legacy(zone, x, y, z):
+    """The pre-day-11 ruler, verbatim. Kept ONLY to measure what the fix changed.
+
+    It scored the model ORIGIN against a z<0.25 floor gate, and let B pass on a
+    TRANSIENT (x>=3.5 at belt height — before the D blade at 3.75, so every D-bound
+    item satisfied it in passing). run_skeleton.sh prints both verdicts during the
+    transition census so the report can attribute each moved cell to the ruler rather
+    than to physics noise. Delete once that census is published.
+    """
+    if zone == "B":
+        return x >= 3.5 and 0.35 <= z <= 1.0
+    if zone == "C":
+        return 1.9 <= x <= 4.0 and 0.5 <= y <= 1.475 and z < 0.25
+    if zone == "D":
+        return 2.4 <= x <= 4.5 and -1.475 <= y <= -0.5 and z < 0.25
+    raise ValueError(f"zone must be B, C or D, got '{zone}'")
+
+
 def body_from_resting_pose(slug, x, y, z, roll, pitch, yaw):
     """(centre_x, centre_y, lowest_z) of the goods, or None if the mesh is unavailable.
 
@@ -116,20 +134,29 @@ def body_from_resting_pose(slug, x, y, z, roll, pitch, yaw):
 
 
 def main():
-    if len(sys.argv) not in (5, 9):
-        sys.exit("usage: zone_verdict.py <B|C|D> <x> <y> <z> [<slug> <roll> <pitch> <yaw>]")
-    zone = sys.argv[1]
+    argv = sys.argv[1:]
+    legacy = argv[:1] == ["--legacy"]
+    if legacy:
+        argv = argv[1:]
+    if len(argv) not in (4, 8):
+        sys.exit("usage: zone_verdict.py [--legacy] <B|C|D> <x> <y> <z> "
+                 "[<slug> <roll> <pitch> <yaw>]")
+    zone = argv[0]
     try:
-        x, y, z = (float(v) for v in sys.argv[2:5])
+        x, y, z = (float(v) for v in argv[1:4])
     except ValueError:
         print("no")  # a lost item polls as 'nan nan nan' — that is simply not in its zone
         return
 
+    if legacy:
+        print("YES" if in_zone_legacy(zone, x, y, z) else "no")
+        return
+
     body = None
-    if len(sys.argv) == 9:
-        slug = sys.argv[5]
+    if len(argv) == 8:
+        slug = argv[4]
         try:
-            roll, pitch, yaw = (float(v) for v in sys.argv[6:9])
+            roll, pitch, yaw = (float(v) for v in argv[5:8])
         except ValueError:
             print("no")  # orientation unreadable: the item has no pose to score
             return

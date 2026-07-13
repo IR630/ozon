@@ -178,7 +178,7 @@ python3 scripts/body_pose.py "$SLUG" "$X" "$Y" "$Z" "$RR" "$PP" "$YY" 2>/dev/nul
 # the cells that MOVED visible per cell, so the report can say how much of the "+-2-3
 # cells of physics noise" was really the ruler — 4 of the 33 cells could not pass the
 # old gate even lying perfectly in the cage (see scripts/zone_verdict.py).
-LEGACY=$(python3 scripts/zone_verdict.py "$EXPECT" "$X" "$Y" "$Z" 2>/dev/null)
+LEGACY=$(python3 scripts/zone_verdict.py --legacy "$EXPECT" "$X" "$Y" "$Z" 2>/dev/null)
 [ "$LEGACY" = YES ] && LEGACY=PASS || LEGACY=FAIL
 echo "  legacy origin-scored verdict: $LEGACY (body-scored: $VERDICT)"
 grep -E "item [0-9]+:" /tmp/skeleton_e2e.log | tail -3 || true
