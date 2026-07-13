@@ -167,8 +167,19 @@ python3 scripts/body_pose.py --dump-hull "$SLUG" "$HULL" 2>/dev/null || HULL=/de
 POLL_ITERS=${RUN_SKELETON_POLL_ITERS:-60}
 
 VERDICT=FAIL
+# TRANSITION (day 11): the legacy verdict has to be LATCHED inside the loop, exactly as
+# the old runner latched it — not evaluated once on the final pose. The two answer
+# different questions otherwise: the old runner asked "did the item EVER satisfy the
+# band", and an item can satisfy a band and then move on (bag oi=1 rode past the
+# mechanisms on the belt, scoring B, and only afterwards drifted off the belt edge — its
+# final pose is on the floor). Scoring the last pose would blame that on the ruler.
+LEGACY=FAIL
 for _ in $(seq 1 "$POLL_ITERS"); do
     read X Y Z RR PP YY <<< "$(item_pose)"
+    if [ "$LEGACY" = FAIL ]; then
+        OLD=$(python3 scripts/zone_verdict.py --legacy "$EXPECT" "$X" "$Y" "$Z" 2>/dev/null)
+        [ "$OLD" = YES ] && LEGACY=PASS || true
+    fi
     OK=$(python3 scripts/zone_verdict.py "$EXPECT" "$X" "$Y" "$Z" "$HULL" "$RR" "$PP" "$YY" 2>/dev/null)
     if [ "$OK" = YES ]; then
         VERDICT=PASS
@@ -184,13 +195,10 @@ echo "$SLUG -> $EXPECT: $VERDICT (pose x=$X y=$Y z=$Z, cycle ${CYCLE}s from laun
 echo "  resting rpy: r=$RR p=$PP y=$YY"
 python3 scripts/body_pose.py "$SLUG" "$X" "$Y" "$Z" "$RR" "$PP" "$YY" 2>/dev/null \
     | sed 's/^/  /' || true
-# TRANSITION (day 11, remove after the re-census): the verdict above scores the BODY;
-# this line scores the ORIGIN, the way every census up to #3 did. Printing both makes
-# the cells that MOVED visible per cell, so the report can say how much of the "+-2-3
-# cells of physics noise" was really the ruler — 4 of the 33 cells could not pass the
-# old gate even lying perfectly in the cage (see scripts/zone_verdict.py).
-LEGACY=$(python3 scripts/zone_verdict.py --legacy "$EXPECT" "$X" "$Y" "$Z" 2>/dev/null)
-[ "$LEGACY" = YES ] && LEGACY=PASS || LEGACY=FAIL
+# TRANSITION (day 11, remove after the re-census): $VERDICT scores the BODY, $LEGACY was
+# latched in the loop above by the ORIGIN-scored rule every census up to #3 used. Printing
+# both makes the cells the RULER moved visible per cell — as opposed to the cells physics
+# moved, which show up as a cell differing between two runs (scripts/census_ruler_diff.py).
 echo "  legacy origin-scored verdict: $LEGACY (body-scored: $VERDICT)"
 grep -E "item [0-9]+:" /tmp/skeleton_e2e.log | tail -3 || true
 
