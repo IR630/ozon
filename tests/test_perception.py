@@ -20,6 +20,9 @@ OFFSET_PNG = IMG_DIR / "day2_offset_x1.8_y0.1_depth.png"
 BOTTLE_PNG = IMG_DIR / "day4_bottle_depth.png"
 BAG_PNG = IMG_DIR / "day4_bag_depth.png"
 BAG_OI1_PNG = IMG_DIR / "day11_bag_oi1_depth.png"
+BAG_OI2_PNG = IMG_DIR / "day11_bag_oi2_depth.png"
+HELMET_OI2_PNG = IMG_DIR / "day11_helmet_oi2_depth.png"
+PLATE_OI1_PNG = IMG_DIR / "day11_plate_oi1_depth.png"
 PLATE_PNG = IMG_DIR / "day4_plate_depth.png"
 PEN_PNG = IMG_DIR / "day4_pen_depth.png"
 
@@ -386,6 +389,50 @@ def test_measure_real_bag_oi1_frame_is_not_round():
     assert classify_conservative(m.dims_mm, m.k) == "B", (
         f"bag oi=1 must route to B, not D: {m.dims_mm}, K={m.k}"
     )
+
+
+def test_measure_real_bag_oi2_frame_is_not_round():
+    # Day-11 validation set: a SECOND seeded bag pose (seed 0, item 4, orient 2),
+    # belt-ride frame. Guards that the elongation-gate fix did not disturb another
+    # bag pose — here the blob is held B by the flatness gate (silhouette) and the
+    # section rms gate, not elongation, so it exercises a different route to B.
+    pytest.importorskip("cv2")
+    from src.classification import classify_conservative
+    from src.perception import load_depth_png
+
+    m = measure_item(load_depth_png(BAG_OI2_PNG))
+    assert m is not None
+    assert m.k <= 0.8, f"bag oi=2 must NOT read round (-> B): K={m.k}"
+    assert classify_conservative(m.dims_mm, m.k) == "B", f"{m.dims_mm}, K={m.k}"
+
+
+def test_measure_real_helmet_oi2_frame_is_not_round():
+    # Day-11 validation set: Шлем in the seeded oi=2 belt-ride pose — the
+    # OBB/K-straddle cell flagged in PLAN-WEEK2 (held B by ~3 mm and K near 0.8).
+    # Locks the current baseline (K~0.77 < 0.8 -> B) before the helmet
+    # lateral-inflation slice tunes anything.
+    pytest.importorskip("cv2")
+    from src.classification import classify_conservative
+    from src.perception import load_depth_png
+
+    m = measure_item(load_depth_png(HELMET_OI2_PNG))
+    assert m is not None
+    assert m.k <= 0.8, f"helmet dome must NOT read round (-> B): K={m.k}"
+    assert classify_conservative(m.dims_mm, m.k) == "B", f"{m.dims_mm}, K={m.k}"
+
+
+def test_measure_real_plate_oi1_frame_stays_round():
+    # Day-11 validation set: Тарелка in the seeded oi=1 belt-ride pose. It settles
+    # flat (213x211x29), so the silhouette route legitimately routes it to D. Locks
+    # the plate baseline for the plate-edge slice.
+    pytest.importorskip("cv2")
+    from src.classification import classify_conservative
+    from src.perception import load_depth_png
+
+    m = measure_item(load_depth_png(PLATE_OI1_PNG))
+    assert m is not None
+    assert m.k > 0.8, f"flat round plate must read round (-> D): K={m.k}"
+    assert classify_conservative(m.dims_mm, m.k) == "D", f"{m.dims_mm}, K={m.k}"
 
 
 def test_measure_real_plate_frame_stays_round():
