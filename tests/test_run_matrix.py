@@ -45,6 +45,24 @@ def test_dry_run_selects_only_requested_tail():
     assert "bottle" not in result.stdout
 
 
+def test_dry_run_reports_the_selected_world():
+    bash, env = _bash_env()
+    env["WORLD"] = "sim/worlds/cell_diverter.sdf"
+
+    result = subprocess.run(
+        [bash, str(SCRIPT), "0", "1", "6", "6"],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "world: sim/worlds/cell_diverter.sdf" in result.stdout
+    assert "matrix dry-run world=sim/worlds/cell_diverter.sdf" in result.stdout
+
+
 def test_cell_timeout_bounds_a_wedged_episode(tmp_path):
     # A wedged Gazebo episode makes run_skeleton.sh hang forever; run_matrix must
     # cap each cell (timeout), record it TIMEOUT, and move on instead of hanging.

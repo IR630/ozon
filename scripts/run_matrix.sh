@@ -52,6 +52,16 @@ if ((START_ITEM > END_ITEM || END_ITEM >= ${#SLUGS[@]})); then
     exit 2
 fi
 
+# The project deliberately keeps two worlds: the rejected pusher baseline and
+# the final diverter.  A missing WORLD used to be silent, so a long validation
+# could accidentally exercise cell.sdf while being labelled as a diverter run.
+if [ -z "${WORLD+x}" ]; then
+    echo "WARNING: WORLD is unset; using pusher baseline sim/worlds/cell.sdf" >&2
+fi
+WORLD=${WORLD:-sim/worlds/cell.sdf}
+export WORLD
+echo "world: $WORLD"
+
 # Only now, past argument validation and only for a real run: an ABORT or a
 # dry-run must not leave an empty log directory behind.
 [ "${MATRIX_DRY_RUN:-0}" = 1 ] || mkdir -p "$LOGDIR"
@@ -112,12 +122,12 @@ for i in $(seq "$START_ITEM" "$END_ITEM"); do
 done
 
 if [ "${MATRIX_DRY_RUN:-0}" = 1 ]; then
-    echo "=== matrix dry-run seed=$SEED N=$N items=$START_ITEM..$END_ITEM: $total cells ==="
+    echo "=== matrix dry-run world=$WORLD seed=$SEED N=$N items=$START_ITEM..$END_ITEM: $total cells ==="
     exit 0
 fi
 
 {
-    echo "=== matrix seed=$SEED N=$N: routing correctness $pass/$total ==="
+    echo "=== matrix world=$WORLD seed=$SEED N=$N: routing correctness $pass/$total ==="
     for i in $(seq "$START_ITEM" "$END_ITEM"); do
         slug=${SLUGS[$i]}
         echo "  $slug -> ${ZONES[$i]}: ${item_pass[$slug]}/${item_total[$slug]}"

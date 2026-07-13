@@ -107,7 +107,7 @@ Headless-запуски Gazebo на программном GL требуют `LI
 bash scripts/run_skeleton.sh box_300x200x200 B
 
 # матрица: все товары × N воспроизводимых ориентаций от заданного seed
-bash scripts/run_matrix.sh 0 3
+WORLD=sim/worlds/cell_diverter.sdf bash scripts/run_matrix.sh 0 3
 
 # запись видео сквозного прогона (камера-«зритель» подсаживается на время записи)
 bash scripts/record_skeleton_video.sh plate D
