@@ -45,17 +45,49 @@ def test_dry_run_selects_only_requested_tail():
     assert "bottle" not in result.stdout
 
 
+def test_the_census_measures_the_final_mechanism_and_says_which():
+    """The census IS the milestone metric, so it must not be silent about what it measured.
+
+    run_skeleton.sh defaults to the ballistic pusher (cell.sdf) — the day-3 baseline that
+    CI drives. The matrix inherited that default, so three full censuses were run without
+    WORLD set, silently measured the ABANDONED mechanism and scored 30-31/33 for it. The
+    pusher's belt carries only 6.4 m of stroke against the diverter's 20 m, so it dies
+    mid-episode and B items simply stop on the belt — which the old x>=3.5 band scored as
+    "rode past the mechanisms". Pin both halves: the diverter is the default, and the
+    world is named in the summary line a report would quote.
+    """
+    bash, env = _bash_env()
+    env.pop("WORLD", None)
+    result = subprocess.run(
+        [bash, str(SCRIPT), "0", "1", "0", "0"],
+        cwd=ROOT, env=env, capture_output=True, text=True, check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "world: sim/worlds/cell_diverter.sdf" in result.stdout
+    assert "world=sim/worlds/cell_diverter.sdf" in result.stdout
+
+
+def test_the_baseline_mechanism_can_still_be_measured_on_purpose():
+    """compare_mechanisms.sh measures the pusher deliberately — an explicit WORLD wins."""
+    bash, env = _bash_env()
+    env["WORLD"] = "sim/worlds/cell.sdf"
+    result = subprocess.run(
+        [bash, str(SCRIPT), "0", "1", "0", "0"],
+        cwd=ROOT, env=env, capture_output=True, text=True, check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "world: sim/worlds/cell.sdf" in result.stdout
+
+
 def test_dry_run_reports_the_selected_world():
+    """An explicitly selected world is echoed too (IMaSKoT, 6692688)."""
     bash, env = _bash_env()
     env["WORLD"] = "sim/worlds/cell_diverter.sdf"
-
     result = subprocess.run(
-        [bash, str(SCRIPT), "0", "1", "6", "6"],
-        cwd=ROOT,
-        env=env,
-        capture_output=True,
-        text=True,
-        check=False,
+        [bash, str(SCRIPT), "0", "1", "0", "0"],
+        cwd=ROOT, env=env, capture_output=True, text=True, check=False,
     )
 
     assert result.returncode == 0, result.stderr

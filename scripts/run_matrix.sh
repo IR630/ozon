@@ -34,6 +34,17 @@ LOGDIR=${LOGDIR:-runs/matrix_$(date +%Y%m%d_%H%M%S)_seed${SEED}}
 # so tests can inject a stub, exactly like the PYTHON seam above.
 CELL_TIMEOUT=${CELL_TIMEOUT:-180}
 SKELETON=${SKELETON:-bash scripts/run_skeleton.sh}
+# THE MECHANISM THE CENSUS MEASURES. run_skeleton.sh defaults to the ballistic pusher
+# (cell.sdf) because that is the day-3 baseline and what CI's e2e drives — but the census
+# is the milestone metric, and the milestone's mechanism is the DIVERTER. Leaving it
+# implicit cost a full day: three censuses were run without WORLD set, silently landed on
+# the pusher, and produced 30-31/33 for the abandoned mechanism. The pusher's belt has
+# only 6.4 m of stroke against the diverter's 20 m (the day-10 fix was applied to the
+# diverter world alone), so it runs out mid-episode and B items simply STOP on the belt
+# around x=3.4-4.9 — which the old x>=3.5 band happily scored as "rode to the end".
+# Name the world here, and print it, so a census can never again be silent about what it
+# measured. Override explicitly (compare_mechanisms.sh does) to measure the baseline.
+export WORLD=${WORLD:-sim/worlds/cell_diverter.sdf}
 SLUGS=(bottle box_300x200x200 box_400x400x300 lunchbox bag detergent pouf pen plate cylinder helmet)
 ZONES=(D      B               C               B        B   B         C    C   D     B        B)
 START_ITEM=${3:-0}
@@ -52,14 +63,10 @@ if ((START_ITEM > END_ITEM || END_ITEM >= ${#SLUGS[@]})); then
     exit 2
 fi
 
-# The project deliberately keeps two worlds: the rejected pusher baseline and
-# the final diverter.  A missing WORLD used to be silent, so a long validation
-# could accidentally exercise cell.sdf while being labelled as a diverter run.
-if [ -z "${WORLD+x}" ]; then
-    echo "WARNING: WORLD is unset; using pusher baseline sim/worlds/cell.sdf" >&2
-fi
-WORLD=${WORLD:-sim/worlds/cell.sdf}
-export WORLD
+# State the mechanism up front, in the log a report would read (IMaSKoT hit the same
+# trap independently and added this line; the default above is the other half of it —
+# a WARNING on stderr is easy to miss in a 35-minute census log, so the SAFE default
+# matters more than the notice).
 echo "world: $WORLD"
 
 # Only now, past argument validation and only for a real run: an ABORT or a
