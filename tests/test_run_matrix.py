@@ -124,6 +124,35 @@ def test_cell_timeout_bounds_a_wedged_episode(tmp_path):
     assert result.returncode != 0  # a timed-out cell is not a pass
 
 
+def test_targeted_replay_can_keep_a_pose_trace_per_cell(tmp_path):
+    """A rare physics failure must leave its trajectory behind for triage."""
+    bash, env = _bash_env()
+    env.pop("MATRIX_DRY_RUN", None)
+    env["LOGDIR"] = tmp_path.as_posix()
+    env["SAVE_DYNAMICS"] = "1"
+    stub = tmp_path / "trace.sh"
+    stub.write_text(
+        '#!/usr/bin/env bash\nprintf "capture=%s\\n" "$CAPTURE_DYNAMICS" '
+        '> "$DYNAMICS_TRACE"\n',
+        encoding="utf-8",
+    )
+    env["SKELETON"] = f"bash {stub.as_posix()}"
+
+    result = subprocess.run(
+        [bash, str(SCRIPT), "0", "1", "10", "10"],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    trace = tmp_path / "dynamic_pose_helmet_0.log"
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert trace.read_text(encoding="utf-8") == "capture=1\n"
+    assert not list(tmp_path.glob("matrix_*_dynamic_pose.log"))
+
+
 def test_dry_run_rejects_invalid_item_range():
     bash, env = _bash_env()
     result = subprocess.run(

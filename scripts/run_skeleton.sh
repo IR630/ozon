@@ -94,6 +94,10 @@ case "$WORLD" in *diverter*)
 # and print a peak speed/accel/impulse line. Off by default so the matrix and the
 # pusher baseline are not slowed; compare_mechanisms.sh turns it on.
 CAPTURE_DYNAMICS=${CAPTURE_DYNAMICS:-0}
+# The matrix can point each cell at its own durable file. Keeping this configurable
+# matters for rare physics failures: /tmp/dyn_trace.log is overwritten by the next
+# episode, so the one failing trajectory used to disappear before it could be triaged.
+DYNAMICS_TRACE=${DYNAMICS_TRACE:-/tmp/dyn_trace.log}
 # Spawn orientation quaternion (identity by default); run_matrix.sh sets these.
 OX=${ORIENT_X:-0}
 OY=${ORIENT_Y:-0}
@@ -127,7 +131,7 @@ sleep 2
 
 # record the item's dynamic pose for the whole episode (gentleness metric)
 if [ "$CAPTURE_DYNAMICS" = 1 ]; then
-    ign topic -e -t /world/cell/dynamic_pose/info > /tmp/dyn_trace.log 2>&1 &
+    ign topic -e -t /world/cell/dynamic_pose/info > "$DYNAMICS_TRACE" 2>&1 &
     DYN_PID=$!
 fi
 
@@ -206,7 +210,7 @@ if [ -n "$DYN_PID" ]; then
     kill "$DYN_PID" 2>/dev/null || true
     MASS=$(grep -m1 '<mass>' "$ITEM_MODEL_ROOT/$SLUG/model.sdf" \
            | sed -E 's/.*<mass>([0-9.]+)<.*/\1/')
-    python3 scripts/capture_dynamics.py /tmp/dyn_trace.log --mass "${MASS:-1.0}" || true
+    python3 scripts/capture_dynamics.py "$DYNAMICS_TRACE" --mass "${MASS:-1.0}" || true
 fi
 
 [ "$VERDICT" = PASS ]
