@@ -146,6 +146,11 @@ item_pose() {  # x y z, with retries against ign CLI flakes
     echo "${out:-nan nan nan}"
 }
 
+item_rpy() {  # roll pitch yaw — the SECOND line of the same pose block
+    ign model -m item --pose 2>/dev/null | grep -A2 "XYZ" | tail -1 \
+        | tr -d "[]" | awk '{print $1, $2, $3}'
+}
+
 # verdict polling is WALL-clock; under render load (record_skeleton_video.sh)
 # RTF drops ~10x, so the recorder widens the window via this env override
 POLL_ITERS=${RUN_SKELETON_POLL_ITERS:-60}
@@ -165,6 +170,16 @@ CYCLE=$(python3 -c "print(f'{$T1 - $T0:.1f}')")
 
 read X Y Z <<< "$(item_pose)"
 echo "$SLUG -> $EXPECT: $VERDICT (pose x=$X y=$Y z=$Z, cycle ${CYCLE}s from launch)"
+# The pose above is the model ORIGIN — the default pose's BOTTOM (build_item_models.
+# set_belt_origin), not the goods. Gazebo rotates about it, so for a bulky item at a
+# turned angle the origin sits up to 34 cm from the body (measured: pouf oi=1 268 mm,
+# pouf oi=2 342 mm). x/y/z alone therefore CANNOT tell "lying in the cage" from "hung
+# up on the chute" — the resting ORIENTATION closes that gap, and no run had ever
+# recorded it. Print both: the raw block (ground truth) and the body it implies.
+read RR PP YY <<< "$(item_rpy)"
+echo "  resting rpy: r=$RR p=$PP y=$YY"
+python3 scripts/body_pose.py "$SLUG" "$X" "$Y" "$Z" "$RR" "$PP" "$YY" 2>/dev/null \
+    | sed 's/^/  /' || true
 grep -E "item [0-9]+:" /tmp/skeleton_e2e.log | tail -3 || true
 
 if [ -n "$DYN_PID" ]; then
