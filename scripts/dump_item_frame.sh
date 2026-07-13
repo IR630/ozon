@@ -17,6 +17,11 @@ set -e
 SLUG=${1:?usage: dump_item_frame.sh <slug> [outdir]}
 OUT=${2:-/tmp/frames_$SLUG}
 OX=${ORIENT_X:-0}; OY=${ORIENT_Y:-0}; OZ=${ORIENT_Z:-0}; OW=${ORIENT_W:-1}
+# Spawn height/offset seam, mirroring run_skeleton.sh: a seeded pose must rest at
+# its pose-dependent height (spawn_orientations.spawn_pose_for_mesh_m), else a
+# fixed z=0.5 buries turned/tall items (helmet 0.66, plate 0.60) inside the belt
+# and the solver ejects them — the dumped frame would then not be the census pose.
+SPAWN_Z=${SPAWN_Z:-0.5}; SPAWN_Y=${SPAWN_Y:-0}
 
 pkill -f "ign gazebo" 2>/dev/null || true
 pkill -f parameter_bridge 2>/dev/null || true
@@ -30,7 +35,7 @@ sleep 10
 # never commanded, so the item stays in the camera window
 ign service -s /world/cell/create --reqtype ignition.msgs.EntityFactory \
     --reptype ignition.msgs.Boolean --timeout 5000 \
-    --req "sdf_filename: \"$PWD/sim/models/items/$SLUG/model.sdf\", name: \"item\", pose: {position: {x: 1.5, y: 0, z: 0.5}, orientation: {x: $OX, y: $OY, z: $OZ, w: $OW}}" > /dev/null
+    --req "sdf_filename: \"$PWD/sim/models/items/$SLUG/model.sdf\", name: \"item\", pose: {position: {x: 1.5, y: $SPAWN_Y, z: $SPAWN_Z}, orientation: {x: $OX, y: $OY, z: $OZ, w: $OW}}" > /dev/null
 sleep 5
 
 ros2 run ros_gz_bridge parameter_bridge --ros-args \

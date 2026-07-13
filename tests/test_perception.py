@@ -19,6 +19,7 @@ DEPTH_PNG = IMG_DIR / "day1_camera_depth.png"
 OFFSET_PNG = IMG_DIR / "day2_offset_x1.8_y0.1_depth.png"
 BOTTLE_PNG = IMG_DIR / "day4_bottle_depth.png"
 BAG_PNG = IMG_DIR / "day4_bag_depth.png"
+BAG_OI1_PNG = IMG_DIR / "day11_bag_oi1_depth.png"
 PLATE_PNG = IMG_DIR / "day4_plate_depth.png"
 PEN_PNG = IMG_DIR / "day4_pen_depth.png"
 
@@ -360,6 +361,31 @@ def test_measure_real_bag_frame_is_not_round():
     for measured, truth in zip(m.dims_mm, [196.0, 173.0, 166.0]):
         assert abs(measured - truth) <= 20.0, f"{m.dims_mm} vs [196, 173, 166]"
     assert m.k <= 0.8, f"thick round lump must NOT read round (-> B): K={m.k}"
+
+
+def test_measure_real_bag_oi1_frame_is_not_round():
+    # Real belt-ride frame of Мешок in the seeded oi=1 pose (seed 0, item 4,
+    # orient 1) — the one confirmed misroute of census #3: perception measured
+    # 214x174x169 mm K=1.00 -> D against reference B. Root cause (Karpathy #1, real
+    # frames, docs/decisions.md 2026-07-13): NOT the silhouette (K=0.74, below 0.8)
+    # but the vertical cross-section — the blob's top ridge fits a belt-tangent
+    # circle (tau=2.05, rms/R=0.015) almost as tightly as a real lying Бутылка
+    # (rms/R=0.009). The elongation gate keys on the one physical difference: a
+    # lying body of revolution is elongated (bottle 296/90 ~3.3), the bag is a
+    # near-cuboidal lump (214/168 ~1.27) with no hidden long axis. K must drop
+    # below 0.8 so the item routes to B.
+    pytest.importorskip("cv2")
+    from src.classification import classify_conservative
+    from src.perception import load_depth_png
+
+    m = measure_item(load_depth_png(BAG_OI1_PNG))
+    assert m is not None
+    for measured, truth in zip(m.dims_mm, [214.0, 174.0, 169.0]):
+        assert abs(measured - truth) <= 20.0, f"{m.dims_mm} vs [214, 174, 169]"
+    assert m.k <= 0.8, f"near-cuboidal bag lump must NOT read round (-> B): K={m.k}"
+    assert classify_conservative(m.dims_mm, m.k) == "B", (
+        f"bag oi=1 must route to B, not D: {m.dims_mm}, K={m.k}"
+    )
 
 
 def test_measure_real_plate_frame_stays_round():

@@ -73,6 +73,20 @@ SECTION_TAU_HI = 2.6      # below = shallow arc, above = dome cap floating high
 SECTION_TAU_RAMP = 0.15   # trapezoid edge width -> full-strength plateau ~[2.0, 2.45]
 SECTION_RMS_HI = 0.05     # rms/R above this is not a circle (rounded square / soft blob)
 SECTION_RMS_SPAN = 0.03   # saturates to "circle" at rms/R <= HI - SPAN (0.02)
+# Elongation gate on the cross-section->D route (day 11, P3). The section route
+# recovers the hidden end-circle of a body of revolution LYING on its side, which
+# is by definition elongated: its footprint long side (the body) far exceeds its
+# short side (the circle diameter) — Бутылка measures 296x90 px-equiv, long/short
+# ~3.3. A soft Мешок slumped into a near-cuboidal footprint (long/short ~1.2) has
+# no such hidden long axis, yet in the seeded oi=1 belt-ride pose its top ridge
+# fits a belt-tangent circle almost as tightly as the bottle (rms/R 0.015 vs
+# 0.009, tau ~2.05) and the section route false-positived it to D (bag oi=1 K=1.0,
+# census #3 misroute). Require the footprint to be elongated for the section
+# circle to count. The bottle clears this with 1.6x margin in every pose; a blob
+# never does; the tie-rod Цилиндр (also elongated) is still rejected by the rms
+# gate, so this only removes a false D, never adds one — no B item can regress.
+# Threshold ~ geometric mean of bag 1.27 and bottle 3.29 (real frames, decisions.md).
+SECTION_MIN_ELONGATION = 2.0
 
 # Flatness gate on the silhouette->D route (day 4, P3). A round top-view
 # silhouette means D (round in a section) only for a genuinely FLAT disc
@@ -383,6 +397,14 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK
     if k_silhouette > ROUND_K_THRESHOLD and dz_mm > FLATNESS_MAX * max(dx_mm, dy_mm):
         k_silhouette = 0.0
     k_section = _section_roundness_k(xs, ys, heights_m, long_dir, top_depth_m / fx)
+    # The section circle is only the hidden end of a LYING body of revolution,
+    # which is elongated (long footprint >> short). A near-cuboidal blob (Мешок)
+    # whose ridge merely happens to fit a belt-tangent circle is not one, so drop
+    # the section K unless the footprint is elongated (bag oi=1 K=1.0->B, census #3;
+    # bottle 3.3x clears it, Цилиндр stays B on the rms gate). Ratio is scale-free,
+    # so the raw px extents suffice (no depth term).
+    if long_px < SECTION_MIN_ELONGATION * short_px:
+        k_section = 0.0
 
     return Measurement(
         dims_mm=dims,

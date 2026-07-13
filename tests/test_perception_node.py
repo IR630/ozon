@@ -105,6 +105,31 @@ def test_empty_belt_publishes_nothing():
         rclpy.shutdown()
 
 
+def test_dump_dir_writes_only_measured_frames(tmp_path, monkeypatch):
+    # Opt-in PERCEPTION_DUMP_DIR freezes the exact frames the node measures (day 11
+    # validation set). A frame with an item writes one PNG; an empty belt writes
+    # none (the `and measurements` guard), so the set never fills with belt frames.
+    pytest.importorskip("cv2")
+    monkeypatch.setenv("PERCEPTION_DUMP_DIR", str(tmp_path))
+    rclpy.init()
+    try:
+        node = PerceptionNode()
+        node.on_depth(_depth_image_msg())
+        assert len(list(tmp_path.glob("depth_*.png"))) == 1
+
+        empty = Image()
+        empty.height, empty.width = 480, 640
+        empty.encoding = "32FC1"
+        empty.step = 640 * 4
+        empty.data = np.full((480, 640), BELT_DEPTH_M, dtype=np.float32).tobytes()
+        node.on_depth(empty)
+        assert len(list(tmp_path.glob("depth_*.png"))) == 1  # empty belt adds nothing
+
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
 def test_two_disconnected_items_get_distinct_ids():
     rclpy.init()
     try:

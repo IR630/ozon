@@ -14,6 +14,8 @@ tracker keeps item_id stable across frames and short detection gaps.
 Runs inside the ROS 2 environment (needs rclpy and the built ros_msgs overlay):
     python3 -m src.perception_node
 """
+import os
+
 import numpy as np
 import rclpy
 from rclpy.node import Node
@@ -33,6 +35,11 @@ class PerceptionNode(Node):
         self.cx = None  # principal point from CameraInfo; None -> image center
         self.cy = None
         self.tracker = ItemTracker()
+        # Opt-in: freeze the exact depth frames this node measures, to build the
+        # day-11 validation set from real Gazebo frames (Karpathy #1). Off unless
+        # PERCEPTION_DUMP_DIR is set, so production runs are untouched.
+        self._dump_dir = os.environ.get("PERCEPTION_DUMP_DIR")
+        self._dump_n = 0
         self.pub = self.create_publisher(ItemMeasurement, "/item/measurement", 10)
         self.create_subscription(Image, "/camera/depth_image", self.on_depth, 10)
         self.create_subscription(CameraInfo, "/camera/camera_info", self.on_info, 10)
@@ -53,7 +60,10 @@ class PerceptionNode(Node):
         kwargs = {}
         if self.fx is not None:
             kwargs = {"fx": self.fx, "fy": self.fy, "cx": self.cx, "cy": self.cy}
-        measurements = measure_items(depth.astype(np.float64), **kwargs)
+        depth64 = depth.astype(np.float64)
+        measurements = measure_items(depth64, **kwargs)
+        if self._dump_dir and measurements:
+            self._dump_frame(depth64, measurements)
         item_ids = self.tracker.update([measurement.position_m for measurement in measurements])
         for item_id, measurement in zip(item_ids, measurements):
             out = ItemMeasurement()
@@ -70,6 +80,21 @@ class PerceptionNode(Node):
                 f"{out.dims_mm[2]:.0f} mm K={out.k:.2f} at "
                 f"({out.position.x:.2f}, {out.position.y:.2f})"
             )
+
+
+    def _dump_frame(self, depth64, measurements):
+        """Save one measured depth frame as a uint16-mm PNG (load_depth_png format),
+        tagged with the frame index and the K of its largest item for easy picking."""
+        import os as _os
+
+        import cv2
+
+        _os.makedirs(self._dump_dir, exist_ok=True)
+        k = max(measurements, key=lambda m: m.dims_mm[0] * m.dims_mm[1]).k
+        mm = (np.nan_to_num(depth64) * 1000.0).clip(0, 65535).astype(np.uint16)
+        path = _os.path.join(self._dump_dir, f"depth_{self._dump_n:03d}_k{k:.2f}.png")
+        cv2.imwrite(path, mm)
+        self._dump_n += 1
 
 
 def main():
