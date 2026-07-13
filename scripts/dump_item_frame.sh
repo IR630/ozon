@@ -56,7 +56,14 @@ sleep 5
 
 python3 scripts/dump_camera.py --out "$OUT" --frames "$FRAMES"
 
+# The RESTING pose the frame actually shows — not the spawn pose it was asked for.
+# The item settles under gravity before the shot (a plate spawned on edge lies flat by
+# the time the camera sees it), so a frame without its pose cannot be compared against
+# anything rendered: it is a picture of an unknown orientation. Saving it is what makes
+# the frame usable as ground truth (scripts/render_depth.py --validate).
+ign model -m item --pose 2>/dev/null | tee "$OUT/pose.txt"
+
 kill "$BR" 2>/dev/null || true
 pkill -f parameter_bridge 2>/dev/null || true
 pkill -f "ign gazebo" 2>/dev/null || true
-echo "frames in $OUT"
+echo "frames in $OUT (resting pose in $OUT/pose.txt)"
