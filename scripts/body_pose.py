@@ -81,9 +81,30 @@ def _load(slug):
     return trimesh.load(str(STL_DIR / f"{stem}.stl"), force="mesh")
 
 
+def dump_hull(slug, path):
+    """Write the item's convex hull (mm, about the model origin) as plain 'x y z' lines.
+
+    The episode verdict polls up to 60 times, and importing trimesh costs 1.33 s each
+    time (numpy alone costs 0.51 s) — enough to push a cell past its 180 s timeout. So
+    the mesh is reduced to its hull ONCE per episode here, and scripts/zone_verdict.py
+    then rotates those few hundred points with the standard library. The hull is exactly
+    enough: the extreme point in any direction lies on it, so it carries the whole
+    bounding box the verdict measures.
+    """
+    mesh = _load(slug)
+    set_belt_origin(mesh)
+    with open(path, "w", encoding="utf-8") as f:
+        for px, py, pz in mesh.convex_hull.vertices:
+            f.write(f"{px:.3f} {py:.3f} {pz:.3f}\n")
+
+
 def main():
+    if len(sys.argv) == 4 and sys.argv[1] == "--dump-hull":
+        dump_hull(sys.argv[2], sys.argv[3])
+        return
     if len(sys.argv) != 8:
-        sys.exit("usage: body_pose.py <slug> <x> <y> <z> <roll> <pitch> <yaw>")
+        sys.exit("usage: body_pose.py <slug> <x> <y> <z> <roll> <pitch> <yaw>\n"
+                 "       body_pose.py --dump-hull <slug> <path>")
     slug = sys.argv[1]
     try:
         x, y, z, roll, pitch, yaw = (float(v) for v in sys.argv[2:8])

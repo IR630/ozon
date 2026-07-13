@@ -151,6 +151,17 @@ item_pose() {  # x y z roll pitch yaw, with retries against ign CLI flakes
     echo "${out:-nan nan nan nan nan nan}"
 }
 
+# Reduce the item to its convex hull ONCE, here — not inside the poll loop. The verdict
+# scores the item's BODY, which means rotating its mesh by the resting orientation; doing
+# that with trimesh costs 1.33 s per call (numpy alone: 0.51 s) and the loop below runs up
+# to 60 times, so the first body-scored census spent ~86 s extra per episode and reported
+# the cells that overran the 180 s timeout as `physics_wedge` — the ruler's own weight,
+# not physics. With the hull dumped, each poll is a few hundred rotations in plain Python.
+# No hull (clean checkout, no STLs) => the verdict falls back to the reported pose, which
+# is exact in the default pose that CI spawns.
+HULL=/tmp/item_hull_$SLUG.txt
+python3 scripts/body_pose.py --dump-hull "$SLUG" "$HULL" 2>/dev/null || HULL=/dev/null
+
 # verdict polling is WALL-clock; under render load (record_skeleton_video.sh)
 # RTF drops ~10x, so the recorder widens the window via this env override
 POLL_ITERS=${RUN_SKELETON_POLL_ITERS:-60}
@@ -158,7 +169,7 @@ POLL_ITERS=${RUN_SKELETON_POLL_ITERS:-60}
 VERDICT=FAIL
 for _ in $(seq 1 "$POLL_ITERS"); do
     read X Y Z RR PP YY <<< "$(item_pose)"
-    OK=$(python3 scripts/zone_verdict.py "$EXPECT" "$X" "$Y" "$Z" "$SLUG" "$RR" "$PP" "$YY" 2>/dev/null)
+    OK=$(python3 scripts/zone_verdict.py "$EXPECT" "$X" "$Y" "$Z" "$HULL" "$RR" "$PP" "$YY" 2>/dev/null)
     if [ "$OK" = YES ]; then
         VERDICT=PASS
         break

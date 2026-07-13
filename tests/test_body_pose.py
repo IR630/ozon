@@ -47,6 +47,42 @@ def test_body_pose_lifts_the_reported_origin_onto_the_goods():
     assert cz == pytest.approx(0.1, abs=1e-6)
 
 
+def test_the_hull_path_agrees_with_the_mesh_path_on_a_real_item(tmp_path):
+    """The poll loop scores the body off a precomputed convex HULL, not the mesh.
+
+    That is a performance fix with a correctness obligation: importing trimesh costs
+    1.33 s per call and the loop runs 60 times, which by itself pushed cells past their
+    180 s timeout and faked `physics_wedge` failures. The hull must therefore answer
+    EXACTLY what the mesh would — the extreme point in any direction lies on the convex
+    hull, so it carries the whole bounding box — and this pins that on a real item in a
+    turned pose, where the two could silently drift apart.
+    """
+    pytest.importorskip("trimesh")
+    import trimesh
+
+    from body_pose import dump_hull
+    from build_item_models import ITEMS, STL_DIR
+    from zone_verdict import body_from_hull, read_hull_m
+
+    stem, _ = ITEMS["pouf"]
+    if not (STL_DIR / f"{stem}.stl").exists():
+        pytest.skip("organizer STL artifacts are not present")
+
+    roll, pitch, yaw = 1.82, -0.44, -2.16   # the pouf's real resting pose in Gazebo
+    origin = (3.67, 0.58, 0.288)
+
+    quat = quat_from_rpy(roll, pitch, yaw)
+    mesh = trimesh.load(str(STL_DIR / f"{stem}.stl"), force="mesh")
+    (mcx, mcy, _), m_low = body_pose_m(mesh, quat, origin)
+
+    hull_file = tmp_path / "hull.txt"
+    dump_hull("pouf", str(hull_file))
+    hcx, hcy, h_low = body_from_hull(read_hull_m(str(hull_file)), roll, pitch, yaw, origin)
+
+    assert (hcx, hcy, h_low) == pytest.approx((mcx, mcy, m_low), abs=1e-6)
+    assert h_low == pytest.approx(0.011, abs=0.005)  # resting on the cage floor
+
+
 @pytest.mark.parametrize(("slug", "item_index", "orient_index", "expected_m"),
                          [("pouf", 6, 1, 0.268),     # the 'chute-stick' cell
                           ("pouf", 6, 2, 0.342),

@@ -144,6 +144,16 @@ item_pose() {  # name -> "x y z roll pitch yaw"; an unfed item simply has no pos
         | tr -d "[]" | awk '{printf "%s %s %s ", $1, $2, $3}'
 }
 
+# One convex hull per item, dumped ONCE: the verdict scores the body, and doing that with
+# trimesh inside the poll loop costs 1.33 s a call (see run_skeleton.sh). A stream polls
+# every item on every lap, so the cost would be multiplied by the number of items.
+declare -A HULL
+for i in "${!SLUGS[@]}"; do
+    HULL[$i]=/tmp/item_hull_${SLUGS[$i]}.txt
+    "$PYTHON" scripts/body_pose.py --dump-hull "${SLUGS[$i]}" "${HULL[$i]}" 2>/dev/null \
+        || HULL[$i]=/dev/null
+done
+
 declare -A ARRIVED_AT
 declare -A LAST_POSE
 LANDED=0
@@ -156,7 +166,7 @@ for _ in $(seq 1 "$POLL_ITERS"); do
         read -r X Y Z RR PP YY <<< "$POSE"
         LAST_POSE[$NAME]="x=$X y=$Y z=$Z"
         if [ "$("$PYTHON" scripts/zone_verdict.py "${ZONES[$i]}" "$X" "$Y" "$Z" \
-                "${SLUGS[$i]}" "$RR" "$PP" "$YY" 2>/dev/null)" = YES ]; then
+                "${HULL[$i]}" "$RR" "$PP" "$YY" 2>/dev/null)" = YES ]; then
             NOW=$(date +%s.%N)
             ARRIVED_AT[$NAME]=$("$PYTHON" -c "print(f'{$NOW - $T0:.1f}')")
             LANDED=$((LANDED + 1))

@@ -62,6 +62,7 @@ Usage:
        orientation it measures the item's real centre and lowest point off its mesh.
        Without a usable mesh it falls back to the reported pose and says so on stderr.
 """
+import math
 import sys
 
 # The body rests ON the cage floor (z=0). Generous enough for solver settling, far
@@ -113,21 +114,60 @@ def in_zone_legacy(zone, x, y, z):
     raise ValueError(f"zone must be B, C or D, got '{zone}'")
 
 
-def body_from_resting_pose(slug, x, y, z, roll, pitch, yaw):
-    """(centre_x, centre_y, lowest_z) of the goods, or None if the mesh is unavailable.
+def read_hull_m(path):
+    """Convex-hull points (metres, about the model origin) dumped once per episode."""
+    with open(path, encoding="utf-8") as f:
+        return [tuple(float(v) / 1000.0 for v in line.split())  # the dump is in mm
+                for line in f if line.strip()]
 
-    The organizer STLs are gitignored, so a clean checkout (CI) has no mesh to measure.
-    That is safe to fall back from: CI spawns the default pose, where the origin is the
-    contact point already.
+
+def body_from_hull(hull_m, roll, pitch, yaw, origin_xyz):
+    """(centre_x, centre_y, lowest_z) of the goods in world metres — stdlib only.
+
+    THE VERDICT RUNS ON EVERY POLL of a 60-iteration loop, so what it may import is a
+    correctness question, not a style one. Measured in the run environment: `import
+    trimesh` costs 1.33 s and even `import numpy` costs 0.51 s, against 0.035 s for bare
+    Python. The first body-scored census called trimesh per poll and so spent ~86 s extra
+    per episode — enough to push cells past the 180 s per-cell timeout and report them as
+    `physics_wedge`. Those were not physics: they were the ruler's own weight (helmet oi=0
+    and box_400 oi=0/1, all of which had passed in earlier censuses).
+
+    So the mesh is reduced ONCE per episode to its convex hull (body_pose.py --dump-hull)
+    and each poll just rotates a few hundred points in plain Python. The hull is enough:
+    the extreme point in any direction lies on it, so it carries the whole bounding box.
+    Rotation is RPY in the fixed frame (sxyz), matching what `ign model --pose` prints.
+    """
+    cr, sr = math.cos(roll), math.sin(roll)
+    cp, sp = math.cos(pitch), math.sin(pitch)
+    cy, sy = math.cos(yaw), math.sin(yaw)
+    # R = Rz(yaw) @ Ry(pitch) @ Rx(roll)
+    r00, r01, r02 = cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr
+    r10, r11, r12 = sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr
+    r20, r21, r22 = -sp, cp * sr, cp * cr
+
+    ox, oy, oz = origin_xyz
+    lo_x = lo_y = lo_z = float("inf")
+    hi_x = hi_y = float("-inf")
+    for px, py, pz in hull_m:
+        wx = r00 * px + r01 * py + r02 * pz
+        wy = r10 * px + r11 * py + r12 * pz
+        wz = r20 * px + r21 * py + r22 * pz
+        lo_x, hi_x = min(lo_x, wx), max(hi_x, wx)
+        lo_y, hi_y = min(lo_y, wy), max(hi_y, wy)
+        lo_z = min(lo_z, wz)
+    return (ox + (lo_x + hi_x) / 2, oy + (lo_y + hi_y) / 2, oz + lo_z)
+
+
+def body_from_resting_pose(hull_path, x, y, z, roll, pitch, yaw):
+    """(centre_x, centre_y, lowest_z) of the goods, or None if there is no hull to use.
+
+    The organizer STLs are gitignored, so a clean checkout (CI) has no mesh to dump a hull
+    from. That is safe to fall back from: CI spawns the DEFAULT pose, where the model
+    origin already IS the body's contact point.
     """
     try:
-        from body_pose import body_pose_m, quat_from_rpy  # trimesh + the item's STL
-        from body_pose import _load  # noqa: PLC2701  (same module's loader)
-
-        quat = quat_from_rpy(roll, pitch, yaw)
-        (cx, cy, _), lowest_z = body_pose_m(_load(slug), quat, (x, y, z))
-        return (cx, cy, lowest_z)
-    except Exception as exc:  # noqa: BLE001  (no mesh, no trimesh, unknown slug)
+        return body_from_hull(read_hull_m(hull_path), roll, pitch, yaw, (x, y, z))
+    except (OSError, ValueError) as exc:
         print(f"zone_verdict: scoring the reported origin, not the body ({exc})",
               file=sys.stderr)
         return None
@@ -140,7 +180,7 @@ def main():
         argv = argv[1:]
     if len(argv) not in (4, 8):
         sys.exit("usage: zone_verdict.py [--legacy] <B|C|D> <x> <y> <z> "
-                 "[<slug> <roll> <pitch> <yaw>]")
+                 "[<hull file> <roll> <pitch> <yaw>]")
     zone = argv[0]
     try:
         x, y, z = (float(v) for v in argv[1:4])
@@ -154,13 +194,13 @@ def main():
 
     body = None
     if len(argv) == 8:
-        slug = argv[4]
+        hull_path = argv[4]
         try:
             roll, pitch, yaw = (float(v) for v in argv[5:8])
         except ValueError:
             print("no")  # orientation unreadable: the item has no pose to score
             return
-        body = body_from_resting_pose(slug, x, y, z, roll, pitch, yaw)
+        body = body_from_resting_pose(hull_path, x, y, z, roll, pitch, yaw)
 
     print("YES" if in_zone(zone, x, y, z, body) else "no")
 
