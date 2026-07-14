@@ -491,3 +491,27 @@ def test_load_depth_png_from_unicode_path(tmp_path):
     assert depth.shape == (480, 640)
     assert depth.dtype == np.float64
     assert depth[240, 320] == pytest.approx(1.3)
+
+
+def test_tilted_helmet_dims_measure_the_body_not_its_shadow():
+    """A B item resting on a tilted hull facet must not read as oversized.
+
+    The helmet's intrinsic box is 352x298x282 mm (mid margin 22 mm), but on its
+    tilted rest (~2% of its resting weight) the TOP-VIEW footprint projects
+    373x336 — both over the 320 limit — and the guarded belt now carries that
+    pose stably to the camera, so the shadow-box dims divert a B item to C
+    end-to-end (measured; docs/experiments.md 2026-07-14). The depth frame
+    carries the third coordinate: dims must bound the BODY, not its shadow.
+    """
+    pytest.importorskip("cv2")
+    from src.classification import classify_conservative
+    from src.perception import load_depth_png
+
+    frame = (Path(__file__).resolve().parent / "fixtures" / "frames"
+             / "helmet_tilt_depth.png")
+    m = measure_item(load_depth_png(frame))
+
+    assert m is not None
+    assert classify_conservative(m.dims_mm, m.k) == "B", (
+        f"tilted-rest helmet read {sorted(m.dims_mm, reverse=True)} -> "
+        "oversized: the dims describe the item's shadow, not the item")

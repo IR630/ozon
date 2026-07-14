@@ -335,6 +335,103 @@ def _obb_dims_px(hull_vertices):
     return _min_area_rect_dims(hull_vertices)
 
 
+# Body-OBB relief gate: share of the item's height that the visible surface itself
+# spans (robust p95-p05). A flat cloud (a box lid: relief ~0) reveals nothing about
+# the hidden sides, so only the shadow-box dims are honest for it; a cloud with real
+# relief (dome, lying cylinder: relief ~1) exposes the body's form and licenses a
+# tilted bounding box. 0.5 splits the measured populations (boxes/detergent ~0.05
+# vs dome-family >=0.9) with a wide margin on both sides.
+BODY_OBB_MIN_RELIEF = 0.5
+
+
+def _body_obb_dims_mm(xs, ys, depth_col_m, heights_m, fx, fy, cx, cy,
+                      legacy_dims_mm, dz_mm, px_pad_mm):
+    """Dims (mm, desc) of the smallest box around the item's BODY, or None.
+
+    The top-view OBB measures the item's SHADOW: a body resting on a tilted hull
+    facet projects chords longer than any of its true edges — the tilted-rest
+    helmet reads 373x336 mm against an intrinsic 352x298 and crosses the 320 limit,
+    diverting a B item to C (docs/experiments.md 2026-07-14). The depth frame
+    carries the third coordinate, so bound the body instead: backproject the mask
+    to 3D and take the smallest-volume box over hull-facet-aligned orientations
+    (O'Rourke's flush-face initialization — exact for polyhedral rests, a few mm
+    for domes), keeping the belt-aligned shadow box (`legacy_dims_mm`) as the
+    candidate to beat.
+
+    Two corrections keep the tilt honest, both because the camera sees only the
+    upper surface: (1) no candidate may be thinner than the measured height above
+    the belt — a lying cylinder's visible half-shell is only half its diameter
+    deep, but the body reaches the belt; (2) a near-flat cloud (a box lid) hides
+    the sides entirely, so it licenses no tilted box at all (see
+    BODY_OBB_MIN_RELIEF) — without this gate the minimum-volume box of a bare
+    rectangle SLICES the hidden body diagonally and under-reports its long edge.
+    The two in-plane extents carry the same +1 px inclusive-pixel pad as the
+    top-view footprint.
+    """
+    relief = np.percentile(heights_m, 95.0) - np.percentile(heights_m, 5.0)
+    if dz_mm <= 0.0 or relief * 1000.0 < BODY_OBB_MIN_RELIEF * dz_mm:
+        return None
+
+    from scipy.spatial import ConvexHull, QhullError
+
+    pts_mm = np.column_stack([
+        (xs - cx) * depth_col_m / fx,
+        (ys - cy) * depth_col_m / fy,
+        heights_m,
+    ]) * 1000.0
+    # Decimate before the hull: extents of 1500 surface points match the full
+    # cloud's within ~one pixel, and both the hull-vertex count and the candidate
+    # count below scale with it. Deterministic stride, not random (Karpathy #5).
+    if len(pts_mm) > 1500:
+        pts_mm = pts_mm[np.linspace(0, len(pts_mm) - 1, 1500).astype(int)]
+    try:
+        hull3 = ConvexHull(pts_mm)
+    except QhullError:
+        return None  # degenerate cloud (the 9 mm pen): the shadow box is all there is
+    verts = pts_mm[hull3.vertices]
+
+    # Candidate box normals: every hull facet orientation (O'Rourke's flush-face
+    # initialization), quantized to ~3 degrees. The full un-quantized set on an
+    # un-decimated dome is thousands of near-duplicates (2339 on the tilted-helmet
+    # frame -> 7.4 s/frame in a 15 Hz node: the verdict-trimesh cost lesson again);
+    # quantization costs <1 mm of extent while cutting the search to ~30 ms. PCA
+    # axes were tried as a cheap substitute and are NOT one: the dome shell's
+    # principal axes track the BELT, not the body — the winning facet on the
+    # tilted-helmet frame is 70 degrees away from every PCA axis, and the PCA-only
+    # search kept the item oversized.
+    normals = hull3.equations[:, :3]
+    normals = np.unique(np.round(normals / np.linalg.norm(normals, axis=1, keepdims=True)
+                                 / 0.15), axis=0) * 0.15
+    normals = normals / np.linalg.norm(normals, axis=1, keepdims=True)
+    if len(normals) > 200:  # hard bound on the frame budget, whatever the geometry
+        normals = normals[np.linspace(0, len(normals) - 1, 200).astype(int)]
+
+    # In-plane search by brute angle, one matmul for EVERY (candidate, angle) pair:
+    # the per-candidate rotating-calipers loop is pure Python and cost seconds on
+    # a dome's hundreds of candidates. A min-area rectangle's angle is 90-degree
+    # periodic; 2-degree steps cost <0.1% of extent.
+    seeds = np.where(np.abs(normals[:, :1]) < 0.9, [[1.0, 0.0, 0.0]], [[0.0, 1.0, 0.0]])
+    u = np.cross(normals, seeds)
+    u /= np.linalg.norm(u, axis=1, keepdims=True)
+    v = np.cross(normals, u)
+    angles = np.arange(0.0, np.pi / 2, np.radians(3.0))
+    cos_a, sin_a = np.cos(angles)[None, :, None], np.sin(angles)[None, :, None]
+    d1 = (u[:, None, :] * cos_a + v[:, None, :] * sin_a).reshape(-1, 3)
+    d2 = (v[:, None, :] * cos_a - u[:, None, :] * sin_a).reshape(-1, 3)
+    proj = verts @ np.concatenate([d1, d2, normals]).T
+    extents = proj.max(axis=0) - proj.min(axis=0)
+    n_pairs = len(d1)
+    e1 = extents[:n_pairs] + px_pad_mm
+    e2 = extents[n_pairs:2 * n_pairs] + px_pad_mm
+    thick = np.maximum(np.repeat(extents[2 * n_pairs:], len(angles)), dz_mm)
+
+    volumes = e1 * e2 * thick
+    best = int(np.argmin(volumes))
+    if volumes[best] >= float(np.prod(legacy_dims_mm)):
+        return list(legacy_dims_mm)
+    return sorted([float(e1[best]), float(e2[best]), float(thick[best])], reverse=True)
+
+
 def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK_MARGIN_M,
                  camera_x_m=CAMERA_X_M, camera_y_m=CAMERA_Y_M, cx=None, cy=None):
     """Measurement of the single item on the belt, or None (empty / partial view).
@@ -381,11 +478,25 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK
     world_y = camera_y_m - (float(xs.mean()) - cx) * top_depth_m / fx
     world_z = BELT_TOP_Z_M + dz_mm / 1000.0 / 2.0
 
+    heights_m = belt_depth_m - depth_m[mask]
+    k_section = _section_roundness_k(xs, ys, heights_m, long_dir, top_depth_m / fx)
+    # The footprint box above measures the item's SHADOW, which a tilted body
+    # outgrows (the tilted-rest helmet: 373x336 against an intrinsic 352x298 —
+    # a B item reads C); when the visible relief exposes the body's form, bound
+    # the body itself. UNLESS the hidden end-section is a proven circle: a lying
+    # body of revolution is already belt-aligned, its shadow box IS its body box,
+    # and the only thing a smaller box can cut there is the invisible lower
+    # half-section (the day-4 bottle read 69 mm against its true 91 that way).
+    if k_section <= ROUND_K_THRESHOLD:
+        body_dims = _body_obb_dims_mm(xs, ys, depth_m[mask], heights_m, fx, fy,
+                                      cx, cy, dims, dz_mm, top_depth_m / fx * 1000.0)
+        if body_dims is not None:
+            dims = body_dims
+
     # K = max of the top-view silhouette and the vertical cross-section: a body
     # of revolution lying on its side is a rectangle from above (low silhouette
     # K) but a circle in its hidden end section (K=1). max, per the criterion
     # "max r_in/R_circ over sections along the principal axes" (docs/md/models.md).
-    heights_m = belt_depth_m - depth_m[mask]
     k_silhouette = _roundness_k(pts, hull)
     # The top-view silhouette means D only for a FLAT disc. A thick round lump
     # (Мешок slumped on the belt) fills a round hull too (silhouette K=0.88,
@@ -396,7 +507,6 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK
     # docs/decisions.md 2026-07-12 (solidity refuted on the real bag frame).
     if k_silhouette > ROUND_K_THRESHOLD and dz_mm > FLATNESS_MAX * max(dx_mm, dy_mm):
         k_silhouette = 0.0
-    k_section = _section_roundness_k(xs, ys, heights_m, long_dir, top_depth_m / fx)
     # The section circle is only the hidden end of a LYING body of revolution,
     # which is elongated (long footprint >> short). A near-cuboidal blob (Мешок)
     # whose ridge merely happens to fit a belt-tangent circle is not one, so drop
