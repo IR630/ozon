@@ -2,7 +2,8 @@
 
 > Актуальное состояние `main` на 14.07.2026. Источники обоснований —
 > `docs/decisions.md`, метрик — `docs/experiments.md`, устройство механизма —
-> `mechanism.md`. Финальный мир — `sim/worlds/cell_diverter.sdf`; старый
+> `mechanism.md`, размерная компоновка — `layout.md`. Финальный мир —
+> `sim/worlds/cell_diverter.sdf`; старый
 > `cell.sdf` с баллистическими толкателями сохранён только как измеренный baseline.
 
 ## Контур данных и физического воздействия
