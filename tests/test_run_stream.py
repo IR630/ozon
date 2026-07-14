@@ -17,3 +17,13 @@ def test_the_stream_announces_every_feed_to_the_watchdog():
     fed_echo = text.index('echo "fed item$i')
     assert spawn < announce < fed_echo, (
         "the announce must sit in the feeder loop, after the spawn call")
+
+
+def test_the_accepted_feed_plan_is_saved_beside_the_terminal_result():
+    """Offline reliability must not infer feed spacing from zone arrival times."""
+    text = SCRIPT.read_text(encoding="utf-8")
+
+    plan = text.index('> "$LOGDIR/plan.log"')
+    launch = text.index('ros2 launch launch/skeleton.launch.py')
+    result = text.index('| tee "$LOGDIR/stream.log"')
+    assert plan < launch < result

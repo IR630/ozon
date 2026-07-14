@@ -43,9 +43,11 @@ WHAT THE LOGS CAN AND CANNOT TIME (found by reading a real run, not assumed):
 
 CALC vs SIM: scripts/stream_plan.py owns the geometry. A zone change needs
 (HOLD_S + RETRACT_S) * BELT_SPEED_M_S metres of air while the blade holds and
-retracts, so at 1 m/s the takt FLOOR for a zone-changing pair is that many
-seconds; same-zone pairs ride nose to tail (min gap 0 m). We compare the observed
-zone-change takt to the computed floor and report the gap.
+retracts, so at 1 m/s the FEED floor for a zone-changing pair is that many
+seconds; same-zone pairs ride nose to tail (min gap 0 m). The accepted feed plan
+is saved in plan.log and checked against that floor. Arrival takt is deliberately
+NOT compared with the feed floor: C, D and B have different transit/settling paths,
+so two correctly spaced feeds may arrive less (or more) than 3.1 s apart.
 
 Usage:
     python3 scripts/measure_throughput.py runs/stream_A runs/stream_B ...
@@ -83,6 +85,10 @@ ROS_LINE = re.compile(
 RESULT_LINE = re.compile(
     r"^(?P<name>item\d+)\s+(?P<slug>\S+)\s+->\s+(?P<zone>[BCD]):\s+"
     r"(?P<outcome>PASS|FAIL)(?: at t=(?P<t>[\d.]+)s)?"
+)
+PLAN_LINE = re.compile(
+    r"^(?P<index>\d+)\s+(?P<slug>\S+)\s+(?P<zone>[BCD])\s+"
+    r"(?P<spawn_x>-?[\d.]+)\s+(?P<feed_s>[\d.]+)$"
 )
 
 
@@ -128,6 +134,14 @@ class ReliabilitySummary:
     # (slug, expected zone) -> (passed, total). Keeping the expected zone in the
     # key prevents two different routes of the same diagnostic model being mixed.
     by_route: dict[tuple[str, str], tuple[int, int]]
+
+
+@dataclass
+class PlannedItem:
+    index: int
+    slug: str
+    zone: str
+    feed_s: float
 
 
 def parse_skeleton(path: Path) -> dict[int, Stages]:
@@ -181,6 +195,20 @@ def parse_stream(path: Path) -> list[Arrival]:
     return sorted(out, key=lambda a: a.t)
 
 
+def parse_plan(path: Path) -> list[PlannedItem]:
+    """Accepted feed schedule printed by stream_plan.py, in feed order.
+
+    The same lines may live in the new plan.log or an older captured console.log.
+    """
+    items = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        m = PLAN_LINE.match(line.strip())
+        if m:
+            items.append(PlannedItem(
+                int(m["index"]), m["slug"], m["zone"], float(m["feed_s"])))
+    return sorted(items, key=lambda item: item.index)
+
+
 def summarize_reliability(episodes: list[list[StreamResult]]) -> ReliabilitySummary:
     """Aggregate exact routing counts without inventing confidence from a small N."""
     nonempty = [results for results in episodes if results]
@@ -207,7 +235,7 @@ class TaktGap:
     gap_s: float       # observed time between two successive arrivals
     front_zone: str
     back_zone: str
-    expected_s: float  # computed floor for this pair (stream_plan geometry)
+    feed_floor_s: float  # tags a zone change; never compare with arrival gap_s
 
 
 def takt_floor_s(front_zone: str, back_zone: str,
@@ -222,8 +250,8 @@ def takt_gaps(arrivals: list[Arrival]) -> list[TaktGap]:
     """Successive-arrival gaps within one run, each tagged with its computed floor.
 
     The belt is FIFO, so arrival order is feed order: the front item of a pair is the
-    one that landed first. min_gap_between_zones_m gives the metres the back item must
-    trail; at the belt speed that is the takt floor in seconds.
+    one that landed first. feed_floor_s is retained only to split same-route and
+    zone-change arrival statistics. It belongs to the FEED schedule, not arrival time.
     """
     gaps = []
     for front, back in zip(arrivals, arrivals[1:]):
@@ -291,11 +319,26 @@ def main() -> int:
     noair_takts: list[float] = []    # nose to tail, or a B item riding through (floor 0)
     n_runs_timed = 0
     reliability_episodes: list[list[StreamResult]] = []
+    planned_change_gaps: list[float] = []
+    planned_change_margins: list[float] = []
 
     print(f"throughput over {len(runs)} run(s):\n")
     for run in runs:
         skel = run / "skeleton.log"
         strm = run / "stream.log"
+        # plan.log is produced by current run_stream. console.log is a backward-
+        # compatible source for older episodes whose stdout happened to be saved.
+        plan_path = run / "plan.log"
+        if not plan_path.exists() and (run / "console.log").exists():
+            plan_path = run / "console.log"
+        if plan_path.exists():
+            plan = parse_plan(plan_path)
+            for front, back in zip(plan, plan[1:]):
+                floor = takt_floor_s(front.zone, back.zone)
+                if floor > 0:
+                    actual = back.feed_s - front.feed_s
+                    planned_change_gaps.append(actual)
+                    planned_change_margins.append(actual - floor)
         if skel.exists():
             for s in parse_skeleton(skel).values():
                 # Both endpoints logged by the controller -> reliable.
@@ -319,7 +362,7 @@ def main() -> int:
                       f"takt {run_takt:.2f}s ({60.0 / run_takt:.0f}/min)")
             for g in gaps:
                 all_takts.append(g.gap_s)
-                (change_takts if g.expected_s > 0 else noair_takts).append(g.gap_s)
+                (change_takts if g.feed_floor_s > 0 else noair_takts).append(g.gap_s)
         else:
             print(f"  {run.name}: no stream.log (skeleton latencies only)")
 
@@ -351,20 +394,27 @@ def main() -> int:
               f"(p95-slow takt: {thr_p95:.0f} items/min), "
               f"over {n_runs_timed} timed run(s)")
 
-    # Calc vs sim: the geometry's floors against what the stream actually did.
+    # Calc vs accepted input schedule. Arrival takt remains a throughput observation:
+    # destination-specific transit and settling make it incomparable with a feed floor.
     change_floor_m = stream_plan.min_gap_between_zones_m("C", "D")
     change_floor = takt_floor_s("C", "D")
     transit = (stream_plan.TARGET_X_M - stream_plan.FIRST_SPAWN_X_M) / BELT_SPEED_M_S
-    print("\n=== computed floor (stream_plan.py geometry) vs observed ===")
+    print("\n=== computed feed floor (stream_plan.py geometry) vs accepted plan ===")
     print(f"  zone-change MIN FEED gap (anti-cross-fire): {change_floor_m:.2f} m "
           f"/ {BELT_SPEED_M_S:.1f} m/s = {change_floor:.2f}s "
           f"(HOLD {stream_plan.HOLD_S:.1f} + RETRACT {stream_plan.RETRACT_S:.1f})")
+    if planned_change_gaps:
+        min_gap = min(planned_change_gaps)
+        min_margin = min(planned_change_margins)
+        status = "PASS" if min_margin >= -1e-9 else "VIOLATION"
+        print(f"    accepted zone-change FEED gaps: n={len(planned_change_gaps)}, "
+              f"min={min_gap:.2f}s, median={median(planned_change_gaps):.2f}s; "
+              f"minimum margin={min_margin:+.2f}s -> {status}")
+    else:
+        print("    accepted feed gaps: unavailable (no saved plan.log/console.log)")
     if change_takts:
-        obs = median(change_takts)
-        ok = "ok" if obs >= change_floor else "BELOW FLOOR — cross-fire risk"
-        print(f"    observed zone-change ARRIVAL takt: median {obs:.2f}s >= floor ({ok}); "
-              f"the +{obs - change_floor:.2f}s is the D cage sitting downstream of C "
-              f"(differential transit + settle), not a feed constraint")
+        print(f"    observed zone-change ARRIVAL takt: median {median(change_takts):.2f}s "
+              f"(descriptive only; destination transit/settling differs)")
     print("  same-zone takt floor: item length / belt speed (geometry-independent)")
     print(f"  per-item belt transit (spawn x={stream_plan.FIRST_SPAWN_X_M:.1f} -> "
           f"target x={stream_plan.TARGET_X_M:.1f}): {transit:.1f}s at {BELT_SPEED_M_S:.1f} m/s")

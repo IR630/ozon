@@ -37,10 +37,19 @@ item3 helmet -> B: FAIL (no pose)
 routed 3/3
 """
 
+PLAN = """\
+=== stream plan (world=sim/worlds/cell_diverter.sdf seed=0 orient=0) ===
+0 box_400x400x300 C -1.500 0.00
+1 pen C -1.500 1.00
+2 bottle D -1.500 4.50
+3 helmet B -1.500 7.60
+"""
+
 
 def _run(tmp_path):
     (tmp_path / "skeleton.log").write_text(SKELETON, encoding="utf-8")
     (tmp_path / "stream.log").write_text(STREAM, encoding="utf-8")
+    (tmp_path / "plan.log").write_text(PLAN, encoding="utf-8")
     return tmp_path
 
 
@@ -141,10 +150,23 @@ def test_takt_gaps_and_computed_floor(tmp_path):
     gaps = mt.takt_gaps(arr)
     assert [round(g.gap_s, 1) for g in gaps] == [1.3, 5.7]
     # C->C rides nose to tail: no floor. C->D needs the blade's hold+retract air.
-    assert gaps[0].expected_s == 0.0
+    assert gaps[0].feed_floor_s == 0.0
     change_floor = mt.stream_plan.min_gap_between_zones_m("C", "D") / BELT_SPEED_M_S
-    assert gaps[1].expected_s == change_floor
+    assert gaps[1].feed_floor_s == change_floor
     assert change_floor > 0
+
+
+def test_saved_plan_preserves_feed_gaps_separately_from_arrival_takt(tmp_path):
+    plan = mt.parse_plan(_run(tmp_path) / "plan.log")
+    assert [(item.slug, item.zone, item.feed_s) for item in plan] == [
+        ("box_400x400x300", "C", 0.0),
+        ("pen", "C", 1.0),
+        ("bottle", "D", 4.5),
+        ("helmet", "B", 7.6),
+    ]
+    # D->B is fed exactly at the 3.1 s mechanism floor. Its ARRIVAL difference
+    # may be smaller because D and B have different paths; that is not a violation.
+    assert round(plan[3].feed_s - plan[2].feed_s, 6) == mt.takt_floor_s("D", "B")
 
 
 def test_takt_floor_converts_distance_to_time_at_the_selected_belt_speed():

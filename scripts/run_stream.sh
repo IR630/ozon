@@ -70,6 +70,14 @@ echo "$PLAN"
 [ "${STREAM_DRY_RUN:-0}" = 1 ] && exit 0
 
 mkdir -p "$LOGDIR"
+# Keep the INPUT schedule beside the terminal results. Arrival times from different
+# zones are not feed times: C/D cages sit at different x and need different settling
+# paths, so an offline analysis cannot reconstruct the anti-cross-fire margin from
+# stream.log alone. plan.log makes the exact accepted schedule auditable.
+{
+echo "=== stream plan (world=$WORLD seed=$SEED orient=$ORIENT_INDEX) ==="
+echo "$PLAN"
+} > "$LOGDIR/plan.log"
 
 # Resolve every spawn pose BEFORE the episode: spawn_orientations.py loads the
 # STL through trimesh (~1 s), which must not be paid inside the timed feed.
