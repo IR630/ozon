@@ -272,12 +272,14 @@ def main() -> int:
     change_floor = (stream_plan.HOLD_S + stream_plan.RETRACT_S) / BELT_SPEED_M_S
     transit = (stream_plan.TARGET_X_M - stream_plan.FIRST_SPAWN_X_M) / BELT_SPEED_M_S
     print("\n=== computed floor (stream_plan.py geometry) vs observed ===")
-    print(f"  zone-change takt floor: (HOLD {stream_plan.HOLD_S:.1f} + RETRACT "
-          f"{stream_plan.RETRACT_S:.1f}) / {BELT_SPEED_M_S:.1f} m/s = {change_floor:.2f}s")
+    print(f"  zone-change MIN FEED gap (anti-cross-fire): (HOLD {stream_plan.HOLD_S:.1f} "
+          f"+ RETRACT {stream_plan.RETRACT_S:.1f}) / {BELT_SPEED_M_S:.1f} m/s = {change_floor:.2f}s")
     if change_takts:
         obs = median(change_takts)
-        print(f"    observed zone-change takt: median {obs:.2f}s "
-              f"=> {obs - change_floor:+.2f}s over the floor")
+        ok = "ok" if obs >= change_floor else "BELOW FLOOR — cross-fire risk"
+        print(f"    observed zone-change ARRIVAL takt: median {obs:.2f}s >= floor ({ok}); "
+              f"the +{obs - change_floor:.2f}s is the D cage sitting downstream of C "
+              f"(differential transit + settle), not a feed constraint")
     print("  same-zone takt floor: item length / belt speed (geometry-independent)")
     print(f"  per-item belt transit (spawn x={stream_plan.FIRST_SPAWN_X_M:.1f} -> "
           f"target x={stream_plan.TARGET_X_M:.1f}): {transit:.1f}s at {BELT_SPEED_M_S:.1f} m/s")
