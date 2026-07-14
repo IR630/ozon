@@ -27,3 +27,9 @@
    `solidity = 1.0` и для Bag, и для Plate, поэтому признак не различает классы и
    намеренно не подключён. Bag исправлен отдельным elongation-гейтом на реальном
    кадре; подбирать неиспользуемый порог solidity больше не требуется.
+
+6. ✅ **Пограничные CV-срезы Дня 11 закрыты 14.07.** В `validation.md` и
+   `scripts/measure_validation.py` зафиксированы реальные Bag oi1/oi2, Helmet oi2,
+   Plate oi1, Pen и partial-box: visible recall 5/5, category 5/5, partial reject
+   1/1, max `|Δdim|=22.1 мм`. Старые четыре кадра depth-only, что явно оставлено
+   ограничением визуального RGB-аудита, а не входа текущего baseline.

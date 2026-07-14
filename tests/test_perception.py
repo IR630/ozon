@@ -25,6 +25,8 @@ HELMET_OI2_PNG = IMG_DIR / "day11_helmet_oi2_depth.png"
 PLATE_OI1_PNG = IMG_DIR / "day11_plate_oi1_depth.png"
 PLATE_PNG = IMG_DIR / "day4_plate_depth.png"
 PEN_PNG = IMG_DIR / "day4_pen_depth.png"
+VALIDATION_PEN_PNG = IMG_DIR / "validation_pen" / "depth_000.png"
+VALIDATION_PARTIAL_BOX_PNG = IMG_DIR / "validation_partial_box" / "depth_000.png"
 
 
 def _synthetic_box(rows=slice(100, 200), cols=slice(150, 250), top=1.3):
@@ -469,6 +471,28 @@ def test_measure_real_pen_frame_is_seen_and_routed_to_c():
     assert classify_conservative(m.dims_mm, m.k) == "C", (
         f"pen must route to C (min dim near the 10 mm bound): {m.dims_mm}, K={m.k}"
     )
+
+
+def test_frozen_validation_pen_rgbd_capture_is_detected_and_routes_c():
+    """Fresh final-world RGBD capture closes the Pen validation slice."""
+    pytest.importorskip("cv2")
+    from src.classification import classify_conservative
+    from src.perception import load_depth_png
+
+    m = measure_item(load_depth_png(VALIDATION_PEN_PNG))
+    assert m is not None, "the 9 mm pen must survive the depth speck filter"
+    assert max(m.dims_mm) == pytest.approx(148.0, abs=10.0), m.dims_mm
+    assert classify_conservative(m.dims_mm, m.k) == "C", (m.dims_mm, m.k)
+
+
+def test_frozen_real_partial_box_is_rejected_instead_of_measured_as_a_small_item():
+    """A real object clipped by the camera border must not become a fake product."""
+    pytest.importorskip("cv2")
+    from src.perception import load_depth_png
+
+    depth = load_depth_png(VALIDATION_PARTIAL_BOX_PNG)
+    assert measure_item(depth) is None
+    assert measure_items(depth) == []
 
 
 def test_empty_belt_is_not_an_item():
