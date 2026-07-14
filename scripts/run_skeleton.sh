@@ -121,14 +121,6 @@ sleep 4
 ign topic -t /conveyor/cmd_vel -m ignition.msgs.Double -p "data: 0" > /dev/null
 sleep 1
 
-# spawn BEFORE the nodes start: the item rides the controller's soft-start
-# ramp from x=SPAWN_X inside the infeed guide rails and reaches the camera
-# window (x ~0.9) already settled at full belt speed
-ign service -s /world/cell/create --reqtype ignition.msgs.EntityFactory \
-    --reptype ignition.msgs.Boolean --timeout 5000 \
-    --req "sdf_filename: \"$PWD/$ITEM_MODEL_ROOT/$SLUG/model.sdf\", name: \"item\", pose: {position: {x: $SPAWN_X, y: $SPAWN_Y, z: $SPAWN_Z}, orientation: {x: $OX, y: $OY, z: $OZ, w: $OW}}" > /dev/null
-sleep 2
-
 # record the item's dynamic pose for the whole episode (gentleness metric)
 if [ "$CAPTURE_DYNAMICS" = 1 ]; then
     ign topic -e -t /world/cell/dynamic_pose/info > "$DYNAMICS_TRACE" 2>&1 &
@@ -138,6 +130,33 @@ fi
 T0=$(date +%s.%N)
 ros2 launch launch/skeleton.launch.py > /tmp/skeleton_e2e.log 2>&1 &
 LAUNCH=$!
+
+# FEED ONTO A BELT ALREADY AT SPEED — do not start the belt UNDER the goods.
+#
+# This runner used to spawn the item first and then let the controller's soft-start ramp
+# drag it up to 1 m/s. That is not how an infeed works, and it is what made the helmet
+# "unstable": the helmet's convex hull stands on a 62x64 mm crown with its centre of mass
+# 175 mm up, so it tips at 10 degrees, and the belt starting underneath tips it. Measured:
+# with the old order it TUMBLES the whole way down (its own axis swings 0 -> 67 -> 125 deg)
+# and its lateral position random-walks until, in 4 runs out of 19, it walks off the 0.5 m
+# belt — the census's only remaining failure. Fed onto a moving belt instead, the same
+# helmet rides dead centre (y = 0.011 m, three runs, identical) and never tumbles.
+# run_stream.sh has always fed this way, which is why the stream never saw the defect.
+# The item lands one clearance above a belt at 1 m/s, skids ~6 cm (mu=0.8) and is carried:
+# the infeed rails hold it through that, exactly as they hold it in the stream.
+for _ in $(seq 1 60); do
+    grep -q "soft-start done" /tmp/skeleton_e2e.log && break
+    sleep 0.5
+done
+if ! grep -q "soft-start done" /tmp/skeleton_e2e.log; then
+    echo "ABORT: belt never reached full speed — the controller did not come up" >&2
+    exit 1
+fi
+
+ign service -s /world/cell/create --reqtype ignition.msgs.EntityFactory \
+    --reptype ignition.msgs.Boolean --timeout 5000 \
+    --req "sdf_filename: \"$PWD/$ITEM_MODEL_ROOT/$SLUG/model.sdf\", name: \"item\", pose: {position: {x: $SPAWN_X, y: $SPAWN_Y, z: $SPAWN_Z}, orientation: {x: $OX, y: $OY, z: $OZ, w: $OW}}" > /dev/null
+sleep 2
 
 # Position AND orientation, from ONE query: the verdict scores the item's BODY, and
 # the reported pose is only its ORIGIN (the default pose's bottom — Gazebo rotates the
