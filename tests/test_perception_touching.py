@@ -125,6 +125,19 @@ def test_tiny_depth_speck_is_filtered_before_touch_split():
     assert items[0].dims_mm == pytest.approx([208.0, 208.0, 200.0], abs=15.0)
 
 
+def test_partial_item_at_frame_edge_is_ignored_without_crashing():
+    """Regression for the seed-1 stream, on the exact geometry from its log: the
+    first visible row of an entering item (y=479, x=268..374) is a 1-D component
+    far above _MIN_ITEM_PX, so it reaches _split_touching, where a 1-D point
+    cloud is what Qhull rejected. It must come back unsplit and be dropped as a
+    zero-height, frame-edge blob — no crash, no phantom item.
+    """
+    depth = np.full((480, 640), 1.5)
+    depth[479, 268:375] = 1.3
+
+    assert measure_items(depth, belt_depth_m=1.5, fx=500.0, fy=500.0) == []
+
+
 def test_qhull_failure_falls_back_to_one_component(monkeypatch):
     """Touch splitting is optional: a degenerate hull must not kill perception."""
     import scipy.spatial
