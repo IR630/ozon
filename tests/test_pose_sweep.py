@@ -6,8 +6,13 @@ rotations it reported Бутылка at 6/40 and Короб 300 at 16/40 — fai
 that exist only in the sampler: a box balanced on a corner projects a 380 mm silhouette,
 and the simulator tips it onto a face long before the camera sees it. Those numbers would
 have sent the team hunting phantom CV bugs. Graded on STABLE rests, nine of eleven items
-are 100% correct and the two that break are real (the standing bottle was then confirmed
-in Gazebo).
+are 100% correct.
+
+The remaining bias runs the other way and is also measured: a hull facet can be statically
+stable yet never SETTLED into — the bottle's exactly-horizontal rest (the sweep's headline
+"break", K=0.00 -> B) is one Gazebo always tips out of, onto the hull's neck cone (~8.5
+deg), where the section K reads 1.00 -> D (tests/fixtures/frames/bottle_side, census oi=1/2).
+So the sweep over-reports, never under-reports: its misses are leads to verify in Gazebo.
 """
 import numpy as np
 import pytest

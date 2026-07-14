@@ -17,6 +17,14 @@ on edge lies flat), so a failure here is a WORST CASE — "if the item presents 
 not a prediction of census frequency. That is the honest reading, and it is the useful one:
 a rule that survives every presentable pose needs no luck.
 
+MEASURED LIMIT of that reading (2026-07-14): a statically stable hull facet is not always
+a pose Gazebo SETTLES into. The bottle's exactly-horizontal rest — 69% of its area weight,
+and this sweep's headline "break" (K=0.00 -> B) — was never realized in three independent
+Gazebo settles: the hull's neck cone props the bottle ~8.5 deg tilted, where the vertical-
+section K reads 1.00 -> D (real frame frozen as tests/fixtures/frames/bottle_side; census
+oi=1/2 measured the same). A sweep miss is a lead, not a verdict: cross-check it against a
+real settle (scripts/dump_item_frame.sh) before calling it a hole.
+
 Usage:
     python3 scripts/pose_sweep.py [n_poses] [seed]
 """
