@@ -161,6 +161,34 @@
       </link>
     </model>
 
+    <!-- camera-section side guards (day 14): the tilted-rest helmet (~2% of its
+         resting weight) rocks on the MOVING belt and rolls off it at x~2.1 —
+         deterministically, before either blade can matter (two e2e runs with the
+         same final pose to 6 digits; docs/experiments.md 2026-07-14). The infeed
+         guides stop at x=0.7 because a VISIBLE rail inside the camera window
+         (x 0.88..2.12 at rail-top height) is segmented as the item — the same
+         lesson that pushed the parked blades out to x>=2.4. So this section is
+         COLLISION-ONLY: physically real, absent from the rendered depth — the sim
+         analogue of a real cell's transparent polycarbonate guards. The missing
+         <visual> is deliberate; do NOT add one. Cross-section continues the infeed
+         rails (y=+-0.272, top 80 mm over the belt); downstream the belt edges are
+         walled by the PARKED BLADES themselves, from x=2.45 (+Y, diverter_c) and
+         x=2.95 (-Y, diverter_d) — each guard ends 2 cm short of its blade, a
+         splice far smaller than any item. -->
+    <model name="belt_guides_camera">
+      <static>true</static>
+      <link name="link">
+        <collision name="left">
+          <pose>1.565 0.272 0.39 0 0 0</pose>
+          <geometry><box><size>1.73 0.04 0.18</size></box></geometry>
+        </collision>
+        <collision name="right">
+          <pose>1.815 -0.272 0.39 0 0 0</pose>
+          <geometry><box><size>2.23 0.04 0.18</size></box></geometry>
+        </collision>
+      </link>
+    </model>
+
     <!-- RGBD camera above the belt, looking straight down -->
     <model name="camera">
       <static>true</static>

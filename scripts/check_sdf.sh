@@ -4,7 +4,16 @@
 #   bash scripts/check_sdf.sh
 set -u
 fails=0
-ign sdf -k sim/worlds/cell.sdf > /dev/null && echo "OK: sim/worlds/cell.sdf" || { echo "BAD: sim/worlds/cell.sdf"; fails=1; }
+# ALL worlds, not just the day-3 one: the guards/blades live in cell_diverter.sdf,
+# and an unparseable FINAL world would otherwise surface only as a dead census.
+for w in sim/worlds/*.sdf; do
+    if ign sdf -k "$w" > /dev/null; then
+        echo "OK: $w"
+    else
+        echo "BAD: $w"
+        fails=1
+    fi
+done
 for m in sim/models/items/*/model.sdf; do
     if ign sdf -k "$m" > /dev/null; then
         echo "OK: $m"

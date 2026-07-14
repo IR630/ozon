@@ -137,3 +137,78 @@ def test_the_cage_has_an_end_wall_to_stop_a_rolling_item(zone):
     walls = [c.get("name") for c in model.iter("collision")]
 
     assert "end_wall" in walls, f"{zone} has no wall downstream — round goods roll out"
+
+
+def named_collisions(model_name):
+    """collision name -> (pose, box size) for a static multi-collision model."""
+    root = ET.parse(WORLD).getroot()
+    model = root.find(f".//model[@name='{model_name}']")
+    assert model is not None, f"model {model_name} missing from {WORLD.name}"
+    return model, {
+        col.get("name"): ([float(v) for v in col.find("pose").text.split()],
+                          [float(v) for v in col.find("geometry/box/size").text.split()])
+        for col in model.iter("collision")
+    }
+
+
+def parked_blade_wall_start_x(blade):
+    """Where the parked blade begins walling the belt edge (its upstream end)."""
+    root = ET.parse(WORLD).getroot()
+    model = root.find(f".//model[@name='{blade}']")
+    pivot_x = float(model.find("pose").text.split()[0])
+    col = model.find(".//collision")
+    off_x = float(col.find("pose").text.split()[0])
+    size_x = float(col.find("geometry/box/size").text.split()[0])
+    return pivot_x + off_x - size_x / 2
+
+
+def test_camera_guards_have_no_visual_because_the_camera_would_segment_them():
+    """The camera-section guards are collision-only ON PURPOSE — do not "fix" this.
+
+    They exist to catch the tilted-rest helmet, which rolls off the moving belt at
+    x~2.1 (deterministic: two e2e runs, same final pose to 6 digits) — INSIDE the
+    camera window, where any visible geometry is segmented as the item (the day-5
+    lesson that pushed the parked blades out to x>=2.4). Collision without visual is
+    the depth-model analogue of a real cell's transparent polycarbonate guards.
+    """
+    model, guards = named_collisions("belt_guides_camera")
+
+    assert model.find(".//visual") is None, (
+        "belt_guides_camera grew a <visual> — inside the camera window it will be "
+        "segmented as the item and blind perception")
+    # and the guards genuinely overlap the camera window — the reason they must be clear
+    (pose, size) = guards["left"]
+    assert pose[0] - size[0] / 2 < CAMERA_WINDOW_FAR_X
+
+
+@pytest.mark.parametrize(("side", "blade", "sign"),
+                         [("left", "diverter_c", +1), ("right", "diverter_d", -1)])
+def test_camera_guards_splice_infeed_rails_to_the_parked_blade(side, blade, sign):
+    """No un-walled belt edge from the infeed to the diverters.
+
+    The measured failure lived exactly in a gap like this: the infeed rails end at
+    x=0.7, the parked blades wall the edges only from x=2.45/2.95, and the rocking
+    helmet exited through the opening at x~2.1. The guard must start where the infeed
+    rails stop, hand over to its blade with at most a few cm of splice, and sit on
+    the belt edge tightly enough that nothing slips between guard and belt.
+    """
+    _, infeed = named_collisions("belt_guides")
+    _, guards = named_collisions("belt_guides_camera")
+    (ipose, isize) = infeed[side]
+    (gpose, gsize) = guards[side]
+
+    infeed_end = ipose[0] + isize[0] / 2
+    guard_start, guard_end = gpose[0] - gsize[0] / 2, gpose[0] + gsize[0] / 2
+    assert guard_start <= infeed_end + 1e-6, (
+        f"{side} guard starts at x={guard_start:.2f}, leaving a gap after the infeed "
+        f"rails (end x={infeed_end:.2f})")
+
+    wall_x = parked_blade_wall_start_x(blade)
+    assert guard_end < wall_x, f"{side} guard reaches into {blade}'s parked wall"
+    assert wall_x - guard_end <= 0.05, (
+        f"{side} guard ends {1000 * (wall_x - guard_end):.0f} mm short of {blade} — "
+        "an item-sized opening in the wall")
+
+    # same cross-section as the infeed rails: flush with the belt edge, same height
+    assert sign * gpose[1] - gsize[1] / 2 == pytest.approx(BELT_EDGE_Y, abs=0.01)
+    assert (gpose[2], gsize[2]) == (ipose[2], isize[2])
