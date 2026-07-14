@@ -6,32 +6,46 @@ Day 13, week 2 (P1 int): PLAN-WEEK2 criterion 4 asks for takt and items/min as a
 MEDIAN and p95 over >=5 runs — not the single numbers day 10 quoted (1.3 s same
 zone, 6.7 s zone change, 40 items/min, each from one episode).
 
-WHICH CLOCK TIMES WHAT (there are three, so a segment is only ever a difference
-WITHIN one log, never across):
-  skeleton.log  ROS-logger wall-clock stamps on node stdout, per item_id the
-                perception tracker assigned:
-                  camera-first-detect   [perception]: item N: WxHxD mm K=..
-                  classification publish [classifier]: item N: <cat> (k=..)
-                  mechanism command      [controller]: item N: pusher_x FIRED ..
-                => camera->decision and decision->command latencies.
-  stream.log    run_stream.sh's own summary, T0-relative (T0 = full belt speed,
-                so Gazebo boot and the soft-start ramp are excluded by
-                construction), the body-scored verdict arrival per item:
-                  itemK slug -> zone: PASS at t=Xs
-                => the mechanism TAKT (gap between successive arrivals) and the
-                   steady-state items/min.
+WHAT THE LOGS CAN AND CANNOT TIME (found by reading a real run, not assumed):
 
-The two logs are read INDEPENDENTLY: the tracker's item_id ("item 1" in
-skeleton.log) and the spawn index ("item0" in stream.log) are different
-namespaces, so nothing is joined across them — each log answers only the segments
-its own clock can time.
+  Three separate PROCESSES write skeleton.log — [python3-2] perception,
+  [python3-3] classifier, [python3-4] controller — and the "[<stamp>]" is each
+  node's own LOG-EMISSION time. Across processes those stamps carry ~0.2 s of
+  scheduling/buffering jitter: in runs/stream_validate the controller logged its
+  route commit 0.2 s BEFORE perception logged the frame that caused it. So a
+  segment that is genuinely ~one camera frame (~0.05 s), like camera->decision,
+  is BELOW that noise floor and even goes negative — it is not separately
+  measurable from these logs, and pretending otherwise (the first cut did, and a
+  >= guard then silently dropped every item whose stamps happened to invert)
+  is the Karpathy-#6 trap.
+
+  What survives:
+    * MECHANISM TAKT / throughput — from stream.log, written by ONE process (the
+      run_stream.sh poll loop), so its arrival times share a clock with no
+      cross-process jitter. T0-relative (T0 = full belt speed), so Gazebo boot
+      and the soft-start ramp are excluded by construction.
+        itemK slug -> zone: PASS at t=Xs        (body-scored verdict, not origin)
+    * decision -> command — controller route commit to FIRED, BOTH logged by the
+      controller ([python3-4]): same process, same clock, no cross-node jitter.
+        [controller]: item N: D — firing pusher_d in Xs   (first = commit)
+        [controller]: item N: pusher_x FIRED at t=Ys
+    * camera -> command (detect -> FIRED) — spans perception to controller, so it
+      carries the jitter, but it is seconds-scale so 0.2 s is tolerable.
+        [perception]: item N: WxHxD mm K=.. at (..)        (first = detect)
+
+  The classifier publishes an ItemClassification EVERY frame (17x for the pen,
+  confidence 0.20 -> 0.99), so "the ItemClassification publish" is not one moment;
+  its first publish coincides with detection to within the jitter. The controller's
+  route commit is the actionable decision, and that is what "decision" means here.
+
+  skeleton.log's tracker item_id ("item 1") and stream.log's spawn index ("item0")
+  are different namespaces, so the two logs are read INDEPENDENTLY — never joined.
 
 CALC vs SIM: scripts/stream_plan.py owns the geometry. A zone change needs
 (HOLD_S + RETRACT_S) * BELT_SPEED_M_S metres of air while the blade holds and
 retracts, so at 1 m/s the takt FLOOR for a zone-changing pair is that many
-seconds; same-zone pairs ride nose to tail (min gap 0 m), so their floor is the
-item's own length / belt speed, which the geometry does not fix. We compare the
-observed zone-change takt to the computed floor and report the gap.
+seconds; same-zone pairs ride nose to tail (min gap 0 m). We compare the observed
+zone-change takt to the computed floor and report the gap.
 
 Usage:
     python3 scripts/measure_throughput.py runs/stream_A runs/stream_B ...
@@ -58,8 +72,7 @@ from src.constants import BELT_SPEED_M_S  # noqa: E402
 import stream_plan  # noqa: E402  (HOLD_S/RETRACT_S/geometry live here, not duplicated)
 
 # A ROS-logger line: "... [<epoch>.<ns>] [<node>]: item <id>: <rest>". The stamp is
-# system wall-clock (~1.78e9 s), shared by every node on the machine, so stamps
-# from different nodes subtract cleanly.
+# each node's own log-emission wall-clock time (~1.78e9 s).
 ROS_LINE = re.compile(
     r"\[(?P<stamp>\d+\.\d+)\]\s+\[(?P<node>perception|classifier|controller)\]:\s+"
     r"item\s+(?P<id>\d+):\s+(?P<rest>.*)"
@@ -73,19 +86,16 @@ ARRIVAL_LINE = re.compile(
 
 @dataclass
 class Stages:
-    """The stage stamps of ONE tracked item within a single skeleton.log."""
+    """The stage stamps of ONE tracked item within a single skeleton.log.
+
+    Every field is the EARLIEST line of its kind, so detect is first camera sight
+    and commit is the moment the controller first committed a route (the "decision").
+    """
 
     detect: float | None = None       # first [perception] line — camera saw it
-    decide_cls: float | None = None   # first [classifier] line — category published
-    decide_ctrl: float | None = None  # first [controller] decision line — fallback
+    classify: float | None = None     # first [classifier] line — first ItemClassification
+    commit: float | None = None       # first [controller] route line — the decision
     fire: float | None = None         # [controller] pusher_x FIRED — command issued
-
-    @property
-    def decide(self) -> float | None:
-        """The decision moment: the classifier's publish, or the controller's own
-        decision line when the classifier line was truncated (killing the launch on
-        verdict drops late node stdout — see triage_matrix.py CONTROLLER_RE)."""
-        return self.decide_cls if self.decide_cls is not None else self.decide_ctrl
 
 
 @dataclass
@@ -112,15 +122,15 @@ def parse_skeleton(path: Path) -> dict[int, Stages]:
             if s.detect is None or t < s.detect:
                 s.detect = t
         elif node == "classifier":
-            if s.decide_cls is None or t < s.decide_cls:
-                s.decide_cls = t
+            if s.classify is None or t < s.classify:
+                s.classify = t
         elif node == "controller":
             if "FIRED" in rest:
                 if s.fire is None or t < s.fire:
                     s.fire = t
-            elif rest[:1] in ("B", "C", "D"):  # "D — firing.." / "B — rides.."
-                if s.decide_ctrl is None or t < s.decide_ctrl:
-                    s.decide_ctrl = t
+            elif rest[:1] in ("B", "C", "D"):  # "D — firing.." / "B — rides.." = route commit
+                if s.commit is None or t < s.commit:
+                    s.commit = t
     return items
 
 
@@ -172,8 +182,8 @@ def percentile(xs: list[float], p: float) -> float | None:
 
 def _row(label: str, xs: list[float]) -> str:
     if not xs:
-        return f"  {label:<26s} n=0    (no data)"
-    return (f"  {label:<26s} n={len(xs):<3d} "
+        return f"  {label:<30s} n=0    (no data)"
+    return (f"  {label:<30s} n={len(xs):<3d} "
             f"median={median(xs):7.3f}s  p95={percentile(xs, 95):7.3f}s")
 
 
@@ -203,8 +213,8 @@ def main() -> int:
         print("no stream runs found (need a dir with skeleton.log or stream.log)")
         return 1
 
-    cam_to_dec: list[float] = []
-    dec_to_cmd: list[float] = []
+    dec_to_cmd: list[float] = []     # controller-internal: reliable
+    cam_to_cmd: list[float] = []     # perception->controller: seconds-scale, jitter-tolerant
     all_takts: list[float] = []
     change_takts: list[float] = []   # zone change: the blade must hold+retract (floor > 0)
     noair_takts: list[float] = []    # nose to tail, or a B item riding through (floor 0)
@@ -216,10 +226,13 @@ def main() -> int:
         strm = run / "stream.log"
         if skel.exists():
             for s in parse_skeleton(skel).values():
-                if s.detect is not None and s.decide is not None and s.decide >= s.detect:
-                    cam_to_dec.append(s.decide - s.detect)
-                if s.decide is not None and s.fire is not None and s.fire >= s.decide:
-                    dec_to_cmd.append(s.fire - s.decide)
+                # Both endpoints logged by the controller -> reliable.
+                if s.commit is not None and s.fire is not None:
+                    dec_to_cmd.append(s.fire - s.commit)
+                # Perception -> controller; seconds-scale, so the 0.2 s cross-node
+                # jitter is tolerable (unlike camera->decision, which is one frame).
+                if s.detect is not None and s.fire is not None:
+                    cam_to_cmd.append(s.fire - s.detect)
         if strm.exists():
             arrivals = parse_stream(strm)
             gaps = takt_gaps(arrivals)
@@ -234,9 +247,14 @@ def main() -> int:
         else:
             print(f"  {run.name}: no stream.log (skeleton latencies only)")
 
-    print("\n=== per-stage latency (skeleton.log, per tracked item) ===")
-    print(_row("camera -> decision", cam_to_dec))
+    print("\n=== per-stage latency (skeleton.log) ===")
     print(_row("decision -> command", dec_to_cmd))
+    print("      (controller route commit -> FIRED; one process, no cross-node jitter)")
+    print(_row("camera -> command", cam_to_cmd))
+    print("      (first detection -> FIRED; spans nodes, tolerates the ~0.2s jitter)")
+    print("  camera -> decision (detect -> classification): ~1 camera frame (~0.05s),")
+    print("      BELOW the ~0.2s cross-node log-emission jitter -> not separately")
+    print("      measurable here (see docs/report/methodology_and_limitations.md).")
 
     print("\n=== mechanism takt (stream.log, between arrivals) ===")
     print(_row("takt: all pairs", all_takts))

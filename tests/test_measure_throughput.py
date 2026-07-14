@@ -44,29 +44,52 @@ def _run(tmp_path):
     return tmp_path
 
 
-def test_skeleton_stages_and_first_detection(tmp_path):
+def test_skeleton_stages_first_line_wins(tmp_path):
     items = mt.parse_skeleton(_run(tmp_path) / "skeleton.log")
     assert set(items) == {1, 2, 3}
-    # First perception stamp wins, not the later one.
-    assert items[1].detect == 1000.0
-    assert items[1].decide == 1000.5      # classifier
+    # Every stage is the EARLIEST line of its kind (first detection, first commit).
+    assert items[1].detect == 1000.0        # first perception, not the 1000.2 line
+    assert items[1].classify == 1000.5      # first ItemClassification publish
+    assert items[1].commit == 1000.6        # controller route commit ("D — firing")
     assert items[1].fire == 1001.0
-    # No classifier line -> controller decision line is the decision.
-    assert items[2].decide_cls is None
-    assert items[2].decide == 1002.8      # falls back to controller "C — firing"
+    # No classifier line at all (truncated) -> classify is None, but commit/fire hold.
+    assert items[2].classify is None
+    assert items[2].commit == 1002.8        # "C — firing"
     assert items[2].fire == 1003.4
-    # B item rides: a decision, but never a fire.
-    assert items[3].decide == 1004.3
+    # B item rides: a commit, but never a fire.
+    assert items[3].commit == 1004.4        # "B — rides to belt end"
     assert items[3].fire is None
 
 
-def test_latency_segments(tmp_path):
+def test_reliable_latency_segments(tmp_path):
+    """decision->command and camera->command; camera->decision is NOT computed
+    (below the cross-node jitter floor — the reframe that killed the silent drop)."""
     items = mt.parse_skeleton(_run(tmp_path) / "skeleton.log")
     # Rounded: subtracting ~1e9 epoch stamps loses the last digits (real behaviour).
-    cam = sorted(round(s.decide - s.detect, 3) for s in items.values())
-    fire = sorted(round(s.fire - s.decide, 3) for s in items.values() if s.fire is not None)
-    assert cam == [0.3, 0.5, 0.8]            # items 3, 1, 2
-    assert fire == [0.5, 0.6]                 # items 1, 2 (item 3 never fired)
+    dec_cmd = sorted(round(s.fire - s.commit, 3)
+                     for s in items.values() if s.fire is not None)
+    cam_cmd = sorted(round(s.fire - s.detect, 3)
+                     for s in items.values() if s.fire is not None)
+    assert dec_cmd == [0.4, 0.6]             # items 1, 2 (commit->FIRED)
+    assert cam_cmd == [1.0, 1.4]             # items 1, 2 (detect->FIRED); item 3 never fired
+
+
+def test_jitter_inverted_stamps_not_dropped(tmp_path):
+    """Real data: the controller can log its commit BEFORE perception logs the
+    frame (cross-node jitter). The reframed segments (fire-anchored) must still
+    yield a value — the first cut's `>= detect` guard silently dropped these."""
+    log = tmp_path / "skeleton.log"
+    log.write_text(
+        # commit @ .3 and classify @ .4 both PRECEDE the first perception @ .5
+        "[python3-4] [INFO] [2000.300000000] [controller]: item 9: D — firing pusher_d in 0.9s\n"
+        "[python3-3] [INFO] [2000.400000000] [classifier]: item 9: D (k=1.0, conf=0.2, n=1)\n"
+        "[python3-2] [INFO] [2000.500000000] [perception]: item 9: 300x100x90 mm K=1.0 at (1.2, 0.2)\n"
+        "[python3-4] [INFO] [2001.200000000] [controller]: item 9: pusher_d FIRED at t=24.0s\n",
+        encoding="utf-8",
+    )
+    s = mt.parse_skeleton(log)[9]
+    assert round(s.fire - s.commit, 3) == 0.9    # decision->command, reliable
+    assert round(s.fire - s.detect, 3) == 0.7    # camera->command, still produced
 
 
 def test_stream_arrivals_pass_only_and_sorted(tmp_path):
