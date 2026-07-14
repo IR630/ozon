@@ -1,0 +1,8 @@
+
+Requesting state for world [cell]...
+
+Model: [57]
+  - Name: item
+  - Pose [ XYZ (m) ] [ RPY (rad) ]:
+    [1.510410 -0.001461 0.492271]
+    [-1.252430 -0.000000 -1.582610]

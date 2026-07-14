@@ -24,6 +24,12 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures" / "frames"
 # cone props the bottle, it never rests exactly horizontal) render and Gazebo agree to
 # 5 mm / dK=0.00. The sweep's miss was its POSE population, not the pixels.
 CELLS = ["plate_1", "helmet_2", "bag_2", "cylinder_0", "bottle_side"]
+# helmet_tilt pins the sweep's one CONFIRMED break: the helmet settles on a tilted hull
+# facet (~2% of its resting weight) and the top-view OBB reads 373x336 mm against the
+# item's intrinsic 352x298x282 — a B item measured as C, on the REAL frame and the render
+# alike (that agreement is what this test asserts; the misclassification itself is an open
+# risk, docs/experiments.md 2026-07-14).
+CELLS.append("helmet_tilt")
 
 # The gap the renderer is allowed. Perception itself claims +-10 mm against ground truth
 # (docs/experiments.md), so a renderer inside that is not the weakest link in the chain.
