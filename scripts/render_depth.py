@@ -65,7 +65,10 @@ def render_depth(mesh, quat, at_x_m=CAMERA_X_M, at_y_m=CAMERA_Y_M):
     x, y, z, w = quat
     mesh.apply_transform(trimesh.transformations.quaternion_matrix([w, x, y, z]))
 
-    pts = trimesh.sample.sample_surface(mesh, N_SURFACE_SAMPLES)[0] / 1000.0  # mm -> m
+    # seed=0: surface sampling is the ONLY randomness here, and unseeded it made
+    # sweep margins wobble +-3 mm / +-0.02 K between identical runs (Karpathy #5:
+    # every experiment reproducible from its seed).
+    pts = trimesh.sample.sample_surface(mesh, N_SURFACE_SAMPLES, seed=0)[0] / 1000.0  # mm -> m
     # rest the body on the belt and centre it under the camera
     pts[:, 0] += at_x_m - (pts[:, 0].min() + pts[:, 0].max()) / 2
     pts[:, 1] += at_y_m - (pts[:, 1].min() + pts[:, 1].max()) / 2
