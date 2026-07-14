@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
-"""Skeleton bring-up for the sorting cell (days 2-3).
+"""Bring up the complete single- or multi-item sorting pipeline.
 
 The full v0.1 loop on one command:
   * ros_gz_bridge  — Gazebo <-> ROS 2 (camera, /clock, actuators; sim/bridge.yaml)
-  * perception     — depth frames -> ItemMeasurement (src/perception_node.py)
-  * classifier     — ItemMeasurement -> ItemClassification (src/classifier_node.py)
-  * controller     — classification -> belt soft-start + pusher fire (src/controller_node.py)
+  * perception     — depth frames -> per-item measurements with stable IDs
+  * classifier     — per-ID aggregation -> ItemClassification
+  * controller     — per-ID schedules, belt, pusher/diverter commands and watchdogs
 
+The actuator topics are the mechanism seam: cell.sdf interprets them as pusher
+velocities, while the final cell_diverter.sdf interprets them as blade angles.
 All nodes run on use_sim_time: camera stamps are Gazebo sim time and the
 controller's dead-reckoning must tick on the same clock (/clock bridge).
 
