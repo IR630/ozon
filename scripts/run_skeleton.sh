@@ -156,6 +156,12 @@ fi
 ign service -s /world/cell/create --reqtype ignition.msgs.EntityFactory \
     --reptype ignition.msgs.Boolean --timeout 5000 \
     --req "sdf_filename: \"$PWD/$ITEM_MODEL_ROOT/$SLUG/model.sdf\", name: \"item\", pose: {position: {x: $SPAWN_X, y: $SPAWN_Y, z: $SPAWN_Z}, orientation: {x: $OX, y: $OY, z: $OZ, w: $OW}}" > /dev/null
+# Announce the feed to the controller's watchdog: an announced item the camera
+# never confirms latches the cell as a FEED JAM (the census feed_jam class was
+# invisible before — the wedged item never yields a measurement). Backgrounded:
+# `-w 1` waits for the subscription match, and a LATE announce only pushes the
+# deadline later, never earlier.
+ros2 topic pub -w 1 --once /infeed/fed std_msgs/msg/Empty > /dev/null 2>&1 &
 sleep 2
 
 # Position AND orientation, from ONE query: the verdict scores the item's BODY, and

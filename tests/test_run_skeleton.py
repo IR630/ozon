@@ -41,3 +41,14 @@ def test_the_item_is_fed_onto_a_belt_already_at_speed():
     wait_done = text.index('grep -q "soft-start done"')
     spawn = text.index("ign service -s /world/cell/create")
     assert wait_done < spawn, "the item must be spawned onto a belt already at full speed"
+
+
+def test_every_spawn_is_announced_to_the_feed_watchdog():
+    """A jam BEFORE the camera is invisible to the in-window jam detector, so the
+    runner must announce each feed on /infeed/fed right after the spawn — the
+    controller's watchdog then latches the cell if the camera never confirms it."""
+    text = SCRIPT.read_text(encoding="utf-8")
+
+    spawn = text.index("ign service -s /world/cell/create")
+    announce = text.index("ros2 topic pub -w 1 --once /infeed/fed std_msgs/msg/Empty")
+    assert spawn < announce, "the feed must be announced AFTER the spawn, never before"

@@ -367,6 +367,70 @@ def test_an_item_riding_the_belt_normally_is_not_a_jam():
         rclpy.shutdown()
 
 
+def test_an_announced_feed_the_camera_never_confirms_latches_feed_jam():
+    """A jam BEFORE the camera is invisible to detect_jam (no measurements ever
+    arrive), so the infeed announces every feed on /infeed/fed and the watchdog
+    latches the safe stop when the camera never confirms the item."""
+    from rclpy.parameter import Parameter
+
+    from std_msgs.msg import Empty
+
+    rclpy.init()
+    try:
+        node = ControllerNode(parameter_overrides=[
+            Parameter("feed_timeout_s", value=0.6)])
+        probe = rclpy.create_node("probe_feed_jam")
+        fed_pub = probe.create_publisher(Empty, "/infeed/fed", 10)
+        _spin_both(node, probe, 0.3)
+
+        fed_pub.publish(Empty())
+        _spin_both(node, probe, 1.5)  # past the 0.6 s budget + watchdog period
+
+        assert node.emergency_stopped, "a vanished feed did not latch the cell"
+
+        # Reset must clear the stale promise, or the first watchdog tick after
+        # the reset would latch the cell straight back down.
+        node.on_emergency_stop(Bool(data=False))
+        _spin_both(node, probe, 1.0)
+        assert node.feed_deadlines == []
+        assert not node.emergency_stopped
+
+        probe.destroy_node()
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def test_an_announced_feed_that_reaches_the_camera_is_not_a_feed_jam():
+    from rclpy.parameter import Parameter
+
+    from std_msgs.msg import Empty
+
+    rclpy.init()
+    try:
+        node = ControllerNode(parameter_overrides=[
+            Parameter("feed_timeout_s", value=0.6)])
+        probe = rclpy.create_node("probe_feed_ok")
+        fed_pub = probe.create_publisher(Empty, "/infeed/fed", 10)
+        classification_pub = probe.create_publisher(
+            ItemClassification, "/item/classification", 10)
+        _spin_both(node, probe, 0.3)
+
+        fed_pub.publish(Empty())
+        _spin_both(node, probe, 0.1)
+        # the fed item shows up: its FIRST (new-id) classification pays the debt
+        classification_pub.publish(_classification(node, 61, "B", 1.2))
+        _spin_both(node, probe, 1.5)
+
+        assert node.feed_deadlines == []
+        assert not node.emergency_stopped, "an arrived feed was called a feed jam"
+
+        probe.destroy_node()
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
 def test_emergency_stop_freezes_an_engaged_diverter_blade_instead_of_parking_it():
     """On the POSITION-driven diverter, 0.0 is not "stop" — it is "go home".
 

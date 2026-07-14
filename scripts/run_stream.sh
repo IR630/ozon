@@ -129,6 +129,9 @@ T0=$(date +%s.%N)
         ign service -s /world/cell/create --reqtype ignition.msgs.EntityFactory \
             --reptype ignition.msgs.Boolean --timeout 5000 \
             --req "sdf_filename: \"$PWD/$ITEM_MODEL_ROOT/${SLUGS[$i]}/model.sdf\", name: \"item$i\", pose: {position: {x: ${SPAWN_X[$i]}, y: ${SPAWN_Y[$i]}, z: ${SPAWN_Z[$i]}}, orientation: {x: $OX, y: $OY, z: $OZ, w: $OW}}" > /dev/null
+        # announce the feed to the controller's watchdog (see run_skeleton.sh);
+        # backgrounded so the CLI's startup does not skew the next feed delay
+        ros2 topic pub -w 1 --once /infeed/fed std_msgs/msg/Empty > /dev/null 2>&1 &
         echo "fed item$i: ${SLUGS[$i]} -> ${ZONES[$i]} at t=${DELAYS[$i]}s"
     done
 ) &
