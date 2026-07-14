@@ -13,12 +13,25 @@
 # (scripts/spawn_orientations.py) — that is the run's seed source (day 4).
 #
 # Zone success criteria: scripts/zone_verdict.py (shared with run_stream.sh).
+#
+# errexit FIRST, before anything that can fail. It used to be armed only AFTER the
+# two `source` lines below, so on a clean checkout the missing workspace did not stop
+# the run: it carried on unsourced, found no `ign`, and died 100 lines later claiming
+# "the belt never reached full speed" — a false diagnosis pointing at conveyor physics.
+set -e
 cd "$(dirname "$0")/.."
 export LIBGL_ALWAYS_SOFTWARE=1
-source /opt/ros/humble/setup.bash
+# install/ is a gitignored BUILD artifact, so a fresh clone has no setup.bash. Checked
+# before sourcing ROS: this is the one failure we can name exactly, so name it loudly
+# (same principle as zone_verdict.py) instead of leaving bash's "No such file".
 ROS_INSTALL_ROOT=${ROS_INSTALL_ROOT:-install}
+if [ ! -f "$ROS_INSTALL_ROOT/setup.bash" ]; then
+    echo "ABORT: ROS workspace is not built ($ROS_INSTALL_ROOT/setup.bash is missing) — run:" >&2
+    echo "    colcon build --packages-select ros_msgs" >&2
+    exit 1
+fi
+source /opt/ros/humble/setup.bash
 source "$ROS_INSTALL_ROOT/setup.bash"
-set -e
 
 # Every matrix cell starts a fresh Gazebo server.  A plain TERM-only `pkill`
 # occasionally left the server alive after an early `set -e` exit (for example,

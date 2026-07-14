@@ -1,9 +1,46 @@
 """Static regression checks for the Gazebo episode lifecycle."""
 
+import os
+import subprocess
 from pathlib import Path
 
+import pytest
+from bash_host import find_bash
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "run_skeleton.sh"
+
+
+def test_errexit_is_armed_before_anything_that_can_fail():
+    """`set -e` used to sit AFTER the two `source` lines, so the run continued unsourced."""
+    body = [line for line in SCRIPT.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.startswith("#")]
+
+    assert body[0] == "set -e", f"first executable line must arm errexit, got {body[:3]}"
+
+
+def test_a_clean_checkout_is_told_to_build_the_ros_workspace(tmp_path):
+    """install/ is a gitignored build artifact, so a fresh checkout has no setup.bash.
+
+    Sourcing it was attempted BEFORE `set -e` was armed, so the failure did not stop
+    the run: it carried on unsourced and died 200 lines later claiming "the belt never
+    reached full speed" — sending a new participant to debug conveyor physics instead
+    of running one colcon command. Name the real cause, and stop.
+    """
+    bash = find_bash()
+    if bash is None:
+        pytest.skip("bash is unavailable on this host")
+    env = os.environ.copy()
+    env["ROS_INSTALL_ROOT"] = str(tmp_path / "not-built")
+
+    result = subprocess.run(
+        [bash, str(SCRIPT), "box_300x200x200", "B"],
+        cwd=SCRIPT.parents[1], env=env, capture_output=True, text=True,
+        check=False, timeout=60,
+    )
+
+    assert result.returncode != 0, result.stdout
+    assert "colcon build --packages-select ros_msgs" in result.stderr
+    assert "belt never reached full speed" not in result.stderr, "false diagnosis is back"
 
 
 def test_episode_cleanup_runs_on_early_exit_and_reaps_stale_gazebo():
