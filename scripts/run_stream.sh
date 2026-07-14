@@ -20,12 +20,19 @@
 # pose, so the stream starts from the poses the census knows.
 #
 # Zone success criteria: scripts/zone_verdict.py (shared with run_skeleton.sh).
+# errexit first, and a loud check before sourcing install/setup.bash — same
+# defect/fix as run_skeleton.sh (see that file's header for the full story).
+set -e
 cd "$(dirname "$0")/.."
 export LIBGL_ALWAYS_SOFTWARE=1
-source /opt/ros/humble/setup.bash
 ROS_INSTALL_ROOT=${ROS_INSTALL_ROOT:-install}
+if [ ! -f "$ROS_INSTALL_ROOT/setup.bash" ]; then
+    echo "ABORT: ROS workspace is not built ($ROS_INSTALL_ROOT/setup.bash is missing) — run:" >&2
+    echo "    colcon build --packages-select ros_msgs" >&2
+    exit 1
+fi
+source /opt/ros/humble/setup.bash
 source "$ROS_INSTALL_ROOT/setup.bash"
-set -e
 
 WORLD=${WORLD:-sim/worlds/cell_diverter.sdf}
 ITEM_MODEL_ROOT=${ITEM_MODEL_ROOT:-sim/models/items}

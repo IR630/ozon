@@ -1,13 +1,26 @@
 #!/usr/bin/env bash
 # Full-contour multi-item smoke: two products share one camera frame, keep
 # distinct IDs, and independently reach B in the final diverter world.
+# errexit first, and a loud check before sourcing install/setup.bash — same
+# defect/fix as run_skeleton.sh (see that file's header for the full story).
+set -e
 cd "$(dirname "$0")/.."
 
 export LIBGL_ALWAYS_SOFTWARE=1
-source /opt/ros/humble/setup.bash
 ROS_INSTALL_ROOT=${ROS_INSTALL_ROOT:-install}
+if [ ! -f "$ROS_INSTALL_ROOT/setup.bash" ]; then
+    echo "ABORT: ROS workspace is not built ($ROS_INSTALL_ROOT/setup.bash is missing) — run:" >&2
+    echo "    colcon build --packages-select ros_msgs" >&2
+    exit 1
+fi
+source /opt/ros/humble/setup.bash
 source "$ROS_INSTALL_ROOT/setup.bash"
-set -eu
+# nounset only AFTER the sources — never before. ROS's own setup.bash reads
+# unbound variables (`AMENT_TRACE_SETUP_FILES: unbound variable`) and dies under
+# `set -u`, taking the whole script with it on a perfectly good workspace. This
+# is exactly where `set -eu` always sat, so -u's scope is unchanged; only errexit
+# moved up to cover the sources.
+set -u
 
 cleanup() {
     kill "${PROBE:-}" "${LAUNCH:-}" 2>/dev/null || true

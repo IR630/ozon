@@ -9,11 +9,19 @@
 #   WORLD=sim/worlds/cell_diverter.sdf bash scripts/dump_item_frame.sh <slug>
 # The WORLD seam mirrors run_skeleton.sh: day-5 check that the diverter world's
 # parked blades stay out of the camera frame (they broke perception when in it).
+# errexit first, and a loud check before sourcing install/setup.bash — same
+# defect/fix as run_skeleton.sh (see that file's header for the full story).
+set -e
 cd "$(dirname "$0")/.."
 export LIBGL_ALWAYS_SOFTWARE=1
+ROS_INSTALL_ROOT=${ROS_INSTALL_ROOT:-install}
+if [ ! -f "$ROS_INSTALL_ROOT/setup.bash" ]; then
+    echo "ABORT: ROS workspace is not built ($ROS_INSTALL_ROOT/setup.bash is missing) — run:" >&2
+    echo "    colcon build --packages-select ros_msgs" >&2
+    exit 1
+fi
 source /opt/ros/humble/setup.bash
-source install/setup.bash
-set -e
+source "$ROS_INSTALL_ROOT/setup.bash"
 
 SLUG=${1:?usage: dump_item_frame.sh <slug> [outdir]}
 OUT=${2:-/tmp/frames_$SLUG}

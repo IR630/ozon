@@ -3,12 +3,26 @@
 # and emits zero commands for the belt and both mechanisms.
 # Run from the repository root in the ROS 2 / Gazebo environment:
 #   bash scripts/smoke_estop.sh
+# errexit first, and a loud check before sourcing install/setup.bash — same
+# defect/fix as run_skeleton.sh (see that file's header for the full story).
+set -e
 cd "$(dirname "$0")/.."
 
 export LIBGL_ALWAYS_SOFTWARE=1
+ROS_INSTALL_ROOT=${ROS_INSTALL_ROOT:-install}
+if [ ! -f "$ROS_INSTALL_ROOT/setup.bash" ]; then
+    echo "ABORT: ROS workspace is not built ($ROS_INSTALL_ROOT/setup.bash is missing) — run:" >&2
+    echo "    colcon build --packages-select ros_msgs" >&2
+    exit 1
+fi
 source /opt/ros/humble/setup.bash
-source install/setup.bash
-set -eu
+source "$ROS_INSTALL_ROOT/setup.bash"
+# nounset only AFTER the sources — never before. ROS's own setup.bash reads
+# unbound variables (`AMENT_TRACE_SETUP_FILES: unbound variable`) and dies under
+# `set -u`, taking the whole script with it on a perfectly good workspace. This
+# is exactly where `set -eu` always sat, so -u's scope is unchanged; only errexit
+# moved up to cover the sources.
+set -u
 
 # This smoke runs the DIVERTER world, so the controller must speak the diverter's
 # vocabulary (angles, not speeds) exactly as run_skeleton.sh sets it — otherwise a
