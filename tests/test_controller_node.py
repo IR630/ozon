@@ -246,6 +246,39 @@ def test_b_does_not_touch_pushers():
         rclpy.shutdown()
 
 
+def test_a_late_diverter_decision_is_marked_missed_without_actuation():
+    """A delayed C/D decision that arrives past its blade cannot be recovered.
+
+    Firing late would hit the following product or move an empty mechanism. The
+    conservative reaction is a terminal MISSED state with no actuator command;
+    repeated late frames for the same item must remain deduplicated.
+    """
+    rclpy.init()
+    try:
+        node = ControllerNode()
+        probe = rclpy.create_node("probe_late_decision")
+        pusher_c_cmds = []
+        probe.create_subscription(Float64, "/pusher_c/cmd",
+                                  lambda m: pusher_c_cmds.append(m.data), 10)
+        pub = probe.create_publisher(ItemClassification, "/item/classification", 10)
+        _spin_both(node, probe, 0.3)
+
+        too_late = _classification(node, 19, "C", PUSHER_X_M["C"] + 0.01)
+        pub.publish(too_late)
+        pub.publish(too_late)
+        _spin_both(node, probe, 0.6)
+
+        assert 19 in node.done_items
+        assert 19 not in node.pending
+        assert 19 not in node.fired
+        assert pusher_c_cmds == []
+
+        probe.destroy_node()
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
 def test_emergency_stop_cancels_motion_and_reset_soft_starts_belt():
     rclpy.init()
     try:
