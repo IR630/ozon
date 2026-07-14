@@ -77,10 +77,12 @@ ROS_LINE = re.compile(
     r"\[(?P<stamp>\d+\.\d+)\]\s+\[(?P<node>perception|classifier|controller)\]:\s+"
     r"item\s+(?P<id>\d+):\s+(?P<rest>.*)"
 )
-# run_stream.sh's arrival line: "itemK slug -> zone: PASS at t=Xs (pose ...)".
-# Only PASS lines carry a landing time; a FAILed item never reached its zone.
-ARRIVAL_LINE = re.compile(
-    r"^(?P<name>item\d+)\s+(?P<slug>\S+)\s+->\s+(?P<zone>[BCD]):\s+PASS at t=(?P<t>[\d.]+)s"
+# run_stream.sh's result line. PASS carries a landing time; FAIL deliberately
+# does not. Throughput uses only PASS arrivals, while week-3 long-horizon
+# reliability must retain BOTH outcomes instead of silently dropping failures.
+RESULT_LINE = re.compile(
+    r"^(?P<name>item\d+)\s+(?P<slug>\S+)\s+->\s+(?P<zone>[BCD]):\s+"
+    r"(?P<outcome>PASS|FAIL)(?: at t=(?P<t>[\d.]+)s)?"
 )
 
 
@@ -104,6 +106,28 @@ class Arrival:
     slug: str
     zone: str
     t: float  # T0-relative seconds
+
+
+@dataclass
+class StreamResult:
+    """Terminal routing verdict for one spawned item in one stream episode."""
+
+    name: str
+    slug: str
+    zone: str
+    passed: bool
+    t: float | None  # T0-relative arrival; absent for FAIL
+
+
+@dataclass
+class ReliabilitySummary:
+    episodes: int
+    all_pass_episodes: int
+    items: int
+    passed_items: int
+    # (slug, expected zone) -> (passed, total). Keeping the expected zone in the
+    # key prevents two different routes of the same diagnostic model being mixed.
+    by_route: dict[tuple[str, str], tuple[int, int]]
 
 
 def parse_skeleton(path: Path) -> dict[int, Stages]:
@@ -134,14 +158,48 @@ def parse_skeleton(path: Path) -> dict[int, Stages]:
     return items
 
 
-def parse_stream(path: Path) -> list[Arrival]:
-    """The body-scored arrivals from run_stream.sh's saved summary, sorted by time."""
-    out = []
+def parse_stream_results(path: Path) -> list[StreamResult]:
+    """All body-scored PASS/FAIL verdicts from one saved stream summary."""
+    out: list[StreamResult] = []
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        m = ARRIVAL_LINE.match(line.strip())
+        m = RESULT_LINE.match(line.strip())
         if m:
-            out.append(Arrival(m["name"], m["slug"], m["zone"], float(m["t"])))
+            passed = m["outcome"] == "PASS"
+            t = float(m["t"]) if m["t"] is not None else None
+            # A malformed "PASS" without an arrival cannot support either a
+            # throughput number or a trustworthy terminal result.
+            if passed and t is None:
+                continue
+            out.append(StreamResult(m["name"], m["slug"], m["zone"], passed, t))
+    return out
+
+
+def parse_stream(path: Path) -> list[Arrival]:
+    """Successful body-scored arrivals, sorted by time for throughput analysis."""
+    out = [Arrival(r.name, r.slug, r.zone, r.t)
+           for r in parse_stream_results(path) if r.passed and r.t is not None]
     return sorted(out, key=lambda a: a.t)
+
+
+def summarize_reliability(episodes: list[list[StreamResult]]) -> ReliabilitySummary:
+    """Aggregate exact routing counts without inventing confidence from a small N."""
+    nonempty = [results for results in episodes if results]
+    route_counts: dict[tuple[str, str], list[int]] = {}
+    items = passed_items = 0
+    for results in nonempty:
+        for result in results:
+            items += 1
+            passed_items += int(result.passed)
+            counts = route_counts.setdefault((result.slug, result.zone), [0, 0])
+            counts[0] += int(result.passed)
+            counts[1] += 1
+    return ReliabilitySummary(
+        episodes=len(nonempty),
+        all_pass_episodes=sum(all(r.passed for r in results) for results in nonempty),
+        items=items,
+        passed_items=passed_items,
+        by_route={key: (counts[0], counts[1]) for key, counts in route_counts.items()},
+    )
 
 
 @dataclass
@@ -194,6 +252,12 @@ def _row(label: str, xs: list[float]) -> str:
             f"median={median(xs):7.3f}s  p95={percentile(xs, 95):7.3f}s")
 
 
+def _ratio(passed: int, total: int) -> str:
+    if not total:
+        return "0/0 (no data)"
+    return f"{passed}/{total} ({100.0 * passed / total:.1f}%)"
+
+
 def find_runs(paths: list[str]) -> list[Path]:
     """Each path is a run dir (has skeleton.log or stream.log) or a parent of them."""
     runs = []
@@ -226,6 +290,7 @@ def main() -> int:
     change_takts: list[float] = []   # zone change: the blade must hold+retract (floor > 0)
     noair_takts: list[float] = []    # nose to tail, or a B item riding through (floor 0)
     n_runs_timed = 0
+    reliability_episodes: list[list[StreamResult]] = []
 
     print(f"throughput over {len(runs)} run(s):\n")
     for run in runs:
@@ -241,7 +306,11 @@ def main() -> int:
                 if s.detect is not None and s.fire is not None:
                     cam_to_cmd.append(s.fire - s.detect)
         if strm.exists():
-            arrivals = parse_stream(strm)
+            results = parse_stream_results(strm)
+            reliability_episodes.append(results)
+            arrivals = [Arrival(r.name, r.slug, r.zone, r.t)
+                        for r in results if r.passed and r.t is not None]
+            arrivals.sort(key=lambda a: a.t)
             gaps = takt_gaps(arrivals)
             if gaps:
                 n_runs_timed += 1
@@ -253,6 +322,13 @@ def main() -> int:
                 (change_takts if g.expected_s > 0 else noair_takts).append(g.gap_s)
         else:
             print(f"  {run.name}: no stream.log (skeleton latencies only)")
+
+    reliability = summarize_reliability(reliability_episodes)
+    print("\n=== routing reliability (stream.log; PASS and FAIL) ===")
+    print(f"  all-pass episodes: {_ratio(reliability.all_pass_episodes, reliability.episodes)}")
+    print(f"  routed items:      {_ratio(reliability.passed_items, reliability.items)}")
+    for (slug, zone), (passed, total) in sorted(reliability.by_route.items()):
+        print(f"  {slug:24s} -> {zone}: {_ratio(passed, total)}")
 
     print("\n=== per-stage latency (skeleton.log) ===")
     print(_row("decision -> command", dec_to_cmd))

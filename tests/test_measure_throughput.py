@@ -99,6 +99,43 @@ def test_stream_arrivals_pass_only_and_sorted(tmp_path):
     assert [a.t for a in arr] == [3.0, 4.3, 10.0]
 
 
+def test_stream_results_keep_failures_for_reliability(tmp_path):
+    results = mt.parse_stream_results(_run(tmp_path) / "stream.log")
+    assert [r.name for r in results] == ["item0", "item1", "item2", "item3"]
+    assert [r.passed for r in results] == [True, True, True, False]
+    assert results[-1].slug == "helmet"
+    assert results[-1].zone == "B"
+    assert results[-1].t is None
+
+
+def test_reliability_counts_episodes_items_and_each_route(tmp_path):
+    first = mt.parse_stream_results(_run(tmp_path) / "stream.log")
+    second_log = tmp_path / "second.log"
+    second_log.write_text(
+        "item0 box_400x400x300 -> C: PASS at t=3.2s (x=3 y=1 z=0)\n"
+        "item1 helmet -> B: PASS at t=8.0s (x=5 y=0 z=0.4)\n",
+        encoding="utf-8",
+    )
+    second = mt.parse_stream_results(second_log)
+
+    summary = mt.summarize_reliability([first, [], second])
+    assert (summary.episodes, summary.all_pass_episodes) == (2, 1)
+    assert (summary.items, summary.passed_items) == (6, 5)
+    assert summary.by_route[("box_400x400x300", "C")] == (2, 2)
+    assert summary.by_route[("helmet", "B")] == (1, 2)
+
+
+def test_malformed_pass_without_time_is_not_claimed_as_a_result(tmp_path):
+    log = tmp_path / "stream.log"
+    log.write_text(
+        "item0 pen -> C: PASS (x=3 y=1 z=0)\n"
+        "item1 bottle -> D: FAIL (x=4 y=0 z=0.4)\n",
+        encoding="utf-8",
+    )
+    results = mt.parse_stream_results(log)
+    assert [(r.slug, r.passed) for r in results] == [("bottle", False)]
+
+
 def test_takt_gaps_and_computed_floor(tmp_path):
     arr = mt.parse_stream(_run(tmp_path) / "stream.log")
     gaps = mt.takt_gaps(arr)
