@@ -53,9 +53,12 @@ docker compose -f docker/docker-compose.yml build
 docker compose -f docker/docker-compose.yml run dev
 ```
 
-Внутри контейнера доступен весь контур:
+Внутри контейнера доступен весь контур. `install/` и `sim/models/items/` —
+build-артефакты, в гит они не попадают, поэтому на свежем checkout первые две
+команды обязательны и идут именно в этом порядке:
 
 ```bash
+colcon build --packages-select ros_msgs          # ROS 2 контракты -> install/
 python3 scripts/build_item_models.py             # SDF-модели 11 товаров -> sim/models/
 bash scripts/check_sdf.sh                         # валидность мира и моделей
 WORLD=sim/worlds/cell_diverter.sdf \
@@ -90,10 +93,14 @@ wsl --terminate <distro>                                       # перезап�
 ```
 
 ```bash
-# внутри WSL, из корня репозитория:
-bash scripts/check_sdf.sh     # валидность мира и 11 моделей
-bash scripts/smoke_belt.sh    # короб физически едет по ленте 1 м/с
-bash scripts/smoke_multi_item.sh # два товара одновременно видны и имеют разные ID
+# внутри WSL, из корня репозитория. Первые две команды собирают build-артефакты
+# (install/, sim/models/items/) — без них check_sdf.sh нечего проверять,
+# а прогоны не находят ROS-контракты:
+colcon build --packages-select ros_msgs  # ROS 2 контракты -> install/
+python3 scripts/build_item_models.py     # SDF-модели 11 товаров -> sim/models/items/
+bash scripts/check_sdf.sh                # валидность мира и 11 моделей
+bash scripts/smoke_belt.sh               # короб физически едет по ленте 1 м/с
+bash scripts/smoke_multi_item.sh         # два товара одновременно видны и имеют разные ID
 ```
 
 Свежий WSL-дистрибутив нередко не резолвит DNS через WSL-шлюз (`apt-get update`
@@ -111,7 +118,9 @@ Headless-запуски Gazebo на программном GL требуют `LI
 ## Воспроизведение прогонов
 
 Вся случайность заведена через один явный seed, поэтому любой результат
-повторяется одной командой.
+повторяется одной командой. Команды ниже — Gazebo-прогоны: они запускаются
+внутри среды из разделов выше (Docker или WSL2) и после её build-шагов
+(`colcon build --packages-select ros_msgs`, `python3 scripts/build_item_models.py`).
 
 ```bash
 # один товар, полный контур на финальном шибере без ручных вмешательств
