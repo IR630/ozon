@@ -484,3 +484,36 @@ def save_overlay(depth_m, out_path, belt_depth_m=BELT_DEPTH_M):
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
     cv2.imwrite(str(out_path), vis)
     return None if m is None else m.dims_mm
+
+
+def render_items_overlay(depth_m, tagged_items):
+    """BGR debug frame: every item's bbox with its id, dims/K and aggregation state.
+
+    tagged_items: iterable of (item_id, Measurement, state_text_or_None). The
+    perception node passes the tracker's ids and the classifier's last state per
+    id ("B conf=0.95"), so the frame shows what the PIPELINE currently thinks
+    about each item, not just the geometry (Karpathy #4). Pure drawing — the
+    measuring stays in measure_items().
+    """
+    import cv2
+
+    gray = np.clip((depth_m - 1.2) / (2.0 - 1.2), 0, 1)  # belt/floor band -> readable
+    vis = cv2.cvtColor((gray * 255).astype(np.uint8), cv2.COLOR_GRAY2BGR)
+    for item_id, m, state in tagged_items:
+        x0, y0, x1, y1 = m.bbox_px
+        cv2.rectangle(vis, (x0, y0), (x1, y1), (0, 255, 0), 2)
+        dims = "x".join(f"{d:.0f}" for d in m.dims_mm)
+        cv2.putText(vis, f"id={item_id} {dims}mm K={m.k:.2f}",
+                    (x0, max(y0 - 26, 14)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+        cv2.putText(vis, state if state else "unclassified",
+                    (x0, max(y0 - 8, 30)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+    return vis
+
+
+def save_items_overlay(depth_m, tagged_items, out_path):
+    """Write render_items_overlay() to out_path (PNG)."""
+    import cv2
+
+    cv2.imwrite(str(out_path), render_items_overlay(depth_m, tagged_items))

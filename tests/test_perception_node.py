@@ -130,6 +130,30 @@ def test_dump_dir_writes_only_measured_frames(tmp_path, monkeypatch):
         rclpy.shutdown()
 
 
+def test_dump_overlay_carries_ids_and_classifier_state(tmp_path, monkeypatch):
+    # Day 9 debt: the dumped overlay names each item and shows the classifier's
+    # last aggregation state for it; ids without a verdict yet read "unclassified".
+    pytest.importorskip("cv2")
+    monkeypatch.setenv("PERCEPTION_DUMP_DIR", str(tmp_path))
+    rclpy.init()
+    try:
+        node = PerceptionNode()
+        verdict = msgs.ItemClassification()
+        verdict.item_id = 1
+        verdict.category = "B"
+        verdict.confidence = 0.9
+        node.on_classification(verdict)
+        assert node._agg_state[1] == "B conf=0.90"
+
+        node.on_depth(_depth_image_msg())  # tracker assigns item_id 1
+        assert len(list(tmp_path.glob("overlay_*.png"))) == 1
+        assert len(list(tmp_path.glob("depth_*.png"))) == 1
+
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
 def test_two_disconnected_items_get_distinct_ids():
     rclpy.init()
     try:
