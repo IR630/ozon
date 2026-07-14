@@ -75,6 +75,16 @@ FLOOR_Z = 0.05
 PAST_MECHANISMS_X = 4.2
 # The belt's edges are at y=+-0.25; allow a little overhang before calling the item off it.
 BELT_HALF_WIDTH_Y = 0.3
+# The origin-fallback (no mesh to score the body with) trusts that the model origin IS
+# the body's contact point. That holds ONLY near the default pose: set_belt_origin puts
+# the origin on the bottom face, and Gazebo tilts the body about it, so past a small tilt
+# the origin is no longer the lowest point. With no mesh available (the fallback's whole
+# premise) the tilt angle is the one proxy left; past this the origin has certainly left
+# the goods — a 200 mm box tilted 20 deg lifts its contact point ~34 mm, far past the 5 mm
+# the fallback promises. Flat-settling noise stays well under it; a turned item is far over.
+# YAW is excluded on purpose: a spin about the vertical axis does not move the contact
+# height (or the origin, which is the footprint centre), so a flat-but-yawed item is fine.
+FALLBACK_MAX_TILT_RAD = 0.35
 
 
 def in_zone(zone, x, y, z, body=None):
@@ -115,10 +125,19 @@ def in_zone_legacy(zone, x, y, z):
 
 
 def read_hull_m(path):
-    """Convex-hull points (metres, about the model origin) dumped once per episode."""
+    """Convex-hull points (metres, about the model origin) dumped once per episode.
+
+    Raises ValueError on an EMPTY dump. /dev/null (what run_skeleton passes when a
+    clean checkout has no STL to build a hull from) reads as zero lines on Linux, and
+    an empty hull silently made body_from_hull return (nan, nan, inf) — scoring every
+    delivered item 'no'. An unusable hull is a fallback trigger, not a valid body.
+    """
     with open(path, encoding="utf-8") as f:
-        return [tuple(float(v) / 1000.0 for v in line.split())  # the dump is in mm
-                for line in f if line.strip()]
+        pts = [tuple(float(v) / 1000.0 for v in line.split())  # the dump is in mm
+               for line in f if line.strip()]
+    if not pts:
+        raise ValueError(f"empty hull dump ({path}) — no body to measure")
+    return pts
 
 
 def body_from_hull(hull_m, roll, pitch, yaw, origin_xyz):
@@ -163,7 +182,8 @@ def body_from_resting_pose(hull_path, x, y, z, roll, pitch, yaw):
 
     The organizer STLs are gitignored, so a clean checkout (CI) has no mesh to dump a hull
     from. That is safe to fall back from: CI spawns the DEFAULT pose, where the model
-    origin already IS the body's contact point.
+    origin already IS the body's contact point (assert_origin_is_contact_point guards
+    that precondition where the caller has the resting orientation to check it).
     """
     try:
         return body_from_hull(read_hull_m(hull_path), roll, pitch, yaw, (x, y, z))
@@ -171,6 +191,26 @@ def body_from_resting_pose(hull_path, x, y, z, roll, pitch, yaw):
         print(f"zone_verdict: scoring the reported origin, not the body ({exc})",
               file=sys.stderr)
         return None
+
+
+def assert_origin_is_contact_point(roll, pitch, yaw):
+    """Guard the origin-fallback's precondition; raise ValueError if it cannot hold.
+
+    The fallback scores the model ORIGIN as if it were the body's contact point. That is
+    true only near the default (upright) pose. Reached at a tilted resting pose — a
+    changed CI fixture, or a real item whose mesh went missing — scoring the origin
+    silently reintroduces the pouf-class bug (origin up to 349 mm off the goods). No mesh
+    is available to measure the real point (that is why we are in the fallback), so the
+    tilt angle is the only check left: past FALLBACK_MAX_TILT_RAD the origin has left the
+    goods and the verdict must fail loudly rather than score a plausible-but-wrong origin.
+    """
+    tilt = max(abs(roll), abs(pitch))  # yaw does not move the contact height — see const
+    if tilt > FALLBACK_MAX_TILT_RAD:
+        raise ValueError(
+            f"origin-fallback at a tilted pose (roll={roll:.3f} pitch={pitch:.3f} rad, "
+            f"tilt {tilt:.3f} > {FALLBACK_MAX_TILT_RAD}): the model origin is not the "
+            "body's contact point here and no mesh is available to measure it — refusing "
+            "to score the origin silently (docs/decisions.md 2026-07-14)")
 
 
 def main():
@@ -201,6 +241,11 @@ def main():
             print("no")  # orientation unreadable: the item has no pose to score
             return
         body = body_from_resting_pose(hull_path, x, y, z, roll, pitch, yaw)
+        if body is None:
+            # Fell back to the origin. That equals the contact point only upright — if the
+            # item is tilted, the origin left the goods and there is no mesh to correct it,
+            # so fail loudly instead of scoring a plausible-but-wrong origin.
+            assert_origin_is_contact_point(roll, pitch, yaw)
 
     print("YES" if in_zone(zone, x, y, z, body) else "no")
 
