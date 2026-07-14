@@ -152,6 +152,14 @@ class TaktGap:
     expected_s: float  # computed floor for this pair (stream_plan geometry)
 
 
+def takt_floor_s(front_zone: str, back_zone: str,
+                 belt_speed_m_s: float = BELT_SPEED_M_S) -> float:
+    """Convert the stream plan's minimum separation in metres to a takt in seconds."""
+    floor_m = stream_plan.min_gap_between_zones_m(
+        front_zone, back_zone, belt_speed_m_s=belt_speed_m_s)
+    return floor_m / belt_speed_m_s
+
+
 def takt_gaps(arrivals: list[Arrival]) -> list[TaktGap]:
     """Successive-arrival gaps within one run, each tagged with its computed floor.
 
@@ -161,9 +169,8 @@ def takt_gaps(arrivals: list[Arrival]) -> list[TaktGap]:
     """
     gaps = []
     for front, back in zip(arrivals, arrivals[1:]):
-        floor_m = stream_plan.min_gap_between_zones_m(front.zone, back.zone)
         gaps.append(TaktGap(back.t - front.t, front.zone, back.zone,
-                            floor_m / BELT_SPEED_M_S))
+                            takt_floor_s(front.zone, back.zone)))
     return gaps
 
 
@@ -269,11 +276,13 @@ def main() -> int:
               f"over {n_runs_timed} timed run(s)")
 
     # Calc vs sim: the geometry's floors against what the stream actually did.
-    change_floor = (stream_plan.HOLD_S + stream_plan.RETRACT_S) / BELT_SPEED_M_S
+    change_floor_m = stream_plan.min_gap_between_zones_m("C", "D")
+    change_floor = takt_floor_s("C", "D")
     transit = (stream_plan.TARGET_X_M - stream_plan.FIRST_SPAWN_X_M) / BELT_SPEED_M_S
     print("\n=== computed floor (stream_plan.py geometry) vs observed ===")
-    print(f"  zone-change MIN FEED gap (anti-cross-fire): (HOLD {stream_plan.HOLD_S:.1f} "
-          f"+ RETRACT {stream_plan.RETRACT_S:.1f}) / {BELT_SPEED_M_S:.1f} m/s = {change_floor:.2f}s")
+    print(f"  zone-change MIN FEED gap (anti-cross-fire): {change_floor_m:.2f} m "
+          f"/ {BELT_SPEED_M_S:.1f} m/s = {change_floor:.2f}s "
+          f"(HOLD {stream_plan.HOLD_S:.1f} + RETRACT {stream_plan.RETRACT_S:.1f})")
     if change_takts:
         obs = median(change_takts)
         ok = "ok" if obs >= change_floor else "BELOW FLOOR — cross-fire risk"

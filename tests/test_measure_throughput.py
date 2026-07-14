@@ -110,6 +110,14 @@ def test_takt_gaps_and_computed_floor(tmp_path):
     assert change_floor > 0
 
 
+def test_takt_floor_converts_distance_to_time_at_the_selected_belt_speed():
+    # At 2 m/s the required distance doubles, while hold+retract time stays fixed.
+    floor_m = mt.stream_plan.min_gap_between_zones_m(
+        "C", "D", belt_speed_m_s=2.0)
+    assert mt.takt_floor_s("C", "D", belt_speed_m_s=2.0) == floor_m / 2.0
+    assert mt.takt_floor_s("C", "C", belt_speed_m_s=2.0) == 0.0
+
+
 def test_percentile():
     assert mt.percentile([], 95) is None
     assert mt.percentile([7], 95) == 7
