@@ -16,7 +16,14 @@ from pathlib import Path
 import pytest
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "frames"
-CELLS = ["plate_1", "helmet_2", "bag_2", "cylinder_0"]
+# bottle_side is the only cell where K comes from the VERTICAL-SECTION path (a lying body
+# of revolution): the first four all decide K by silhouette, so without it the sweep's
+# licence covered one of perception's two K paths and silently claimed both. On it the
+# pose sweep reported B where two censuses measured D — suspicion fell on the renderer,
+# and the frame acquits it: at the SAME resting pose (tilted ~8.5 deg — the hull's neck
+# cone props the bottle, it never rests exactly horizontal) render and Gazebo agree to
+# 5 mm / dK=0.00. The sweep's miss was its POSE population, not the pixels.
+CELLS = ["plate_1", "helmet_2", "bag_2", "cylinder_0", "bottle_side"]
 
 # The gap the renderer is allowed. Perception itself claims +-10 mm against ground truth
 # (docs/experiments.md), so a renderer inside that is not the weakest link in the chain.
