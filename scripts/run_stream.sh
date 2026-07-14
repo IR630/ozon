@@ -180,6 +180,13 @@ for _ in $(seq 1 "$POLL_ITERS"); do
 done
 wait $FEEDER 2>/dev/null || true
 
+# The stream's own summary — arrivals (T0-relative, so Gazebo boot and the belt
+# soft-start are excluded) and the takt — is echoed AND saved to the run dir, so
+# scripts/measure_throughput.py can recover per-item landing times offline. The
+# node stdout in skeleton.log carries the camera/decision/command stamps; this
+# file carries the body-scored verdict arrivals (a different clock — see the
+# parser). tee'd as one whole block, so no line is lost to a race on exit.
+{
 echo "=== stream result ==="
 for i in "${!SLUGS[@]}"; do
     NAME="item$i"
@@ -203,6 +210,7 @@ if len(arrivals) > 1:
     gaps = ", ".join(f"{b - a:.1f}" for a, b in zip(arrivals, arrivals[1:]))
     print(f"takt between arrivals: {takt:.1f} s ({gaps} s) => {60.0 / takt:.0f} items/min")
 PY
+} | tee "$LOGDIR/stream.log"
 
 # Proof that perception kept the items apart: a merged blob would show ONE id, a
 # jumping tracker MORE ids than items.
