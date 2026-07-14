@@ -24,6 +24,12 @@ cd "$(dirname "$0")/.."
 ITEMS=${ITEMS:-"box_300x200x200:B box_400x400x300:C plate:D"}
 CELL_TIMEOUT=${CELL_TIMEOUT:-180}
 SKELETON=${SKELETON:-bash scripts/run_skeleton.sh}
+# Traces and logs live in the repo, NOT in /tmp: the run_skeleton default
+# /tmp/dyn_trace.log is overwritten by every next episode and WSL wipes /tmp on
+# reboot — the day-5 comparison traces were lost exactly that way, which is why
+# the day-14 rotational-bound audit had to re-run the episodes. runs/ is gitignored.
+LOGDIR=${LOGDIR:-runs/compare_$(date +%Y%m%d_%H%M%S)}
+mkdir -p "$LOGDIR"
 declare -A WORLDS=(
     [pusher]=sim/worlds/cell.sdf
     [diverter]=sim/worlds/cell_diverter.sdf
@@ -36,9 +42,10 @@ for mech in pusher diverter; do
     for pair in $ITEMS; do
         slug=${pair%%:*}
         zone=${pair##*:}
-        log="/tmp/compare_${mech}_${slug}.log"
+        log="$LOGDIR/compare_${mech}_${slug}.log"
         rc=0
         WORLD=$world CAPTURE_DYNAMICS=1 \
+            DYNAMICS_TRACE="$LOGDIR/dyn_${mech}_${slug}.log" \
             timeout --kill-after=15 "$CELL_TIMEOUT" $SKELETON "$slug" "$zone" \
             > "$log" 2>&1 || rc=$?
         if [ "$rc" = 0 ]; then
@@ -52,8 +59,11 @@ for mech in pusher diverter; do
         gent=$(grep -m1 "gentleness:" "$log" || true)
         accel=$(grep -oE "peak_accel=[0-9.]+" <<< "$gent" | grep -oE "[0-9.]+")
         impulse=$(grep -oE "peak_impulse=[0-9.]+" <<< "$gent" | grep -oE "[0-9.]+")
-        row=$(printf "%-9s %-16s -> %s: %-7s cycle=%-6s peak_accel=%-8s peak_impulse=%s" \
-              "$mech" "$slug" "$zone" "$v" "${cycle:-?}s" "${accel:-?}" "${impulse:-?}")
+        # how much of peak_accel the ORIGIN's own swing around the COM could
+        # contribute (capture_dynamics.py) — the COM accel is accel +- this
+        rot=$(grep -oE "peak_accel_rotational_bound=[0-9.]+" <<< "$gent" | grep -oE "[0-9.]+")
+        row=$(printf "%-9s %-16s -> %s: %-7s cycle=%-6s peak_accel=%-8s rot_bound=%-8s peak_impulse=%s" \
+              "$mech" "$slug" "$zone" "$v" "${cycle:-?}s" "${accel:-?}" "${rot:-?}" "${impulse:-?}")
         echo "$row"
         summary+=("$row")
     done

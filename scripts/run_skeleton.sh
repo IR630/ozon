@@ -235,7 +235,12 @@ if [ -n "$DYN_PID" ]; then
     kill "$DYN_PID" 2>/dev/null || true
     MASS=$(grep -m1 '<mass>' "$ITEM_MODEL_ROOT/$SLUG/model.sdf" \
            | sed -E 's/.*<mass>([0-9.]+)<.*/\1/')
-    python3 scripts/capture_dynamics.py "$DYNAMICS_TRACE" --mass "${MASS:-1.0}" || true
+    # --model-sdf adds the rotational bound on peak_accel: the trace is the model
+    # ORIGIN, and for a tumbling item that point swings around the COM (lever arm
+    # = the sdf's <inertial><pose>), so the bound separates "the goods were hit"
+    # from "the ruler's point swung" (docs/decisions.md 2026-07-14).
+    python3 scripts/capture_dynamics.py "$DYNAMICS_TRACE" --mass "${MASS:-1.0}" \
+        --model-sdf "$ITEM_MODEL_ROOT/$SLUG/model.sdf" || true
 fi
 
 [ "$VERDICT" = PASS ]
