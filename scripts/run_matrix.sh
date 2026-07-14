@@ -34,6 +34,10 @@ LOGDIR=${LOGDIR:-runs/matrix_$(date +%Y%m%d_%H%M%S)_seed${SEED}}
 # so tests can inject a stub, exactly like the PYTHON seam above.
 CELL_TIMEOUT=${CELL_TIMEOUT:-180}
 SKELETON=${SKELETON:-bash scripts/run_skeleton.sh}
+# Opt-in full pose trace per cell. A normal census stays lightweight; a targeted
+# flaky-row replay can set SAVE_DYNAMICS=1 and retain the trajectory that failed
+# instead of losing the shared /tmp trace when the next episode starts.
+SAVE_DYNAMICS=${SAVE_DYNAMICS:-${CAPTURE_DYNAMICS:-0}}
 # THE MECHANISM THE CENSUS MEASURES. run_skeleton.sh defaults to the ballistic pusher
 # (cell.sdf) because that is the day-3 baseline and what CI's e2e drives — but the census
 # is the milestone metric, and the milestone's mechanism is the DIVERTER. Leaving it
@@ -101,6 +105,10 @@ for i in $(seq "$START_ITEM" "$END_ITEM"); do
             exit 1
         fi
         log="$LOGDIR/matrix_${slug}_${oi}.log"
+        # Deliberately NOT matrix_*.log: triage_matrix.py and census_ruler_diff.py
+        # reserve that glob for episode summaries and would parse a raw pose trace
+        # as an extra census cell.
+        dynamics_log="$LOGDIR/dynamic_pose_${slug}_${oi}.log"
         total=$((total + 1))
         item_total[$slug]=$((item_total[$slug] + 1))
         if [ "${MATRIX_DRY_RUN:-0}" = 1 ]; then
@@ -110,6 +118,7 @@ for i in $(seq "$START_ITEM" "$END_ITEM"); do
         rc=0
         ORIENT_X=$OX ORIENT_Y=$OY ORIENT_Z=$OZ ORIENT_W=$OW \
             SPAWN_Z=${SZ:-0.5} SPAWN_Y=${SY:-0} \
+            CAPTURE_DYNAMICS=$SAVE_DYNAMICS DYNAMICS_TRACE="$dynamics_log" \
             timeout --kill-after=15 "$CELL_TIMEOUT" $SKELETON "$slug" "$zone" \
             > "$log" 2>&1 || rc=$?
         if [ "$rc" = 0 ]; then

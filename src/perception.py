@@ -48,6 +48,29 @@ _MIN_ITEM_PX = 24
 # frames — sim depth is clean; 20 mm silently swallowed items under 20 mm).
 MASK_MARGIN_M = 0.005
 
+# EDT prominence (px) a second distance-transform peak must clear to count as a
+# separate touching item rather than a bump on one item's medial-axis ridge. A
+# rotated rectangle rasterizes into a ridge of many near-equal EDT maxima, so
+# plain peak COUNTING over-splits a single item at every non-axis-aligned yaw;
+# the prominence (h-maxima) test keeps only maxima that rise more than this above
+# the highest saddle joining them to a taller peak. Rasterization bumps have
+# prominence <1 px (merged); two touching items are separated by a saddle that
+# dips to the neck half-width, a drop far larger than this. Stable for h in
+# [2, 8] px on synthetic singles (every yaw -> 1) and touching pairs (-> 2);
+# 3 px ~ 8 mm at the real camera, above jitter and below any item's peak.
+_TOUCH_PEAK_PROMINENCE_PX = 3.0
+
+# Solidity (mask area / convex-hull area) above which a component is taken to be
+# a single convex item and the costly h-maxima split is skipped. Only the neck
+# between two touching bodies pulls solidity down: every single rectangle (any
+# yaw) fills its hull (solidity 1.0), while a necked pair drops well below (corner
+# touch 0.71, partial-edge 0.78..0.92). The gate is a pure fast path — a low
+# solidity still routes to the split, which itself returns one mask for a genuine
+# (merely concave) single item — so it never forces a wrong split; it just keeps
+# the common convex-item frame off the reconstruction path. Validated on the real
+# single-item frames (they stay one component) — docs/experiments.md.
+_TOUCH_MIN_SOLIDITY = 0.97
+
 # Vertical cross-section roundness (day 4, P2). A body of revolution lying on
 # its side (Бутылка) shows a rectangular top-view silhouette, so silhouette K
 # alone reads it as B — but its hidden end section is a circle (K=1 -> D). The
@@ -139,8 +162,119 @@ def _find_item(depth_m, belt_depth_m, margin_m):
     return max(found, key=lambda mask_bbox: int(mask_bbox[0].sum()))
 
 
+def _reconstruct_by_dilation(marker, image):
+    """Grayscale morphological reconstruction of `image` from `marker` (<= image).
+
+    Iterated geodesic dilation to stability. Operates on the small cropped
+    sub-image, so the pixel-at-a-time propagation converges in a few ms. scipy
+    has no reconstruction primitive; this is the standard fixed-point loop.
+    """
+    from scipy.ndimage import grey_dilation
+
+    prev = marker
+    while True:
+        cur = np.minimum(grey_dilation(prev, size=3), image)
+        if np.array_equal(cur, prev):
+            return cur
+        prev = cur
+
+
+def _split_touching(mask):
+    """Split a connected mask of two touching items into one mask per item.
+
+    Touching products share one connected component, but their silhouette has a
+    neck (concavity) between the bodies — flush face-to-face contact fuses into a
+    single rectangle and is not recoverable from a top-down silhouette, so it is
+    out of scope. The Euclidean distance transform of the mask peaks at each
+    item's center and dips at the neck.
+
+    The markers are the PROMINENT EDT maxima (h-maxima transform): a single item
+    rasterizes — once rotated — into a ridge of many near-equal maxima, so plain
+    peak counting over-splits it at every non-axis-aligned yaw. The prominence
+    test keeps a maximum only if it rises more than _TOUCH_PEAK_PROMINENCE_PX
+    above the saddle joining it to a taller one, which merges rasterization bumps
+    (prominence <1 px) yet keeps two touching items apart (their saddle dips to
+    the neck half-width). The markers then grassfire outward THROUGH the mask (a
+    geodesic seeded split, not scipy's background-leaking watershed_ift — see
+    docs/decisions.md): the neck is reached from both bodies at once, so the cut
+    lands on it and each body keeps its true footprint. One prominent peak -> the
+    mask is returned unchanged (no over-split); two -> one sub-mask each. Sub-masks
+    partition the input exactly (no pixels lost or shared). The transforms run on
+    the component's bbox crop for speed.
+    """
+    from scipy.ndimage import distance_transform_edt, label
+    from scipy.spatial import ConvexHull, QhullError
+
+    ys, xs = np.where(mask)
+    # The foreground labeler also sees tiny depth speckles. _find_items filters
+    # them before this function, but keep the primitive safe for direct callers
+    # and degenerate masks: Qhull requires a genuinely 2-D point cloud.
+    if xs.size < 4 or np.ptp(xs) == 0 or np.ptp(ys) == 0:
+        return [mask]
+    # Fast path: a convex silhouette (a single item) fills its convex hull; only a
+    # neck between two touching bodies drops solidity below the gate. Skip the
+    # h-maxima reconstruction and grassfire in that (common) case.
+    pts = np.column_stack([xs, ys]).astype(float)
+    try:
+        hull_area = float(ConvexHull(pts).volume)
+    except QhullError:
+        # A split is an optional refinement. If the hull cannot be constructed,
+        # fail closed to one component instead of crashing the perception node;
+        # _find_items will still reject an invalid zero-width bbox below.
+        return [mask]
+    if hull_area <= 0.0:
+        return [mask]
+    if float(mask.sum()) / hull_area > _TOUCH_MIN_SOLIDITY:
+        return [mask]
+    y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
+    sub = mask[y0:y1, x0:x1]
+    dist = distance_transform_edt(sub).astype(float)
+    if dist.max() <= 0.0:
+        return [mask]
+    # h-maxima: reconstruct dist from (dist - h). This flattens every sub-h bump
+    # into its surroundings, so the ridge/cap of one item becomes a single
+    # regional maximum while two touching items keep two, split by their (deeper)
+    # saddle. The prominent peaks are the regional maxima of hmax: pixels that a
+    # second reconstruction from just below cannot fill up to hmax (a plain
+    # local-max filter is fooled by the flat diagonal ridges of a square's EDT).
+    from scipy.ndimage import grey_dilation
+
+    hmax = _reconstruct_by_dilation(dist - _TOUCH_PEAK_PROMINENCE_PX, dist)
+    peaks = (hmax > _reconstruct_by_dilation(hmax - 1e-6, hmax)) & (dist > 0.0)
+    markers, n = label(peaks, structure=np.ones((3, 3), dtype=int))
+    if n < 2:
+        return [mask]
+    # Grassfire from the markers, constrained to the mask: grow every label one
+    # pixel per step into unassigned mask pixels until the whole component is
+    # claimed. Growth is geodesic (it flows THROUGH the silhouette, not across the
+    # background), so the neck is reached from both bodies at once and the boundary
+    # lands there — a Euclidean nearest-marker split instead cuts a straight line
+    # between the compact peaks and inflates each body's oriented bbox on offset
+    # contacts (docs/experiments.md). grey_dilation propagates the larger label
+    # into ties, an arbitrary but deterministic tie-break along the seam.
+    assigned = markers.copy()
+    while True:
+        unassigned = (assigned == 0) & sub
+        if not unassigned.any():
+            break
+        grown = grey_dilation(assigned, size=3)
+        newly = unassigned & (grown > 0)
+        if not newly.any():
+            break
+        assigned[newly] = grown[newly]
+    out = []
+    for label_id in range(1, n + 1):
+        piece = assigned == label_id
+        if not piece.any():
+            continue
+        full = np.zeros_like(mask)
+        full[y0:y1, x0:x1] = piece
+        out.append(full)
+    return out
+
+
 def _find_items(depth_m, belt_depth_m, margin_m):
-    """Valid connected item masks and bboxes in one frame."""
+    """Valid item masks and bboxes in one frame; touching items are split."""
     from scipy.ndimage import label
 
     foreground = _item_mask(depth_m, belt_depth_m, margin_m)
@@ -148,14 +282,22 @@ def _find_items(depth_m, belt_depth_m, margin_m):
     h, w = depth_m.shape
     found = []
     for component_id in range(1, count + 1):
-        mask = labels == component_id
-        ys, xs = np.where(mask)
-        if xs.size < _MIN_ITEM_PX:
+        component = labels == component_id
+        # Preserve the pre-split contract: noise below _MIN_ITEM_PX never reaches
+        # ConvexHull. The seed-1 stream exposed this when a tiny speck raised
+        # QhullError before the old size filter had a chance to discard it.
+        if int(component.sum()) < _MIN_ITEM_PX:
             continue
-        x0, y0, x1, y1 = int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
-        if x0 == 0 or y0 == 0 or x1 == w - 1 or y1 == h - 1:
-            continue
-        found.append((mask, (x0, y0, x1, y1)))
+        for mask in _split_touching(component):
+            ys, xs = np.where(mask)
+            if xs.size < _MIN_ITEM_PX:
+                continue
+            x0, y0, x1, y1 = int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
+            if x0 == x1 or y0 == y1:
+                continue
+            if x0 == 0 or y0 == 0 or x1 == w - 1 or y1 == h - 1:
+                continue
+            found.append((mask, (x0, y0, x1, y1)))
     return found
 
 
@@ -594,3 +736,36 @@ def save_overlay(depth_m, out_path, belt_depth_m=BELT_DEPTH_M):
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
     cv2.imwrite(str(out_path), vis)
     return None if m is None else m.dims_mm
+
+
+def render_items_overlay(depth_m, tagged_items):
+    """BGR debug frame: every item's bbox with its id, dims/K and aggregation state.
+
+    tagged_items: iterable of (item_id, Measurement, state_text_or_None). The
+    perception node passes the tracker's ids and the classifier's last state per
+    id ("B conf=0.95"), so the frame shows what the PIPELINE currently thinks
+    about each item, not just the geometry (Karpathy #4). Pure drawing — the
+    measuring stays in measure_items().
+    """
+    import cv2
+
+    gray = np.clip((depth_m - 1.2) / (2.0 - 1.2), 0, 1)  # belt/floor band -> readable
+    vis = cv2.cvtColor((gray * 255).astype(np.uint8), cv2.COLOR_GRAY2BGR)
+    for item_id, m, state in tagged_items:
+        x0, y0, x1, y1 = m.bbox_px
+        cv2.rectangle(vis, (x0, y0), (x1, y1), (0, 255, 0), 2)
+        dims = "x".join(f"{d:.0f}" for d in m.dims_mm)
+        cv2.putText(vis, f"id={item_id} {dims}mm K={m.k:.2f}",
+                    (x0, max(y0 - 26, 14)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+        cv2.putText(vis, state if state else "unclassified",
+                    (x0, max(y0 - 8, 30)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+    return vis
+
+
+def save_items_overlay(depth_m, tagged_items, out_path):
+    """Write render_items_overlay() to out_path (PNG)."""
+    import cv2
+
+    cv2.imwrite(str(out_path), render_items_overlay(depth_m, tagged_items))

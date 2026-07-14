@@ -1,22 +1,18 @@
 """Static/dry-run checks for the resumable day-4 matrix harness."""
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+from bash_host import find_bash
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "run_matrix.sh"
 
 
 def _bash_env():
-    bash = shutil.which("bash")
-    if bash is None and os.name == "nt":
-        git_bash = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Git" / "bin" / "bash.exe"
-        if git_bash.exists():
-            bash = str(git_bash)
+    bash = find_bash()
     if bash is None:
         pytest.skip("bash is unavailable on this host")
     env = os.environ.copy()
@@ -122,6 +118,35 @@ def test_cell_timeout_bounds_a_wedged_episode(tmp_path):
     assert "TIMEOUT" in result.stdout, result.stdout + result.stderr
     assert "routing correctness 0/1" in result.stdout
     assert result.returncode != 0  # a timed-out cell is not a pass
+
+
+def test_targeted_replay_can_keep_a_pose_trace_per_cell(tmp_path):
+    """A rare physics failure must leave its trajectory behind for triage."""
+    bash, env = _bash_env()
+    env.pop("MATRIX_DRY_RUN", None)
+    env["LOGDIR"] = tmp_path.as_posix()
+    env["SAVE_DYNAMICS"] = "1"
+    stub = tmp_path / "trace.sh"
+    stub.write_text(
+        '#!/usr/bin/env bash\nprintf "capture=%s\\n" "$CAPTURE_DYNAMICS" '
+        '> "$DYNAMICS_TRACE"\n',
+        encoding="utf-8",
+    )
+    env["SKELETON"] = f"bash {stub.as_posix()}"
+
+    result = subprocess.run(
+        [bash, str(SCRIPT), "0", "1", "10", "10"],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    trace = tmp_path / "dynamic_pose_helmet_0.log"
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert trace.read_text(encoding="utf-8") == "capture=1\n"
+    assert not list(tmp_path.glob("matrix_*_dynamic_pose.log"))
 
 
 def test_dry_run_rejects_invalid_item_range():

@@ -21,10 +21,14 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import CameraInfo, Image
 
-from ros_msgs.msg import ItemMeasurement
+from ros_msgs.msg import ItemClassification, ItemMeasurement
 
 from src.item_tracking import ItemTracker
-from src.perception import measure_items
+from src.perception import measure_items, save_items_overlay
+
+# Aggregation states remembered for the debug overlay; same spirit as
+# aggregation.MAX_TRACKED_ITEMS — bounded, ample for a sequential belt.
+_MAX_OVERLAY_STATES = 32
 
 
 class PerceptionNode(Node):
@@ -40,9 +44,19 @@ class PerceptionNode(Node):
         # PERCEPTION_DUMP_DIR is set, so production runs are untouched.
         self._dump_dir = os.environ.get("PERCEPTION_DUMP_DIR")
         self._dump_n = 0
+        # Last classifier verdict per item_id, shown on the dumped overlay so the
+        # frame carries the aggregation STATE, not just the geometry (day 9 debt).
+        self._agg_state = {}
         self.pub = self.create_publisher(ItemMeasurement, "/item/measurement", 10)
         self.create_subscription(Image, "/camera/depth_image", self.on_depth, 10)
         self.create_subscription(CameraInfo, "/camera/camera_info", self.on_info, 10)
+        self.create_subscription(
+            ItemClassification, "/item/classification", self.on_classification, 10)
+
+    def on_classification(self, msg):
+        if msg.item_id not in self._agg_state and len(self._agg_state) >= _MAX_OVERLAY_STATES:
+            self._agg_state.pop(next(iter(self._agg_state)))
+        self._agg_state[msg.item_id] = f"{msg.category} conf={msg.confidence:.2f}"
 
     def on_info(self, msg):
         self.fx = float(msg.k[0])  # K = [fx 0 cx; 0 fy cy; 0 0 1]
@@ -62,9 +76,9 @@ class PerceptionNode(Node):
             kwargs = {"fx": self.fx, "fy": self.fy, "cx": self.cx, "cy": self.cy}
         depth64 = depth.astype(np.float64)
         measurements = measure_items(depth64, **kwargs)
-        if self._dump_dir and measurements:
-            self._dump_frame(depth64, measurements)
         item_ids = self.tracker.update([measurement.position_m for measurement in measurements])
+        if self._dump_dir and measurements:
+            self._dump_frame(depth64, measurements, item_ids)
         for item_id, measurement in zip(item_ids, measurements):
             out = ItemMeasurement()
             out.header.stamp = msg.header.stamp  # measurement time = frame time
@@ -82,9 +96,10 @@ class PerceptionNode(Node):
             )
 
 
-    def _dump_frame(self, depth64, measurements):
+    def _dump_frame(self, depth64, measurements, item_ids):
         """Save one measured depth frame as a uint16-mm PNG (load_depth_png format),
-        tagged with the frame index and the K of its largest item for easy picking."""
+        tagged with the frame index and the K of its largest item for easy picking,
+        plus the human-readable overlay with per-item id and aggregation state."""
         import os as _os
 
         import cv2
@@ -94,6 +109,11 @@ class PerceptionNode(Node):
         mm = (np.nan_to_num(depth64) * 1000.0).clip(0, 65535).astype(np.uint16)
         path = _os.path.join(self._dump_dir, f"depth_{self._dump_n:03d}_k{k:.2f}.png")
         cv2.imwrite(path, mm)
+        tagged = [(item_id, m, self._agg_state.get(item_id))
+                  for item_id, m in zip(item_ids, measurements)]
+        save_items_overlay(
+            depth64, tagged,
+            _os.path.join(self._dump_dir, f"overlay_{self._dump_n:03d}.png"))
         self._dump_n += 1
 
 

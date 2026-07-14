@@ -20,12 +20,19 @@
 # pose, so the stream starts from the poses the census knows.
 #
 # Zone success criteria: scripts/zone_verdict.py (shared with run_skeleton.sh).
+# errexit first, and a loud check before sourcing install/setup.bash — same
+# defect/fix as run_skeleton.sh (see that file's header for the full story).
+set -e
 cd "$(dirname "$0")/.."
 export LIBGL_ALWAYS_SOFTWARE=1
-source /opt/ros/humble/setup.bash
 ROS_INSTALL_ROOT=${ROS_INSTALL_ROOT:-install}
+if [ ! -f "$ROS_INSTALL_ROOT/setup.bash" ]; then
+    echo "ABORT: ROS workspace is not built ($ROS_INSTALL_ROOT/setup.bash is missing) — run:" >&2
+    echo "    colcon build --packages-select ros_msgs" >&2
+    exit 1
+fi
+source /opt/ros/humble/setup.bash
 source "$ROS_INSTALL_ROOT/setup.bash"
-set -e
 
 WORLD=${WORLD:-sim/worlds/cell_diverter.sdf}
 ITEM_MODEL_ROOT=${ITEM_MODEL_ROOT:-sim/models/items}
@@ -129,6 +136,9 @@ T0=$(date +%s.%N)
         ign service -s /world/cell/create --reqtype ignition.msgs.EntityFactory \
             --reptype ignition.msgs.Boolean --timeout 5000 \
             --req "sdf_filename: \"$PWD/$ITEM_MODEL_ROOT/${SLUGS[$i]}/model.sdf\", name: \"item$i\", pose: {position: {x: ${SPAWN_X[$i]}, y: ${SPAWN_Y[$i]}, z: ${SPAWN_Z[$i]}}, orientation: {x: $OX, y: $OY, z: $OZ, w: $OW}}" > /dev/null
+        # announce the feed to the controller's watchdog (see run_skeleton.sh);
+        # backgrounded so the CLI's startup does not skew the next feed delay
+        ros2 topic pub -w 1 --once /infeed/fed std_msgs/msg/Empty > /dev/null 2>&1 &
         echo "fed item$i: ${SLUGS[$i]} -> ${ZONES[$i]} at t=${DELAYS[$i]}s"
     done
 ) &
@@ -177,6 +187,13 @@ for _ in $(seq 1 "$POLL_ITERS"); do
 done
 wait $FEEDER 2>/dev/null || true
 
+# The stream's own summary — arrivals (T0-relative, so Gazebo boot and the belt
+# soft-start are excluded) and the takt — is echoed AND saved to the run dir, so
+# scripts/measure_throughput.py can recover per-item landing times offline. The
+# node stdout in skeleton.log carries the camera/decision/command stamps; this
+# file carries the body-scored verdict arrivals (a different clock — see the
+# parser). tee'd as one whole block, so no line is lost to a race on exit.
+{
 echo "=== stream result ==="
 for i in "${!SLUGS[@]}"; do
     NAME="item$i"
@@ -200,6 +217,7 @@ if len(arrivals) > 1:
     gaps = ", ".join(f"{b - a:.1f}" for a, b in zip(arrivals, arrivals[1:]))
     print(f"takt between arrivals: {takt:.1f} s ({gaps} s) => {60.0 / takt:.0f} items/min")
 PY
+} | tee "$LOGDIR/stream.log"
 
 # Proof that perception kept the items apart: a merged blob would show ONE id, a
 # jumping tracker MORE ids than items.

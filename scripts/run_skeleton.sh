@@ -13,12 +13,25 @@
 # (scripts/spawn_orientations.py) — that is the run's seed source (day 4).
 #
 # Zone success criteria: scripts/zone_verdict.py (shared with run_stream.sh).
+#
+# errexit FIRST, before anything that can fail. It used to be armed only AFTER the
+# two `source` lines below, so on a clean checkout the missing workspace did not stop
+# the run: it carried on unsourced, found no `ign`, and died 100 lines later claiming
+# "the belt never reached full speed" — a false diagnosis pointing at conveyor physics.
+set -e
 cd "$(dirname "$0")/.."
 export LIBGL_ALWAYS_SOFTWARE=1
-source /opt/ros/humble/setup.bash
+# install/ is a gitignored BUILD artifact, so a fresh clone has no setup.bash. Checked
+# before sourcing ROS: this is the one failure we can name exactly, so name it loudly
+# (same principle as zone_verdict.py) instead of leaving bash's "No such file".
 ROS_INSTALL_ROOT=${ROS_INSTALL_ROOT:-install}
+if [ ! -f "$ROS_INSTALL_ROOT/setup.bash" ]; then
+    echo "ABORT: ROS workspace is not built ($ROS_INSTALL_ROOT/setup.bash is missing) — run:" >&2
+    echo "    colcon build --packages-select ros_msgs" >&2
+    exit 1
+fi
+source /opt/ros/humble/setup.bash
 source "$ROS_INSTALL_ROOT/setup.bash"
-set -e
 
 # Every matrix cell starts a fresh Gazebo server.  A plain TERM-only `pkill`
 # occasionally left the server alive after an early `set -e` exit (for example,
@@ -94,6 +107,10 @@ case "$WORLD" in *diverter*)
 # and print a peak speed/accel/impulse line. Off by default so the matrix and the
 # pusher baseline are not slowed; compare_mechanisms.sh turns it on.
 CAPTURE_DYNAMICS=${CAPTURE_DYNAMICS:-0}
+# The matrix can point each cell at its own durable file. Keeping this configurable
+# matters for rare physics failures: /tmp/dyn_trace.log is overwritten by the next
+# episode, so the one failing trajectory used to disappear before it could be triaged.
+DYNAMICS_TRACE=${DYNAMICS_TRACE:-/tmp/dyn_trace.log}
 # Spawn orientation quaternion (identity by default); run_matrix.sh sets these.
 OX=${ORIENT_X:-0}
 OY=${ORIENT_Y:-0}
@@ -119,7 +136,7 @@ sleep 1
 
 # record the item's dynamic pose for the whole episode (gentleness metric)
 if [ "$CAPTURE_DYNAMICS" = 1 ]; then
-    ign topic -e -t /world/cell/dynamic_pose/info > /tmp/dyn_trace.log 2>&1 &
+    ign topic -e -t /world/cell/dynamic_pose/info > "$DYNAMICS_TRACE" 2>&1 &
     DYN_PID=$!
 fi
 
@@ -152,6 +169,12 @@ fi
 ign service -s /world/cell/create --reqtype ignition.msgs.EntityFactory \
     --reptype ignition.msgs.Boolean --timeout 5000 \
     --req "sdf_filename: \"$PWD/$ITEM_MODEL_ROOT/$SLUG/model.sdf\", name: \"item\", pose: {position: {x: $SPAWN_X, y: $SPAWN_Y, z: $SPAWN_Z}, orientation: {x: $OX, y: $OY, z: $OZ, w: $OW}}" > /dev/null
+# Announce the feed to the controller's watchdog: an announced item the camera
+# never confirms latches the cell as a FEED JAM (the census feed_jam class was
+# invisible before — the wedged item never yields a measurement). Backgrounded:
+# `-w 1` waits for the subscription match, and a LATE announce only pushes the
+# deadline later, never earlier.
+ros2 topic pub -w 1 --once /infeed/fed std_msgs/msg/Empty > /dev/null 2>&1 &
 sleep 2
 
 # Position AND orientation, from ONE query: the verdict scores the item's BODY, and
@@ -225,7 +248,12 @@ if [ -n "$DYN_PID" ]; then
     kill "$DYN_PID" 2>/dev/null || true
     MASS=$(grep -m1 '<mass>' "$ITEM_MODEL_ROOT/$SLUG/model.sdf" \
            | sed -E 's/.*<mass>([0-9.]+)<.*/\1/')
-    python3 scripts/capture_dynamics.py /tmp/dyn_trace.log --mass "${MASS:-1.0}" || true
+    # --model-sdf adds the rotational bound on peak_accel: the trace is the model
+    # ORIGIN, and for a tumbling item that point swings around the COM (lever arm
+    # = the sdf's <inertial><pose>), so the bound separates "the goods were hit"
+    # from "the ruler's point swung" (docs/decisions.md 2026-07-14).
+    python3 scripts/capture_dynamics.py "$DYNAMICS_TRACE" --mass "${MASS:-1.0}" \
+        --model-sdf "$ITEM_MODEL_ROOT/$SLUG/model.sdf" || true
 fi
 
 [ "$VERDICT" = PASS ]

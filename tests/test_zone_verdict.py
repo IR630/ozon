@@ -7,9 +7,18 @@ bulky item the two are up to 349 mm apart (scripts/zone_verdict.py). `body` carr
 item's real centre and lowest point; it defaults to the reported pose, which is exactly
 right in the default pose — there the origin IS the contact point.
 """
+from pathlib import Path
+
 import pytest
 
-from zone_verdict import in_zone, in_zone_legacy
+from zone_verdict import (
+    assert_origin_is_contact_point,
+    body_from_resting_pose,
+    in_zone,
+    in_zone_legacy,
+)
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_the_legacy_ruler_still_reproduces_both_of_its_bugs():
@@ -96,6 +105,52 @@ def test_the_default_pose_needs_no_mesh_the_origin_is_the_contact_point():
     A clean checkout has no STLs to measure, and must stay correct anyway."""
     assert in_zone("C", 3.0, 0.9, 0.0)        # box resting on the cage floor
     assert not in_zone("C", 3.0, 0.9, 0.14)   # same box hung up on the chute
+
+
+def test_an_empty_hull_falls_back_to_the_origin_not_to_nan(tmp_path):
+    """The CI-only bug this guards. A clean checkout has no STLs, so run_skeleton dumps
+    no hull and passes /dev/null; read_hull_m then yields an EMPTY hull, and the old
+    body_from_hull([]) returned (nan, nan, inf) — which scores EVERY delivered item 'no'
+    (box_300 -> B could never pass the e2e). An unusable hull must fall back to the
+    reported origin, exactly as a missing file already does."""
+    empty = tmp_path / "empty_hull.txt"
+    empty.write_text("", encoding="utf-8")
+    # None == "score the reported origin" (the fallback contract); NOT a nan tuple.
+    assert body_from_resting_pose(str(empty), 4.3, 0.0, 0.4, 0.0, 0.0, 0.0) is None
+    # a genuinely missing file has always fallen back this way — the two must agree.
+    assert body_from_resting_pose(str(tmp_path / "nope.txt"),
+                                  4.3, 0.0, 0.4, 0.0, 0.0, 0.0) is None
+
+
+def test_the_origin_fallback_is_refused_loudly_at_a_rotated_pose():
+    """The origin equals the body's contact point ONLY at an upright pose — that is the
+    whole reason the fallback is safe in CI/default runs. Reached at a tilted pose (a
+    changed fixture, or a real item whose mesh vanished), scoring the origin silently
+    reintroduces the pouf-class bug (origin up to 349 mm off the goods). With no mesh to
+    correct it, the tilt angle is the one available proxy, so it must fail loudly there."""
+    assert_origin_is_contact_point(0.0, 0.0, 0.0)        # identity: the CI/default case
+    assert_origin_is_contact_point(0.03, -0.02, 2.0)     # flat but yawed: origin z intact
+    with pytest.raises(ValueError):
+        assert_origin_is_contact_point(0.0, 1.2, 0.0)    # 69 deg pitch: origin left the floor
+    with pytest.raises(ValueError):
+        assert_origin_is_contact_point(1.5, 0.0, 0.0)    # on its side: origin is a top corner
+
+
+def test_the_ci_fixture_origin_is_its_contact_point_in_the_default_pose():
+    """Pin the assumption the CI origin-fallback rests on: the fixture's model origin
+    sits on its contact point in the default pose. Nothing enforced this — editing the
+    fixture's pose would return the origin-vs-body bug silently (days 73183dc..db5368e),
+    and only the slow Gazebo e2e would (maybe) catch it. This runs in the fast pytest job
+    on every push: the box collision's lowest point must be the model origin z, within
+    the 5 mm the fallback promises."""
+    import xml.etree.ElementTree as ET
+
+    sdf = ROOT / "sim" / "models" / "fixtures" / "box_300x200x200" / "model.sdf"
+    collision = ET.parse(sdf).getroot().find(".//collision")
+    pose_z = float(collision.find("pose").text.split()[2])
+    size_z = float(collision.find(".//box/size").text.split()[2])
+    contact_z = pose_z - size_z / 2.0
+    assert abs(contact_z) <= 0.005   # model origin z is 0; the box must rest on it
 
 
 def test_a_turned_pouf_lying_in_the_cage_is_scored_delivered():

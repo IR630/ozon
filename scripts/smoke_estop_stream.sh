@@ -13,11 +13,25 @@
 #
 # Passes when, after the E-stop: the items stop moving, the blade's ANGLE does not
 # change (measured on the joint, not assumed from the command), and no item fires.
+# errexit first, and a loud check before sourcing install/setup.bash — same
+# defect/fix as run_skeleton.sh (see that file's header for the full story).
+set -e
 cd "$(dirname "$0")/.."
 export LIBGL_ALWAYS_SOFTWARE=1
+ROS_INSTALL_ROOT=${ROS_INSTALL_ROOT:-install}
+if [ ! -f "$ROS_INSTALL_ROOT/setup.bash" ]; then
+    echo "ABORT: ROS workspace is not built ($ROS_INSTALL_ROOT/setup.bash is missing) — run:" >&2
+    echo "    colcon build --packages-select ros_msgs" >&2
+    exit 1
+fi
 source /opt/ros/humble/setup.bash
-source install/setup.bash
-set -eu
+source "$ROS_INSTALL_ROOT/setup.bash"
+# nounset only AFTER the sources — never before. ROS's own setup.bash reads
+# unbound variables (`AMENT_TRACE_SETUP_FILES: unbound variable`) and dies under
+# `set -u`, taking the whole script with it on a perfectly good workspace. This
+# is exactly where `set -eu` always sat, so -u's scope is unchanged; only errexit
+# moved up to cover the sources.
+set -u
 
 export HOLD_S=${HOLD_S:-2.5}
 export FIRE_LEAD_S=${FIRE_LEAD_S:-0.5}

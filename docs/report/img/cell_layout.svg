@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">Компоновка финальной ячейки сортировки</title>
+  <desc id="desc">Размерный вид сверху исполнительной ячейки с лентой, камерой, двумя шиберами, склизами, зонами B C D, опасным периметром и операторским проходом.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto-start-reverse">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#334155"/>
+    </marker>
+    <style>
+      .t{font-family:Arial,'DejaVu Sans',sans-serif;fill:#172033}.title{font-size:28px;font-weight:700}.h{font-size:19px;font-weight:700}.s{font-size:15px}.xs{font-size:13px}.dim{stroke:#334155;stroke-width:1.5;marker-start:url(#arrow);marker-end:url(#arrow)}.guide{stroke:#94a3b8;stroke-width:1;stroke-dasharray:5 5}.label{paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round}
+    </style>
+  </defs>
+  <rect width="1600" height="900" fill="#f8fafc"/>
+  <text x="70" y="48" class="t title">Финальная ячейка: размерная компоновка из cell_diverter.sdf</text>
+  <text x="70" y="75" class="t s">Вид сверху · координаты в метрах · движение товара вдоль +X</text>
+
+  <g transform="translate(0 70)">
+  <!-- operator walkway y=1.95..2.65 -->
+  <rect x="130" y="42.5" width="900" height="105" rx="8" fill="#dcfce7" stroke="#22c55e" stroke-width="2"/>
+  <text x="150" y="102" class="t h">Операторский проход 0,70 м</text>
+  <text x="760" y="102" class="t s">HMI + аппаратный E-stop</text>
+
+  <!-- safety perimeter x=-1.5..4.5 y=-1.55..1.55 -->
+  <rect x="130" y="207.5" width="900" height="465" fill="#fee2e2" fill-opacity="0.30" stroke="#dc2626" stroke-width="4" stroke-dasharray="14 8"/>
+  <text x="145" y="232" class="t s label" fill="#b91c1c">ОПАСНЫЙ ПЕРИМЕТР 6,0 × 3,1 м</text>
+
+  <!-- belt, x=-1.5..4.5 y=+-0.25 -->
+  <rect x="130" y="402.5" width="900" height="75" fill="#64748b" stroke="#334155" stroke-width="2"/>
+  <line x1="165" y1="440" x2="315" y2="440" stroke="#fff" stroke-width="5" marker-end="url(#arrow)"/>
+  <text x="170" y="429" class="t s label">Лента 0,50 м · 1 м/с</text>
+
+  <!-- camera and conservative vision window -->
+  <rect x="445" y="335" width="270" height="210" fill="#dbeafe" fill-opacity="0.30" stroke="#2563eb" stroke-width="2" stroke-dasharray="8 6"/>
+  <circle cx="580" cy="440" r="18" fill="#2563eb"/>
+  <circle cx="580" cy="440" r="7" fill="#bfdbfe"/>
+  <text x="520" y="325" class="t s label">Depth-окно</text>
+  <text x="598" y="435" class="t xs label">камера</text>
+  <text x="598" y="452" class="t xs label">x=1,50; z=1,90</text>
+
+  <!-- zones, drawn before chutes -->
+  <rect x="715" y="245" width="240" height="120" fill="#bfdbfe" stroke="#2563eb" stroke-width="2"/>
+  <line x1="715" y1="245" x2="955" y2="245" stroke="#1d4ed8" stroke-width="8"/>
+  <line x1="955" y1="245" x2="955" y2="365" stroke="#1d4ed8" stroke-width="8"/>
+  <text x="800" y="275" class="t h">C</text><text x="758" y="300" class="t xs">1,60 × 0,80</text>
+
+  <rect x="790" y="515" width="240" height="120" fill="#fed7aa" stroke="#ea580c" stroke-width="2"/>
+  <line x1="790" y1="635" x2="1030" y2="635" stroke="#c2410c" stroke-width="8"/>
+  <line x1="1030" y1="515" x2="1030" y2="635" stroke="#c2410c" stroke-width="8"/>
+  <text x="875" y="575" class="t h">D</text><text x="833" y="600" class="t xs">1,60 × 0,80</text>
+
+  <rect x="850" y="380" width="150" height="120" fill="#bbf7d0" fill-opacity="0.75" stroke="#16a34a" stroke-width="2"/>
+  <text x="915" y="432" class="t h">B</text><text x="882" y="458" class="t xs">прямой проход</text>
+
+  <!-- chutes -->
+  <polygon points="730,410 940,410 940,319 730,319" fill="#cbd5e1" fill-opacity="0.85" stroke="#475569" stroke-width="2"/>
+  <text x="760" y="340" class="t xs label">склиз C · 34°</text>
+  <polygon points="805,470 1015,470 1015,561 805,561" fill="#cbd5e1" fill-opacity="0.85" stroke="#475569" stroke-width="2"/>
+  <text x="835" y="548" class="t xs label">склиз D · 34°</text>
+
+  <!-- diverters: parked solid, engaged dashed -->
+  <circle cx="842.5" cy="398" r="7" fill="#be123c"/>
+  <line x1="722.5" y1="398" x2="842.5" y2="398" stroke="#be123c" stroke-width="6"/>
+  <line x1="768" y1="492" x2="842.5" y2="398" stroke="#be123c" stroke-width="5" stroke-dasharray="9 6"/>
+  <text x="750" y="382" class="t xs label">шибер C · 0,80 м</text>
+
+  <circle cx="917.5" cy="482" r="7" fill="#c2410c"/>
+  <line x1="797.5" y1="482" x2="917.5" y2="482" stroke="#c2410c" stroke-width="6"/>
+  <line x1="843" y1="388" x2="917.5" y2="482" stroke="#c2410c" stroke-width="5" stroke-dasharray="9 6"/>
+  <text x="880" y="505" class="t xs label">шибер D</text>
+
+  <!-- proposed physical service access, not in SDF -->
+  <path d="M930 115 L1065 115 L1065 690 L990 690" fill="none" stroke="#7c3aed" stroke-width="4" stroke-dasharray="10 7" marker-end="url(#arrow)"/>
+  <rect x="1018" y="655" width="25" height="70" fill="#f8fafc" stroke="#7c3aed" stroke-width="3"/>
+  <text x="1050" y="690" class="t xs" fill="#6d28d9" transform="rotate(-90 1050 690)">сервисная калитка (проект)</text>
+
+  <!-- dimensions -->
+  <line x1="130" y1="700" x2="1030" y2="700" class="dim"/>
+  <line x1="130" y1="676" x2="130" y2="713" class="guide"/><line x1="1030" y1="676" x2="1030" y2="713" class="guide"/>
+  <text x="550" y="725" class="t s">6,00 м</text>
+  <line x1="95" y1="207.5" x2="95" y2="672.5" class="dim"/>
+  <line x1="105" y1="207.5" x2="75" y2="207.5" class="guide"/><line x1="105" y1="672.5" x2="75" y2="672.5" class="guide"/>
+  <text x="55" y="455" class="t s" transform="rotate(-90 55 455)">3,10 м</text>
+
+  <!-- coordinate ticks -->
+  <g class="t xs" text-anchor="middle">
+    <text x="130" y="494">−1,5</text><text x="355" y="494">0</text><text x="580" y="494">1,5</text><text x="805" y="494">3,0</text><text x="1030" y="494">4,5</text>
+  </g>
+  </g>
+
+  <!-- right-side legend and section -->
+  <text x="1120" y="120" class="t h">Условные обозначения</text>
+  <rect x="1120" y="145" width="34" height="20" fill="#64748b"/><text x="1170" y="161" class="t s">конвейер</text>
+  <rect x="1120" y="180" width="34" height="20" fill="#bfdbfe" stroke="#2563eb"/><text x="1170" y="196" class="t s">зона C</text>
+  <rect x="1120" y="215" width="34" height="20" fill="#fed7aa" stroke="#ea580c"/><text x="1170" y="231" class="t s">зона D</text>
+  <line x1="1120" y1="260" x2="1155" y2="260" stroke="#be123c" stroke-width="6"/><text x="1170" y="266" class="t s">лопасть припаркована</text>
+  <line x1="1120" y1="295" x2="1155" y2="295" stroke="#be123c" stroke-width="5" stroke-dasharray="8 5"/><text x="1170" y="301" class="t s">лопасть выставлена</text>
+  <line x1="1120" y1="330" x2="1155" y2="330" stroke="#7c3aed" stroke-width="4" stroke-dasharray="8 5"/><text x="1170" y="336" class="t s">физический проект, не SDF</text>
+
+  <text x="1120" y="405" class="t h">Поперечный разрез склиза</text>
+  <line x1="1120" y1="650" x2="1510" y2="650" stroke="#475569" stroke-width="3"/>
+  <rect x="1120" y="565" width="135" height="15" fill="#64748b"/>
+  <line x1="1255" y1="580" x2="1405" y2="650" stroke="#94a3b8" stroke-width="16"/>
+  <rect x="1405" y="637" width="150" height="13" fill="#bfdbfe" stroke="#2563eb"/>
+  <rect x="1225" y="475" width="12" height="90" fill="#be123c"/>
+  <text x="1120" y="550" class="t xs">лента z=0,40</text>
+  <text x="1205" y="465" class="t xs">лопасть: низ z=0,402</text>
+  <text x="1280" y="625" class="t xs label">склиз 34°</text>
+  <text x="1435" y="630" class="t xs">накопитель</text>
+  <line x1="1490" y1="650" x2="1490" y2="530" stroke="#1d4ed8" stroke-width="8"/>
+  <text x="1450" y="515" class="t xs">стенка 0,80 м</text>
+
+  <text x="1120" y="760" class="t h">Граница применимости</text>
+  <text x="1120" y="790" class="t s">Сплошная геометрия — реализована и проверена в SDF.</text>
+  <text x="1120" y="818" class="t s">Фиолетовая калитка — требование физического проекта.</text>
+  <text x="1120" y="846" class="t s">Чертёж не задаёт допуски, крепёж и кабельные трассы.</text>
+</svg>

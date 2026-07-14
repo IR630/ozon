@@ -9,10 +9,20 @@
 # The mp4 is NOT committed (GIT.md: no large binaries in the repo) — upload
 # to the organizers' cloud, link in README. The poster PNG may go to the
 # report. Exit code mirrors the run verdict, so a FAIL run fails the script.
+# errexit first, and a loud check before sourcing install/setup.bash — same
+# defect/fix as run_skeleton.sh (see that file's header for the full story).
+# This script had no errexit at all before this fix.
+set -e
 cd "$(dirname "$0")/.."
 export LIBGL_ALWAYS_SOFTWARE=1
+ROS_INSTALL_ROOT=${ROS_INSTALL_ROOT:-install}
+if [ ! -f "$ROS_INSTALL_ROOT/setup.bash" ]; then
+    echo "ABORT: ROS workspace is not built ($ROS_INSTALL_ROOT/setup.bash is missing) — run:" >&2
+    echo "    colcon build --packages-select ros_msgs" >&2
+    exit 1
+fi
 source /opt/ros/humble/setup.bash
-source install/setup.bash
+source "$ROS_INSTALL_ROOT/setup.bash"
 
 SLUG=${1:?usage: record_skeleton_video.sh <slug> <B|C|D> [out.mp4]}
 EXPECT=${2:?expected zone B|C|D}
@@ -42,12 +52,18 @@ python3 scripts/save_video.py --topic /spectator/image --out "$OUT" \
     --poster "${OUT%.mp4}_poster.png" &
 SAVER=$!
 
-wait $RUN
-VERDICT=$?
-# SIGINT (not SIGTERM straight away) so the writer releases and the mp4 closes
-kill -INT $SAVER 2>/dev/null
+# A FAIL episode is a NORMAL outcome here — the exit code mirrors the verdict — so
+# `wait` must not abort the script now that errexit is armed: that would skip the
+# cleanup below and leave the mp4 unclosed and the bridge/saver orphaned.
+VERDICT=0
+wait $RUN || VERDICT=$?
+# SIGINT (not SIGTERM straight away) so the writer releases and the mp4 closes.
+# `|| true`: by this point the saver has usually already exited, and killing a dead
+# PID returns non-zero — under errexit that would kill the script on the SUCCESS
+# path, before it ever reports the verdict.
+kill -INT $SAVER 2>/dev/null || true
 sleep 2
-kill $BRIDGE $SAVER 2>/dev/null
+kill $BRIDGE $SAVER 2>/dev/null || true
 grep " -> " /tmp/record_run.log || true
 ls -lh "$OUT"
 exit $VERDICT

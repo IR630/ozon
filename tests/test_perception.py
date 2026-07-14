@@ -25,6 +25,8 @@ HELMET_OI2_PNG = IMG_DIR / "day11_helmet_oi2_depth.png"
 PLATE_OI1_PNG = IMG_DIR / "day11_plate_oi1_depth.png"
 PLATE_PNG = IMG_DIR / "day4_plate_depth.png"
 PEN_PNG = IMG_DIR / "day4_pen_depth.png"
+VALIDATION_PEN_PNG = IMG_DIR / "validation_pen" / "depth_000.png"
+VALIDATION_PARTIAL_BOX_PNG = IMG_DIR / "validation_partial_box" / "depth_000.png"
 
 
 def _synthetic_box(rows=slice(100, 200), cols=slice(150, 250), top=1.3):
@@ -471,11 +473,61 @@ def test_measure_real_pen_frame_is_seen_and_routed_to_c():
     )
 
 
+def test_frozen_validation_pen_rgbd_capture_is_detected_and_routes_c():
+    """Fresh final-world RGBD capture closes the Pen validation slice."""
+    pytest.importorskip("cv2")
+    from src.classification import classify_conservative
+    from src.perception import load_depth_png
+
+    m = measure_item(load_depth_png(VALIDATION_PEN_PNG))
+    assert m is not None, "the 9 mm pen must survive the depth speck filter"
+    assert max(m.dims_mm) == pytest.approx(148.0, abs=10.0), m.dims_mm
+    assert classify_conservative(m.dims_mm, m.k) == "C", (m.dims_mm, m.k)
+
+
+def test_frozen_real_partial_box_is_rejected_instead_of_measured_as_a_small_item():
+    """A real object clipped by the camera border must not become a fake product."""
+    pytest.importorskip("cv2")
+    from src.perception import load_depth_png
+
+    depth = load_depth_png(VALIDATION_PARTIAL_BOX_PNG)
+    assert measure_item(depth) is None
+    assert measure_items(depth) == []
+
+
 def test_empty_belt_is_not_an_item():
     # Guard for lowering the min-px gate to 24: the belt itself must never look like
     # an item. Measured on real empty-belt frames the mask is 0 px (Gazebo, day 4);
     # this locks the invariant against a future margin/threshold change.
     assert measure_item(np.full((480, 640), 1.5)) is None
+
+
+def test_items_overlay_draws_every_item_with_id_and_state(tmp_path):
+    # Day 9 debt: the debug overlay must show EVERY item with its id and the
+    # pipeline's aggregation state, not just the largest blob's geometry.
+    cv2 = pytest.importorskip("cv2")
+    from src.perception import save_items_overlay
+
+    depth = np.full((480, 640), 1.5)
+    depth[80:160, 100:180] = 1.30
+    depth[280:370, 430:530] = 1.25
+    items = measure_items(depth, belt_depth_m=1.5, fx=500.0, fy=500.0)
+    assert len(items) == 2
+    by_row = sorted(items, key=lambda m: m.bbox_px[1])
+    tagged = [(7, by_row[0], "B conf=0.95"), (8, by_row[1], None)]
+
+    out = tmp_path / "overlay.png"
+    save_items_overlay(depth, tagged, out)
+
+    vis = cv2.imread(str(out))
+    assert vis.shape == (480, 640, 3)
+    green = (vis[:, :, 0] == 0) & (vis[:, :, 1] == 255) & (vis[:, :, 2] == 0)
+    # both bboxes are painted, so the overlay is multi-item (top edges hit)
+    assert green[80, 100:180].any()
+    assert green[280, 430:530].any()
+    # each item carries a text block above its bbox (id/dims line + state line)
+    assert green[54:80, 100:320].any()
+    assert green[254:280, 430:640].any()
 
 
 def test_load_depth_png_from_unicode_path(tmp_path):

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Validate the world and all generated item models with the SDF parser.
+# Validate every world and all generated item models with the SDF parser.
 # Run from the repo root in an environment with Gazebo Fortress (WSL/Docker):
 #   bash scripts/check_sdf.sh
 set -u

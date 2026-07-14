@@ -21,7 +21,7 @@ Runs inside the ROS 2 environment (needs rclpy and the built ros_msgs overlay):
 """
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Bool, Float64
+from std_msgs.msg import Bool, Empty, Float64
 
 from ros_msgs.msg import ItemClassification
 
@@ -40,6 +40,16 @@ _MAX_COMPLETED_ITEMS = 256  # safety bound if sim time is paused / malformed
 # that has not made even that in _JAM_TIMEOUT_S is not moving, it is wedged.
 _JAM_PROGRESS_M = 0.05
 _JAM_TIMEOUT_S = 2.0
+# Feed watchdog. A jam BEFORE the camera is invisible to detect_jam: the wedged
+# item never yields a measurement (the census `feed_jam` class — e.g. the pouf
+# stuck at x=-1.47). The cell has no infeed sensor, so the infeed ANNOUNCES every
+# item it places on the belt (/infeed/fed) and the controller expects the camera
+# to report a NEW item within this budget. Spawn (x=-1.5) to full camera view is
+# ~3 m at BELT_SPEED_M_S (~3 s, both runners feed onto a belt already at speed);
+# 8 s is a 2.5x margin, and the announce lands AFTER the spawn, so CLI latency
+# only ever pushes the deadline later — never a false trip.
+_FEED_TIMEOUT_S = 8.0
+_FEED_CHECK_PERIOD_S = 0.5
 
 
 class ControllerNode(Node):
@@ -85,6 +95,14 @@ class ControllerNode(Node):
         self.jam_timeout_s = float(
             self.declare_parameter("jam_timeout_s", _JAM_TIMEOUT_S).value)
         self.jam_anchor = {}            # item_id -> (x_m, stamp_s) of its last real progress
+        self.feed_timeout_s = float(
+            self.declare_parameter("feed_timeout_s", _FEED_TIMEOUT_S).value)
+        # Announced feeds awaiting their first camera sighting. FIFO deadlines:
+        # belt items do not overtake, so the oldest announcement is always the
+        # next one to arrive. Tracker ids grow monotonically within a session,
+        # so "new item" is simply an id above every id seen so far.
+        self.feed_deadlines = []
+        self.max_item_id_seen = 0
         self.belt_pub = self.create_publisher(Float64, "/conveyor/cmd_vel", 10)
         self.pusher_pubs = {
             "C": self.create_publisher(Float64, "/pusher_c/cmd", 10),
@@ -103,6 +121,31 @@ class ControllerNode(Node):
                                  self.on_classification, 10)
         self.create_subscription(Bool, "/emergency_stop",
                                  self.on_emergency_stop, 10)
+        self.create_subscription(Empty, "/infeed/fed", self.on_infeed, 10)
+        self.feed_watchdog = self.create_timer(_FEED_CHECK_PERIOD_S, self.check_infeed)
+
+    def on_infeed(self, _msg):
+        """The infeed just placed one item on the belt; expect it at the camera."""
+        if self.emergency_stopped:
+            return
+        self.feed_deadlines.append(self.now_s() + self.feed_timeout_s)
+
+    def check_infeed(self):
+        """Latch the cell when an announced item never showed up at the camera.
+
+        The reaction mirrors detect_jam: the safe state plus the named cause —
+        an infeed wedged under a stuck item must not keep feeding (and a fed
+        item the camera silently MISSED must not ride unmeasured either;
+        Karpathy #6 — fail loudly, not quietly).
+        """
+        if self.emergency_stopped or not self.feed_deadlines:
+            return
+        if self.now_s() < self.feed_deadlines[0]:
+            return
+        self.get_logger().error(
+            f"FEED JAM: an item fed {self.feed_timeout_s:.0f}s ago never reached the "
+            "camera — wedged on the infeed or missed by perception; latching emergency stop")
+        self.latch_emergency_stop()
 
     def on_ramp(self):
         if self.emergency_stopped:
@@ -119,6 +162,10 @@ class ControllerNode(Node):
     def on_classification(self, msg):
         if self.emergency_stopped:
             return
+        if msg.item_id > self.max_item_id_seen:
+            self.max_item_id_seen = msg.item_id
+            if self.feed_deadlines:
+                self.feed_deadlines.pop(0)  # the oldest announced feed has arrived
         self._prune_completed()
         if msg.item_id in self.fired:
             # too late to act, but a contradiction must be visible in the log
@@ -221,8 +268,9 @@ class ControllerNode(Node):
 
         LIMITATION: this only sees jams INSIDE the camera window. An item wedged on
         the infeed never reaches perception at all (the census `feed_jam` class,
-        e.g. the pouf at x=-1.47) and is invisible here — catching those needs a
-        sensor at the infeed, which the cell does not have. Recorded, not hidden.
+        e.g. the pouf at x=-1.47) and is invisible here — those are caught by the
+        feed watchdog instead (on_infeed/check_infeed): the infeed announces every
+        item it places and the camera must confirm it within feed_timeout_s.
         """
         anchor = self.jam_anchor.get(item_id)
         if anchor is None:
@@ -310,7 +358,10 @@ class ControllerNode(Node):
         # Drop the stall anchors: they were taken before the stop, so the belt's
         # own standstill is baked into them and the first frame after the reset
         # would be read as a fresh jam, latching the cell straight back down.
+        # Same for the feed deadlines: they were promised for a belt that then
+        # stood still, so the first watchdog tick after reset would re-latch.
         self.jam_anchor.clear()
+        self.feed_deadlines.clear()
         self.ramp_step = 0
         self.ramp_timer.reset()
         self.get_logger().warn("E-STOP reset: restarting belt with soft-start")
