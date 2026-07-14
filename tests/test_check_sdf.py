@@ -1,21 +1,17 @@
 """Contract tests for the fast SDF validator."""
 import os
-import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
+from bash_host import find_bash
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "check_sdf.sh"
 
 
 def _bash():
-    bash = shutil.which("bash")
-    if bash is None and os.name == "nt":
-        candidate = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Git" / "bin" / "bash.exe"
-        if candidate.exists():
-            bash = str(candidate)
+    bash = find_bash()
     if bash is None:
         pytest.skip("bash is unavailable on this host")
     return bash

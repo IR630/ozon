@@ -1,22 +1,18 @@
 """Static/dry-run checks for the resumable day-4 matrix harness."""
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+from bash_host import find_bash
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "run_matrix.sh"
 
 
 def _bash_env():
-    bash = shutil.which("bash")
-    if bash is None and os.name == "nt":
-        git_bash = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Git" / "bin" / "bash.exe"
-        if git_bash.exists():
-            bash = str(git_bash)
+    bash = find_bash()
     if bash is None:
         pytest.skip("bash is unavailable on this host")
     env = os.environ.copy()
