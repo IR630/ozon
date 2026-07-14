@@ -111,3 +111,32 @@ def test_convex_single_item_is_not_split():
     depth[100:200, 150:250] = 1.3
     mask = (depth > 0) & (depth < 1.5 - 0.005)
     assert len(_split_touching(mask)) == 1
+
+
+def test_tiny_depth_speck_is_filtered_before_touch_split():
+    """Regression for the seed-1 stream: noise must not reach scipy ConvexHull."""
+    depth = np.full((480, 640), 1.5)
+    depth[100, 100] = 1.3
+    depth[180:260, 280:360] = 1.3
+
+    items = measure_items(depth, belt_depth_m=1.5, fx=500.0, fy=500.0)
+
+    assert len(items) == 1
+    assert items[0].dims_mm == pytest.approx([208.0, 208.0, 200.0], abs=15.0)
+
+
+def test_qhull_failure_falls_back_to_one_component(monkeypatch):
+    """Touch splitting is optional: a degenerate hull must not kill perception."""
+    import scipy.spatial
+
+    mask = (_corner_touch() < 1.5)
+
+    def fail_hull(_points):
+        raise scipy.spatial.QhullError("synthetic degenerate component")
+
+    monkeypatch.setattr(scipy.spatial, "ConvexHull", fail_hull)
+
+    pieces = _split_touching(mask)
+
+    assert len(pieces) == 1
+    assert np.array_equal(pieces[0], mask)

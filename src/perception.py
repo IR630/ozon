@@ -203,14 +203,28 @@ def _split_touching(mask):
     the component's bbox crop for speed.
     """
     from scipy.ndimage import distance_transform_edt, label
-    from scipy.spatial import ConvexHull
+    from scipy.spatial import ConvexHull, QhullError
 
     ys, xs = np.where(mask)
+    # The foreground labeler also sees tiny depth speckles. _find_items filters
+    # them before this function, but keep the primitive safe for direct callers
+    # and degenerate masks: Qhull requires a genuinely 2-D point cloud.
+    if xs.size < 4 or np.ptp(xs) == 0 or np.ptp(ys) == 0:
+        return [mask]
     # Fast path: a convex silhouette (a single item) fills its convex hull; only a
     # neck between two touching bodies drops solidity below the gate. Skip the
     # h-maxima reconstruction and grassfire in that (common) case.
     pts = np.column_stack([xs, ys]).astype(float)
-    if float(mask.sum()) / float(ConvexHull(pts).volume) > _TOUCH_MIN_SOLIDITY:
+    try:
+        hull_area = float(ConvexHull(pts).volume)
+    except QhullError:
+        # A split is an optional refinement. If the hull cannot be constructed,
+        # fail closed to one component instead of crashing the perception node;
+        # _find_items will still reject an invalid zero-width bbox below.
+        return [mask]
+    if hull_area <= 0.0:
+        return [mask]
+    if float(mask.sum()) / hull_area > _TOUCH_MIN_SOLIDITY:
         return [mask]
     y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
     sub = mask[y0:y1, x0:x1]
@@ -268,11 +282,19 @@ def _find_items(depth_m, belt_depth_m, margin_m):
     h, w = depth_m.shape
     found = []
     for component_id in range(1, count + 1):
-        for mask in _split_touching(labels == component_id):
+        component = labels == component_id
+        # Preserve the pre-split contract: noise below _MIN_ITEM_PX never reaches
+        # ConvexHull. The seed-1 stream exposed this when a tiny speck raised
+        # QhullError before the old size filter had a chance to discard it.
+        if int(component.sum()) < _MIN_ITEM_PX:
+            continue
+        for mask in _split_touching(component):
             ys, xs = np.where(mask)
             if xs.size < _MIN_ITEM_PX:
                 continue
             x0, y0, x1, y1 = int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
+            if x0 == x1 or y0 == y1:
+                continue
             if x0 == 0 or y0 == 0 or x1 == w - 1 or y1 == h - 1:
                 continue
             found.append((mask, (x0, y0, x1, y1)))
