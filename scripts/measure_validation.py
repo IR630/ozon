@@ -42,6 +42,7 @@ class Evaluation:
 
 
 IMG = ROOT / "docs" / "report" / "img"
+FIXTURES = ROOT / "tests" / "fixtures" / "frames"
 CASES = (
     ValidationCase(
         "Bag oi1 / K-straddle",
@@ -62,6 +63,22 @@ CASES = (
     ValidationCase(
         "Helmet oi2 / near K=0.8",
         IMG / "day11_helmet_oi2_depth.png",
+        None,
+        (352.0, 298.0, 282.0),
+        0.78,
+        "B",
+    ),
+    ValidationCase(
+        "Bottle side / hidden round section",
+        FIXTURES / "bottle_side_depth.png",
+        None,
+        (301.0, 91.0, 90.0),
+        1.00,
+        "D",
+    ),
+    ValidationCase(
+        "Helmet tilted / 3D body OBB",
+        FIXTURES / "helmet_tilt_depth.png",
         None,
         (352.0, 298.0, 282.0),
         0.78,

@@ -42,7 +42,7 @@ flowchart LR
 | Узел | Вход | Выход | Ответственность |
 |---|---|---|---|
 | `ros_gz_bridge` | топики Gazebo | ROS 2 camera, `/clock`; команды обратно в Gazebo | Единый мост из `sim/bridge.yaml`; все ноды работают с `use_sim_time` |
-| `perception_node` | `/camera/depth_image`, `/camera/camera_info`; классификация только для overlay | `/item/measurement` | Находит все depth-компоненты кадра, консервативно разделяет соприкасающиеся маски, измеряет габариты/K/позицию и сохраняет ID при перестановке и коротком пропуске |
+| `perception_node` | `/camera/depth_image`, `/camera/camera_info`; классификация только для overlay | `/item/measurement` | Находит все depth-компоненты кадра, консервативно разделяет соприкасающиеся маски, измеряет габариты тела (2D OBB или защищённый 3D body-OBB для рельефной наклонной поверхности), K/позицию и сохраняет ID при перестановке и коротком пропуске |
 | `classifier_node` | `ItemMeasurement` | `/item/classification` | Копит историю отдельно по каждому ID, берёт медиану размеров и K, вычисляет confidence и применяет правила B/C/D с приоритетом габаритов |
 | `controller_node` | `ItemClassification`, `/infeed/fed`, `/emergency_stop` | `/conveyor/cmd_vel`, `/pusher_{c,d}/cmd` | Перепланирует таймер каждого товара по свежей позиции, но допускает не более одного физического действия на ID; управляет общими шиберами и защитами |
 | `run_stream.sh` | список `slug:zone:gap_m`, seed и ориентация | поток товаров, `stream.log`, body-scored результат | До запуска проверяет допустимость расстояний и ход ленты; подаёт на уже идущую ленту без перезапуска мира |
