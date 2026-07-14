@@ -519,7 +519,10 @@ def test_items_overlay_draws_every_item_with_id_and_state(tmp_path):
     out = tmp_path / "overlay.png"
     save_items_overlay(depth, tagged, out)
 
-    vis = cv2.imread(str(out))
+    # cv2.imread/imwrite do not reliably support non-ASCII Windows paths (our
+    # checkout and pytest temp both live below C:\Users\Максим). Decode bytes so
+    # this test checks the PNG itself rather than OpenCV's narrow path API.
+    vis = cv2.imdecode(np.frombuffer(out.read_bytes(), dtype=np.uint8), cv2.IMREAD_COLOR)
     assert vis.shape == (480, 640, 3)
     green = (vis[:, :, 0] == 0) & (vis[:, :, 1] == 255) & (vis[:, :, 2] == 0)
     # both bboxes are painted, so the overlay is multi-item (top edges hit)

@@ -655,7 +655,16 @@ def render_items_overlay(depth_m, tagged_items):
 
 
 def save_items_overlay(depth_m, tagged_items, out_path):
-    """Write render_items_overlay() to out_path (PNG)."""
+    """Write render_items_overlay() to out_path (PNG), including Unicode paths.
+
+    OpenCV's Windows ``imwrite`` can return True while silently writing to a
+    mojibake path when a directory or filename is non-ASCII. Encode in memory
+    and let Python's Unicode-aware file API own the path instead.
+    """
     import cv2
 
-    cv2.imwrite(str(out_path), render_items_overlay(depth_m, tagged_items))
+    ok, encoded = cv2.imencode(".png", render_items_overlay(depth_m, tagged_items))
+    if not ok:
+        raise RuntimeError(f"OpenCV could not encode overlay PNG: {out_path}")
+    with open(out_path, "wb") as stream:
+        stream.write(encoded.tobytes())
