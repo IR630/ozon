@@ -199,15 +199,84 @@ def test_malformed_pass_without_time_is_not_claimed_as_a_result(tmp_path):
     assert [(r.slug, r.passed) for r in results] == [("bottle", False)]
 
 
-def test_takt_gaps_and_computed_floor(tmp_path):
+def test_output_and_typed_takt_gaps_are_separate(tmp_path):
     arr = mt.parse_stream(_run(tmp_path) / "stream.log")
-    gaps = mt.takt_gaps(arr)
-    assert [round(g.gap_s, 1) for g in gaps] == [1.3, 5.7]
+    gaps, unresolved = mt.output_takt_gaps(arr)
+    assert [round(gap, 1) for gap in gaps] == [1.3, 5.7]
+    assert unresolved == 0
+
+    typed = mt.typed_takt_gaps(mt.load_episode(tmp_path))
     # C->C rides nose to tail: no floor. C->D needs the blade's hold+retract air.
-    assert gaps[0].feed_floor_s == 0.0
+    assert typed[0].feed_floor_s == 0.0
     change_floor = mt.stream_plan.min_gap_between_zones_m("C", "D") / BELT_SPEED_M_S
-    assert gaps[1].feed_floor_s == change_floor
+    assert typed[1].feed_floor_s == change_floor
     assert change_floor > 0
+
+
+def test_typed_takt_does_not_bridge_a_terminal_failure(tmp_path):
+    (tmp_path / "plan.log").write_text(
+        "0 front C -1.500 0.00\n"
+        "1 failed D -1.500 3.10\n"
+        "2 back C -1.500 6.20\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "stream.log").write_text(
+        "item0 front -> C: PASS at t=5.0s (x=3 y=1 z=0)\n"
+        "item1 failed -> D: FAIL (no pose)\n"
+        "item2 back -> C: PASS at t=7.0s (x=3 y=1 z=0)\n"
+        "routed 2/3\n",
+        encoding="utf-8",
+    )
+    episode = mt.load_episode(tmp_path)
+    arrivals = [
+        mt.Arrival(result.name, result.slug, result.zone, result.t)
+        for result in episode.results.values()
+        if result.passed and result.t is not None
+    ]
+
+    assert mt.output_takt_gaps(arrivals) == ([2.0], 0)
+    assert mt.typed_takt_gaps(episode) == []
+
+
+def test_typed_takt_preserves_feed_direction_when_arrivals_invert(tmp_path):
+    (tmp_path / "plan.log").write_text(
+        "0 front B -1.500 0.00\n"
+        "1 back C -1.500 1.00\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "stream.log").write_text(
+        "item0 front -> B: PASS at t=5.0s (x=5 y=0 z=0)\n"
+        "item1 back -> C: PASS at t=4.0s (x=3 y=1 z=0)\n"
+        "routed 2/2\n",
+        encoding="utf-8",
+    )
+
+    gap, = mt.typed_takt_gaps(mt.load_episode(tmp_path))
+    assert (gap.front_zone, gap.back_zone) == ("B", "C")
+    assert gap.gap_s == 1.0
+    assert gap.feed_floor_s == mt.takt_floor_s("B", "C") == 0.0
+
+
+def test_equal_arrival_timestamps_are_reported_not_divided_by_zero(
+    tmp_path, monkeypatch, capsys
+):
+    (tmp_path / "plan.log").write_text(
+        "0 first C -1.500 0.00\n"
+        "1 second C -1.500 1.00\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "stream.log").write_text(
+        "item0 first -> C: PASS at t=1.0s (x=3 y=1 z=0)\n"
+        "item1 second -> C: PASS at t=1.0s (x=3 y=1 z=0)\n"
+        "routed 2/2\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(mt.sys, "argv", ["measure_throughput.py", str(tmp_path)])
+
+    assert mt.main() == 0
+    output = capsys.readouterr().out
+    assert "unresolved nonpositive arrival intervals: 1" in output
+    assert "steady-state throughput" not in output
 
 
 def test_saved_plan_preserves_feed_gaps_separately_from_arrival_takt(tmp_path):

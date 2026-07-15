@@ -346,7 +346,7 @@ def summarize_reliability(episodes: list[StreamEpisode]) -> ReliabilitySummary:
 
 @dataclass
 class TaktGap:
-    gap_s: float       # observed time between two successive arrivals
+    gap_s: float       # absolute terminal-time separation for feed-adjacent items
     front_zone: str
     back_zone: str
     feed_floor_s: float  # tags a zone change; never compare with arrival gap_s
@@ -360,17 +360,50 @@ def takt_floor_s(front_zone: str, back_zone: str,
     return floor_m / belt_speed_m_s
 
 
-def takt_gaps(arrivals: list[Arrival]) -> list[TaktGap]:
-    """Successive-arrival gaps within one run, each tagged with its computed floor.
+def output_takt_gaps(arrivals: list[Arrival]) -> tuple[list[float], int]:
+    """Positive gaps between chronological PASS arrivals and unresolved count.
 
-    The belt is FIFO, so arrival order is feed order: the front item of a pair is the
-    one that landed first. feed_floor_s is retained only to split same-route and
-    zone-change arrival statistics. It belongs to the FEED schedule, not arrival time.
+    Terminal timestamps are currently rounded to 0.1 seconds. Equal stamps mean
+    the poller cannot resolve their order; they are reported instead of becoming a
+    zero takt and a division-by-zero throughput.
     """
-    gaps = []
-    for front, back in zip(arrivals, arrivals[1:]):
-        gaps.append(TaktGap(back.t - front.t, front.zone, back.zone,
-                            takt_floor_s(front.zone, back.zone)))
+    ordered = sorted(arrivals, key=lambda arrival: arrival.t)
+    gaps: list[float] = []
+    unresolved = 0
+    for front, back in zip(ordered, ordered[1:]):
+        gap = back.t - front.t
+        if gap <= 0:
+            unresolved += 1
+        else:
+            gaps.append(gap)
+    return gaps, unresolved
+
+
+def typed_takt_gaps(episode: StreamEpisode) -> list[TaktGap]:
+    """Terminal separation only for adjacent planned items with two PASS results.
+
+    A failed or missing middle item breaks adjacency; it must not make two distant
+    feeds look like one same-zone or zone-change sample. Zones follow feed order,
+    while the absolute timestamp difference tolerates destination-dependent arrival
+    inversion.
+    """
+    gaps: list[TaktGap] = []
+    for front, back in zip(episode.planned, episode.planned[1:]):
+        front_result = episode.results.get(f"item{front.index}")
+        back_result = episode.results.get(f"item{back.index}")
+        if not (
+            front_result is not None
+            and front_result.passed
+            and front_result.t is not None
+            and back_result is not None
+            and back_result.passed
+            and back_result.t is not None
+        ):
+            continue
+        gap = abs(back_result.t - front_result.t)
+        if gap <= 0:
+            continue
+        gaps.append(TaktGap(gap, front.zone, back.zone, takt_floor_s(front.zone, back.zone)))
     return gaps
 
 
@@ -437,6 +470,7 @@ def main() -> int:
     change_takts: list[float] = []   # zone change: the blade must hold+retract (floor > 0)
     noair_takts: list[float] = []    # nose to tail, or a B item riding through (floor 0)
     n_runs_timed = 0
+    unresolved_arrival_gaps = 0
     reliability_episodes: list[StreamEpisode] = []
     planned_change_gaps: list[float] = []
     planned_change_margins: list[float] = []
@@ -469,18 +503,19 @@ def main() -> int:
             results = list(episode.results.values())
             arrivals = [Arrival(r.name, r.slug, r.zone, r.t)
                         for r in results if r.passed and r.t is not None]
-            arrivals.sort(key=lambda a: a.t)
-            gaps = takt_gaps(arrivals)
+            gaps, unresolved = output_takt_gaps(arrivals)
+            typed_gaps = typed_takt_gaps(episode)
+            unresolved_arrival_gaps += unresolved
             status = "complete" if episode.complete else f"INCOMPLETE ({len(episode.issues)} issues)"
             if gaps:
                 n_runs_timed += 1
-                run_takt = median([g.gap_s for g in gaps])
+                run_takt = median(gaps)
                 print(f"  {run.name}: {len(arrivals)} arrivals, "
                       f"takt {run_takt:.2f}s ({60.0 / run_takt:.0f}/min), {status}")
             else:
                 print(f"  {run.name}: {len(arrivals)} arrivals, no takt, {status}")
-            for g in gaps:
-                all_takts.append(g.gap_s)
+            all_takts.extend(gaps)
+            for g in typed_gaps:
                 (change_takts if g.feed_floor_s > 0 else noair_takts).append(g.gap_s)
         else:
             print(f"  {run.name}: no stream.log (skeleton latencies only)")
@@ -511,9 +546,10 @@ def main() -> int:
     print("      measurable here (see docs/report/methodology_and_limitations.md).")
 
     print("\n=== mechanism takt (stream.log, between arrivals) ===")
-    print(_row("takt: all pairs", all_takts))
-    print(_row("takt: nose-to-tail (floor 0)", noair_takts))
-    print(_row("takt: zone-change (needs air)", change_takts))
+    print(_row("takt: successive PASS arrivals", all_takts))
+    print(_row("feed-adjacent terminal separation: floor 0", noair_takts))
+    print(_row("feed-adjacent terminal separation: zone change", change_takts))
+    print(f"  unresolved nonpositive arrival intervals: {unresolved_arrival_gaps}")
 
     if all_takts:
         thr_med = 60.0 / median(all_takts)
@@ -541,7 +577,8 @@ def main() -> int:
     else:
         print("    accepted feed gaps: unavailable (no saved plan.log/console.log)")
     if change_takts:
-        print(f"    observed zone-change ARRIVAL takt: median {median(change_takts):.2f}s "
+        print(f"    feed-adjacent zone-change terminal separation: "
+              f"median {median(change_takts):.2f}s "
               f"(descriptive only; destination transit/settling differs)")
     print("  same-zone takt floor: item length / belt speed (geometry-independent)")
     print(f"  per-item belt transit (spawn x={stream_plan.FIRST_SPAWN_X_M:.1f} -> "
