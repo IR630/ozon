@@ -34,8 +34,10 @@
    намеренно не подключён. Bag исправлен отдельным elongation-гейтом на реальном
    кадре; подбирать неиспользуемый порог solidity больше не требуется.
 
-6. ✅ **Пограничные CV-срезы Дня 11 закрыты 14.07.** В `validation.md` и
-   `scripts/measure_validation.py` зафиксированы реальные Bag oi1/oi2, Helmet oi2,
-   Plate oi1, Pen и partial-box: visible recall 5/5, category 5/5, partial reject
-   1/1, max `|Δdim|=22.1 мм`. Старые четыре кадра depth-only, что явно оставлено
-   ограничением визуального RGB-аудита, а не входа текущего baseline.
+6. ✅ **Пограничные CV-срезы закрыты и расширены 15.07.** В `validation.md` и
+   `scripts/measure_validation.py` зафиксированы восемь реальных видимых срезов
+   (включая наклонный Helmet, лежащую Bottle и диагональную Pen) и четыре
+   ожидаемых reject (частичные товары + документированный standing-Pen limit):
+   visible recall/category/размерный contract **8/8**, expected reject **4/4**,
+   max `|Δdim|=22.1 мм`. Старые кадры без RGB остаются ограничением визуального
+   аудита, а не входа текущего baseline.
