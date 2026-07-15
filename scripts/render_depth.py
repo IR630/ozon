@@ -19,9 +19,9 @@ is handled the way the camera handles it. The empty belt fills the rest of the f
 
 HONESTY LIMIT (PLAN.md's own rule: synthetic data may not set thresholds until the domain
 gap is measured). A rendered frame has no sensor noise, no belt texture and no shadow, and
-its surfaces are exactly the STL's. scripts/render_depth.py --validate measures the gap
-against the real Gazebo frames we have saved, and that number — not this renderer — is
-what says how far the sweep can be trusted.
+its surfaces are exactly the STL's. ``pytest -q tests/test_render_depth.py`` measures the
+gap against saved real Gazebo frames, and that number — not this renderer — is what says
+how far the sweep can be trusted.
 """
 import sys
 from pathlib import Path
@@ -116,9 +116,13 @@ def main():
     import cv2
 
     frame = render_depth(load_mesh(sys.argv[1]), (0.0, 0.0, 0.0, 1.0))
+    output = Path(sys.argv[2])
     # same encoding as scripts/dump_camera.py writes: 16-bit millimetres
-    cv2.imwrite(sys.argv[2], (frame * 1000.0).astype(np.uint16))
-    print(f"wrote {sys.argv[2]}  (item depth {frame.min():.3f} m, belt {BELT_DEPTH_M:.3f} m)")
+    ok, encoded = cv2.imencode(".png", (frame * 1000.0).astype(np.uint16))
+    if not ok:
+        raise RuntimeError(f"OpenCV could not encode depth PNG: {output}")
+    output.write_bytes(encoded.tobytes())
+    print(f"wrote {output}  (item depth {frame.min():.3f} m, belt {BELT_DEPTH_M:.3f} m)")
 
 
 if __name__ == "__main__":

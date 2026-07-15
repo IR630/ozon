@@ -12,7 +12,9 @@ Measured at the SAME pose the gap is 3 mm and 0.01 of K — inside perception's 
 accuracy — and every category agrees. That is what licenses the offline pose sweep.
 """
 from pathlib import Path
+import sys
 
+import numpy as np
 import pytest
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "frames"
@@ -115,3 +117,39 @@ def test_one_irregular_item_is_not_split_into_phantom_products(slug, quat, expec
     assert len(items) == 1
     assert items[0].dims_mm == pytest.approx(expected_dims, abs=10.0)
     assert classify_conservative(items[0].dims_mm, items[0].k) == "C"
+
+
+def _mock_render_cli(monkeypatch, output):
+    import render_depth
+
+    frame = np.full((8, 9), 1.5, dtype=float)
+    frame[2:6, 3:7] = 1.234
+    monkeypatch.setattr(render_depth, "load_mesh", lambda _slug: object())
+    monkeypatch.setattr(render_depth, "render_depth", lambda _mesh, _quat: frame)
+    monkeypatch.setattr(sys, "argv", ["render_depth.py", "pouf", str(output)])
+    return render_depth, (frame * 1000.0).astype(np.uint16)
+
+
+def test_cli_writes_depth_png_to_a_unicode_path(tmp_path, monkeypatch):
+    cv2 = pytest.importorskip("cv2")
+    output = tmp_path / "данные" / "глубина.png"
+    output.parent.mkdir()
+    render_depth, expected = _mock_render_cli(monkeypatch, output)
+
+    render_depth.main()
+
+    encoded = np.frombuffer(output.read_bytes(), dtype=np.uint8)
+    decoded = cv2.imdecode(encoded, cv2.IMREAD_UNCHANGED)
+    assert np.array_equal(decoded, expected)
+
+
+def test_cli_does_not_claim_success_when_parent_directory_is_missing(
+    tmp_path, monkeypatch, capsys
+):
+    output = tmp_path / "missing" / "depth.png"
+    render_depth, _expected = _mock_render_cli(monkeypatch, output)
+
+    with pytest.raises(FileNotFoundError):
+        render_depth.main()
+
+    assert "wrote" not in capsys.readouterr().out
