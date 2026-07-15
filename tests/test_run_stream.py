@@ -1,9 +1,26 @@
 """Static regression checks for the multi-item stream runner."""
 
+import subprocess
+import sys
 from pathlib import Path
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "run_stream.sh"
+
+
+def _run_inline_throughput(arrivals):
+    """Execute the exact Python heredoc embedded in the shell runner."""
+    text = SCRIPT.read_text(encoding="utf-8")
+    marker = '"$PYTHON" - <<PY\n'
+    start = text.index(marker) + len(marker)
+    end = text.index("\nPY", start)
+    code = text[start:end].replace("$ARRIVALS", "\n".join(map(str, arrivals)))
+    return subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
 
 
 def test_the_stream_announces_every_feed_to_the_watchdog():
@@ -85,3 +102,30 @@ def test_feeder_failure_and_false_create_reply_reach_the_parent():
     assert 'wait "$FEEDER" || FEEDER_RC=$?' in text
     assert "feeder exited with status" in text
     assert "wait $FEEDER 2>/dev/null || true" not in text
+
+
+def test_equal_rounded_arrivals_are_reported_without_division_by_zero():
+    result = _run_inline_throughput([1.0, 1.0])
+
+    assert result.returncode == 0, result.stderr
+    assert "unresolved nonpositive arrival intervals: 1" in result.stdout
+    assert "items/min" not in result.stdout
+
+
+def test_positive_arrival_gaps_remain_measurable_beside_unresolved_ones():
+    result = _run_inline_throughput([1.0, 1.0, 2.5])
+
+    assert result.returncode == 0, result.stderr
+    assert "unresolved nonpositive arrival intervals: 1" in result.stdout
+    assert "takt between arrivals: 1.5 s (1.5 s) => 40 items/min" in result.stdout
+
+
+def test_summary_pipeline_propagates_python_failure_after_ros_setup():
+    """A green tee must not mask a failed inline throughput calculation."""
+    text = SCRIPT.read_text(encoding="utf-8")
+
+    ros_setup = text.index('source "$ROS_INSTALL_ROOT/setup.bash"')
+    pipefail = text.index("set -o pipefail")
+    summary_pipeline = text.index('} | tee "$LOGDIR/stream.log"')
+
+    assert ros_setup < pipefail < summary_pipeline

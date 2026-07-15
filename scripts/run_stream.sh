@@ -33,6 +33,10 @@ if [ ! -f "$ROS_INSTALL_ROOT/setup.bash" ]; then
 fi
 source /opt/ros/humble/setup.bash
 source "$ROS_INSTALL_ROOT/setup.bash"
+# ROS setup scripts contain their own permissive pipelines. Arm pipefail only
+# after sourcing them, then a failed producer (notably inline Python | tee) can
+# no longer be hidden by a successful final consumer.
+set -o pipefail
 
 WORLD=${WORLD:-sim/worlds/cell_diverter.sdf}
 ITEM_MODEL_ROOT=${ITEM_MODEL_ROOT:-sim/models/items}
@@ -204,7 +208,7 @@ FEEDER=$!
 # simply confirm it.
 item_pose() {  # name -> "x y z roll pitch yaw"; an unfed item simply has no pose yet
     ign model -m "$1" --pose 2>/dev/null | grep -A2 "XYZ" | tail -2 \
-        | tr -d "[]" | awk '{printf "%s %s %s ", $1, $2, $3}'
+        | tr -d "[]" | awk '{printf "%s %s %s ", $1, $2, $3}' || true
 }
 
 declare -A ARRIVED_AT
@@ -285,13 +289,20 @@ echo "routed $LANDED/${#SLUGS[@]}"
 # Throughput of the STREAM, not of a launch: the takt between items reaching
 # their zones. Startup (Gazebo boot, node bring-up, belt ramp) is outside it by
 # construction — t=0 is full belt speed, and the takt is between arrivals.
-ARRIVALS=$(for i in "${!SLUGS[@]}"; do echo "${ARRIVED_AT[item$i]:-}"; done | grep -v '^$' | sort -n)
+ARRIVALS=$(for i in "${!SLUGS[@]}"; do echo "${ARRIVED_AT[item$i]:-}"; done \
+    | sed '/^$/d' | sort -n)
 "$PYTHON" - <<PY
 arrivals = [float(t) for t in """$ARRIVALS""".split()]
 if len(arrivals) > 1:
-    takt = (arrivals[-1] - arrivals[0]) / (len(arrivals) - 1)
-    gaps = ", ".join(f"{b - a:.1f}" for a, b in zip(arrivals, arrivals[1:]))
-    print(f"takt between arrivals: {takt:.1f} s ({gaps} s) => {60.0 / takt:.0f} items/min")
+    gaps = [b - a for a, b in zip(arrivals, arrivals[1:])]
+    unresolved = sum(gap <= 0 for gap in gaps)
+    positive_gaps = [gap for gap in gaps if gap > 0]
+    if unresolved:
+        print(f"unresolved nonpositive arrival intervals: {unresolved}")
+    if positive_gaps:
+        takt = sum(positive_gaps) / len(positive_gaps)
+        gap_text = ", ".join(f"{gap:.1f}" for gap in positive_gaps)
+        print(f"takt between arrivals: {takt:.1f} s ({gap_text} s) => {60.0 / takt:.0f} items/min")
 PY
 } | tee "$LOGDIR/stream.log"
 
