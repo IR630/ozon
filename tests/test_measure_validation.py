@@ -42,6 +42,24 @@ def test_visible_miss_fails_but_expected_partial_reject_passes():
     assert validation.evaluate(partial, None).passed
 
 
+def test_cli_report_is_encodable_on_the_default_russian_windows_console(
+    tmp_path, monkeypatch, capsys
+):
+    depth = tmp_path / "depth.png"
+    depth.write_bytes(b"fixture")
+    case = _case(depth=depth)
+    monkeypatch.setattr(validation, "CASES", (case,))
+    monkeypatch.setattr(validation, "load_depth_png", lambda _path: object())
+    monkeypatch.setattr(
+        validation,
+        "measure_item",
+        lambda _depth: SimpleNamespace(dims_mm=[100.0, 50.0, 20.0], k=0.7),
+    )
+
+    assert validation.main() == 0
+    capsys.readouterr().out.encode("cp1251", errors="strict")
+
+
 def test_every_frozen_real_slice_passes_the_production_baseline():
     pytest.importorskip("cv2")
     from src.perception import load_depth_png, measure_item

@@ -193,10 +193,13 @@ def main() -> int:
             raise FileNotFoundError(case.rgb)
         results.append((case, evaluate(case, measure_item(load_depth_png(case.depth)))))
 
-    print("| Slice | Detection | Measured dims, mm | max \\|Δdim\\|, mm | K | \\|ΔK\\| | Route | Result |")
+    print(
+        "| Slice | Detection | Measured dims, mm | max abs(dim error), mm | "
+        "K | abs(K error) | Route | Result |"
+    )
     print("|---|---:|---|---:|---:|---:|---:|---:|")
     for case, result in results:
-        dims = "—" if result.dims_mm is None else "×".join(
+        dims = "—" if result.dims_mm is None else "x".join(
             f"{value:.0f}" for value in result.dims_mm)
         detection = "detected" if result.detected else "rejected"
         route = result.category or "—"
