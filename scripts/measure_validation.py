@@ -109,6 +109,49 @@ CASES = (
         None,
         expected_detected=False,
     ),
+    ValidationCase(
+        "Pen diagonal / thin mask at 45 deg",
+        IMG / "validation_pen_diag" / "depth_000.png",
+        IMG / "validation_pen_diag" / "rgb_000.png",
+        (148.0, 13.0, 9.0),
+        0.99,
+        "C",
+    ),
+    # Documented limit, frozen on the day-3 world (cell.sdf): a pen balanced on
+    # its end paints 12 px — under the 24 px speck gate — and is invisible. In
+    # the FINAL diverter world the same spawn cannot even happen: the anisotropic
+    # belt (mu2=0.2) topples the pen on a STANDING belt, and it classifies C as
+    # a lying pen (149x14x8, captured 2026-07-15). The limit is thus unreachable
+    # in production; this slice pins the behaviour should the gate ever change.
+    ValidationCase(
+        "Pen standing / below-gate documented limit",
+        IMG / "validation_pen_standing" / "depth_000.png",
+        IMG / "validation_pen_standing" / "rgb_000.png",
+        None,
+        None,
+        None,
+        expected_detected=False,
+    ),
+    ValidationCase(
+        "Partial helmet / border reject",
+        IMG / "validation_partial_helmet" / "depth_000.png",
+        IMG / "validation_partial_helmet" / "rgb_000.png",
+        None,
+        None,
+        None,
+        expected_detected=False,
+    ),
+    # 31 px of foreground — ABOVE the speck gate — so the rejection is the
+    # border rule doing its job on a thin item, not the size filter.
+    ValidationCase(
+        "Partial pen / thin border reject",
+        IMG / "validation_partial_pen" / "depth_000.png",
+        IMG / "validation_partial_pen" / "rgb_000.png",
+        None,
+        None,
+        None,
+        expected_detected=False,
+    ),
 )
 
 
@@ -171,7 +214,7 @@ def main() -> int:
     print(
         f"\nvisible recall {detected}/{len(visible)}; "
         f"category {correct}/{len(visible)}; "
-        f"partial reject {rejected}/{len(partial)}"
+        f"expected reject {rejected}/{len(partial)}"
     )
     return 0 if all(result.passed for _, result in results) else 1
 
