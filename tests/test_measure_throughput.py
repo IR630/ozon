@@ -3,8 +3,9 @@
 
 The three clocks and namespaces are the tricky part (see the module docstring), so
 this pins them with hand-written logs whose every stamp is known: camera->decision
-and decision->command come out of skeleton.log, the takt out of stream.log, and the
-two are NOT joined across their different item-id namespaces.
+(the controller's own single-clock token), decision->command, and camera->command
+come out of skeleton.log, the takt out of stream.log, and the two are NOT joined
+across their different item-id namespaces.
 """
 import pytest
 
@@ -12,20 +13,23 @@ import measure_throughput as mt
 from src.constants import BELT_SPEED_M_S
 
 # item 1 fires (full chain); item 2 has NO classifier line (truncated) -> the
-# controller decision line is the fallback; item 3 is B and never fires. Item 1's
-# perception line appears twice to prove the FIRST detection wins.
+# controller decision line is the fallback, and its cam->decision token still holds
+# because the controller carries the camera stamp itself; item 3 is B and never
+# fires. Item 1's perception line appears twice to prove the FIRST detection wins.
+# The "(cam->decision Xs)" token on each commit line is the controller's own
+# now-minus-camera-stamp age, both sim-time on the shared /clock.
 SKELETON = """\
 [python3-2] [INFO] [1000.000000000] [perception]: item 1: 300x100x90 mm K=1.00 at (1.5, 0.1)
 [python3-2] [INFO] [1000.200000000] [perception]: item 1: 301x101x90 mm K=1.00 at (1.7, 0.1)
 [python3-3] [INFO] [1000.500000000] [classifier]: item 1: D (k=1.000, conf=0.98, n=3)
-[python3-4] [INFO] [1000.600000000] [controller]: item 1: D — firing pusher_d in 0.40s
+[python3-4] [INFO] [1000.600000000] [controller]: item 1: D — firing pusher_d in 0.40s (cam->decision 0.100s)
 [python3-4] [INFO] [1001.000000000] [controller]: item 1: pusher_d FIRED at t=24.01s
 [python3-2] [INFO] [1002.000000000] [perception]: item 2: 200x150x140 mm K=0.70 at (1.5, -0.1)
-[python3-4] [INFO] [1002.800000000] [controller]: item 2: C — firing pusher_c in 0.40s
+[python3-4] [INFO] [1002.800000000] [controller]: item 2: C — firing pusher_c in 0.40s (cam->decision 0.080s)
 [python3-4] [INFO] [1003.400000000] [controller]: item 2: pusher_c FIRED at t=26.00s
 [python3-2] [INFO] [1004.000000000] [perception]: item 3: 250x200x180 mm K=0.55 at (1.5, 0.0)
 [python3-3] [INFO] [1004.300000000] [classifier]: item 3: B (k=0.550, conf=0.90, n=2)
-[python3-4] [INFO] [1004.400000000] [controller]: item 3: B — rides to belt end
+[python3-4] [INFO] [1004.400000000] [controller]: item 3: B — rides to belt end (cam->decision 0.090s)
 """
 
 # stream.log uses the SPAWN index (item0..), a different namespace from skeleton's
@@ -114,16 +118,41 @@ def test_route_replans_cancel_earlier_c_and_d_commits(tmp_path):
 
 
 def test_reliable_latency_segments(tmp_path):
-    """decision->command and camera->command; camera->decision is NOT computed
-    (below the cross-node jitter floor — the reframe that killed the silent drop)."""
+    """decision->command, camera->command, and camera->decision.
+
+    camera->decision now comes straight from the controller's single-clock token
+    (now - camera stamp, both sim-time), so it needs no cross-node subtraction and
+    is no longer below the jitter floor. It holds even for item 2, whose classifier
+    line was truncated, because the controller carries the camera stamp itself."""
     items = mt.parse_skeleton(_run(tmp_path) / "skeleton.log")
     # Rounded: subtracting ~1e9 epoch stamps loses the last digits (real behaviour).
     dec_cmd = sorted(round(s.fire - s.commit, 3)
                      for s in items.values() if s.fire is not None)
     cam_cmd = sorted(round(s.fire - s.detect, 3)
                      for s in items.values() if s.fire is not None)
+    cam_dec = sorted(s.cam_to_decision
+                     for s in items.values() if s.cam_to_decision is not None)
     assert dec_cmd == [0.4, 0.6]             # items 1, 2 (commit->FIRED)
     assert cam_cmd == [1.0, 1.4]             # items 1, 2 (detect->FIRED); item 3 never fired
+    assert cam_dec == [0.08, 0.09, 0.10]     # items 2, 3, 1 — every decision, incl. B
+
+
+def test_cam_to_decision_follows_the_fired_route_epoch(tmp_path):
+    """The camera->decision token is the one on the FINAL compatible route epoch.
+
+    A C->D->C item's fired route is the last C epoch, so its camera->decision must
+    be that epoch's token (0.05s here), not the abandoned C or D epochs' tokens."""
+    log = tmp_path / "skeleton.log"
+    log.write_text(
+        "[INFO] [3000.000000000] [controller]: item 5: C — firing pusher_c in 2.0s (cam->decision 0.30s)\n"
+        "[INFO] [3001.000000000] [controller]: item 5: D — firing pusher_d in 1.0s (cam->decision 0.20s)\n"
+        "[INFO] [3002.000000000] [controller]: item 5: C — firing pusher_c in 1.0s (cam->decision 0.05s)\n"
+        "[INFO] [3003.000000000] [controller]: item 5: pusher_c FIRED at t=40.0s\n",
+        encoding="utf-8",
+    )
+    s = mt.parse_skeleton(log)[5]
+    assert s.commit == 3002.0
+    assert s.cam_to_decision == 0.05
 
 
 def test_jitter_inverted_stamps_not_dropped(tmp_path):
@@ -142,6 +171,8 @@ def test_jitter_inverted_stamps_not_dropped(tmp_path):
     s = mt.parse_skeleton(log)[9]
     assert round(s.fire - s.commit, 3) == 0.9    # decision->command, reliable
     assert round(s.fire - s.detect, 3) == 0.7    # camera->command, still produced
+    # An OLD commit line without the token yields no camera->decision, not a crash.
+    assert s.cam_to_decision is None
 
 
 def test_stream_arrivals_pass_only_and_sorted(tmp_path):

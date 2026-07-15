@@ -176,6 +176,11 @@ class ControllerNode(Node):
                     throttle_duration_sec=1.0)
             return
 
+        # age_s is BOTH the wall/sim-clock sanity guard below AND the honest
+        # camera->decision latency: the camera frame stamp rides the messages, so
+        # now() minus that stamp spans the whole perception->classify->decide chain
+        # on ONE sim-clock (no cross-process log-emission jitter). It is logged at
+        # the route commit so scripts/measure_throughput.py can report it directly.
         stamp_s = msg.header.stamp.sec + msg.header.stamp.nanosec / 1e9
         age_s = self.now_s() - stamp_s
         if not 0.0 <= age_s <= _MAX_STAMP_AGE_S:
@@ -201,7 +206,9 @@ class ControllerNode(Node):
                 self._retire(old)
             if msg.item_id not in self.done_items:
                 self._remember_completed(msg.item_id)
-                self.get_logger().info(f"item {msg.item_id}: B — rides to belt end")
+                self.get_logger().info(
+                    f"item {msg.item_id}: B — rides to belt end "
+                    f"(cam->decision {age_s:.3f}s)")
             return
 
         # (re)schedule: cancel the previous plan, trust the freshest measurement
@@ -213,7 +220,8 @@ class ControllerNode(Node):
             self._retire(old)
         delay_s = max(fire_at_s - self.now_s(), 0.0)
         self.get_logger().info(
-            f"item {msg.item_id}: {zone} — firing pusher_{zone.lower()} in {delay_s:.2f}s")
+            f"item {msg.item_id}: {zone} — firing pusher_{zone.lower()} in {delay_s:.2f}s "
+            f"(cam->decision {age_s:.3f}s)")
         self.pending[msg.item_id] = self.one_shot(
             delay_s, lambda z=zone, i=msg.item_id: self.fire(z, i))
 

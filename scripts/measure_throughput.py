@@ -12,12 +12,17 @@ WHAT THE LOGS CAN AND CANNOT TIME (found by reading a real run, not assumed):
   [python3-3] classifier, [python3-4] controller — and the "[<stamp>]" is each
   node's own LOG-EMISSION time. Across processes those stamps carry ~0.2 s of
   scheduling/buffering jitter: in runs/stream_validate the controller logged its
-  route commit 0.2 s BEFORE perception logged the frame that caused it. So a
-  segment that is genuinely ~one camera frame (~0.05 s), like camera->decision,
-  is BELOW that noise floor and even goes negative — it is not separately
-  measurable from these logs, and pretending otherwise (the first cut did, and a
-  >= guard then silently dropped every item whose stamps happened to invert)
-  is the Karpathy-#6 trap.
+  route commit 0.2 s BEFORE perception logged the frame that caused it. So you
+  CANNOT recover camera->decision by subtracting perception's emission stamp from
+  the controller's — the segment is sub-second, below that noise floor, and even
+  goes negative (the first cut did exactly this, and a >= guard then silently
+  dropped every inverted item — the Karpathy-#6 trap).
+
+  The fix is not to subtract emission stamps at all: the camera FRAME stamp rides
+  the messages (ItemMeasurement/ItemClassification header, both sim-time), so the
+  controller alone holds both ends of camera->decision on ONE clock — the frame
+  stamp and its own now() at route commit. It logs that age directly, and this
+  script reads it verbatim; no cross-process arithmetic, no jitter.
 
   What survives:
     * MECHANISM TAKT / throughput — from stream.log, written by ONE process (the
@@ -25,6 +30,11 @@ WHAT THE LOGS CAN AND CANNOT TIME (found by reading a real run, not assumed):
       cross-process jitter. T0-relative (T0 = full belt speed), so Gazebo boot
       and the soft-start ramp are excluded by construction.
         itemK slug -> zone: PASS at t=Xs        (body-scored verdict, not origin)
+    * camera -> decision — the controller's own token: now() at route commit minus
+      the camera frame's header stamp, BOTH sim-time on the shared /clock. One
+      clock, so the full perception->classify->decide pipeline is measured
+      directly. Present even when the classifier line is truncated.
+        [controller]: item N: D — firing pusher_d in Xs (cam->decision Zs)
     * decision -> command — controller route commit to FIRED, BOTH logged by the
       controller ([python3-4]): same process, same clock, no cross-node jitter.
         [controller]: item N: D — firing pusher_d in Xs   (first = commit)
@@ -92,6 +102,10 @@ PLAN_LINE = re.compile(
     r"(?P<spawn_x>-?[\d.]+)\s+(?P<feed_s>[\d.]+)$"
 )
 ROUTED_LINE = re.compile(r"^routed\s+\d+/(?P<total>\d+)$")
+# The controller's single-clock camera->decision token on a route-commit line:
+# now() at commit minus the camera frame's header stamp, both sim-time. Optional,
+# so pre-token logs still parse (their camera->decision is simply unavailable).
+CAM_DECISION_TOKEN = re.compile(r"cam->decision\s+(?P<age>[\d.]+)s")
 
 
 @dataclass
@@ -107,6 +121,7 @@ class Stages:
     classify: float | None = None     # first [classifier] line — first ItemClassification
     commit: float | None = None       # latest compatible [controller] route plan
     fire: float | None = None         # [controller] pusher_x FIRED — command issued
+    cam_to_decision: float | None = None  # controller's single-clock token at that commit
 
 
 @dataclass
@@ -190,16 +205,21 @@ def parse_skeleton(path: Path) -> dict[int, Stages]:
                 if s.fire is None:
                     s.fire = t
                     active = active_routes.get(iid)
-                    s.commit = (active[1] if active and active[0] == fired["zone"].upper()
-                                else None)
+                    if active and active[0] == fired["zone"].upper():
+                        s.commit, s.cam_to_decision = active[1], active[2]
+                    else:
+                        s.commit = s.cam_to_decision = None
             elif rest[:1] in ("B", "C", "D"):  # "D — firing.." / "B — rides.." = route commit
                 if s.fire is None:
                     route = rest[0]
                     active = active_routes.get(iid)
                     if active is None or active[0] != route:
-                        active = (route, t)
+                        # the camera->decision age is the token on the line that
+                        # STARTS this route epoch (the first commit of the route)
+                        age = CAM_DECISION_TOKEN.search(rest)
+                        active = (route, t, float(age["age"]) if age else None)
                         active_routes[iid] = active
-                    s.commit = active[1]
+                    s.commit, s.cam_to_decision = active[1], active[2]
     return items
 
 
@@ -476,6 +496,7 @@ def main() -> int:
         print("no stream runs found (need a dir with skeleton.log or stream.log)")
         return 1
 
+    cam_to_decision: list[float] = []  # controller's single-clock token: full pipeline
     dec_to_cmd: list[float] = []     # controller-internal: reliable
     cam_to_cmd: list[float] = []     # perception->controller: seconds-scale, jitter-tolerant
     all_takts: list[float] = []
@@ -502,11 +523,15 @@ def main() -> int:
                     planned_change_margins.append(actual - floor)
         if skel.exists():
             for s in parse_skeleton(skel).values():
+                # Camera->decision: the controller's own single-clock token, so it
+                # needs no cross-node subtraction and no fire (B items count too).
+                if s.cam_to_decision is not None:
+                    cam_to_decision.append(s.cam_to_decision)
                 # Both endpoints logged by the controller -> reliable.
                 if s.commit is not None and s.fire is not None:
                     dec_to_cmd.append(s.fire - s.commit)
                 # Perception -> controller; seconds-scale, so the 0.2 s cross-node
-                # jitter is tolerable (unlike camera->decision, which is one frame).
+                # jitter is tolerable.
                 if s.detect is not None and s.fire is not None:
                     cam_to_cmd.append(s.fire - s.detect)
         if plan_path is not None or strm.exists():
@@ -549,13 +574,14 @@ def main() -> int:
             print(f"    {issue}")
 
     print("\n=== per-stage latency (skeleton.log) ===")
+    print(_row("camera -> decision", cam_to_decision))
+    print("      (camera frame stamp -> route commit, controller's own token; ONE")
+    print("       sim-clock, so the full perception->classify->decide pipeline is")
+    print("       measured directly, not inferred across processes)")
     print(_row("decision -> command", dec_to_cmd))
     print("      (controller route commit -> FIRED; one process, no cross-node jitter)")
     print(_row("camera -> command", cam_to_cmd))
     print("      (first detection -> FIRED; spans nodes, tolerates the ~0.2s jitter)")
-    print("  camera -> decision (detect -> classification): ~1 camera frame (~0.05s),")
-    print("      BELOW the ~0.2s cross-node log-emission jitter -> not separately")
-    print("      measurable here (see docs/report/methodology_and_limitations.md).")
 
     print("\n=== mechanism takt (stream.log, between arrivals) ===")
     print(_row("takt: successive PASS arrivals", all_takts))
