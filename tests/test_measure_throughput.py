@@ -58,7 +58,7 @@ def _run(tmp_path):
 def test_skeleton_stages_first_line_wins(tmp_path):
     items = mt.parse_skeleton(_run(tmp_path) / "skeleton.log")
     assert set(items) == {1, 2, 3}
-    # Every stage is the EARLIEST line of its kind (first detection, first commit).
+    # Perception/classifier use their earliest line; this fixture has no route replan.
     assert items[1].detect == 1000.0        # first perception, not the 1000.2 line
     assert items[1].classify == 1000.5      # first ItemClassification publish
     assert items[1].commit == 1000.6        # controller route commit ("D — firing")
@@ -70,6 +70,47 @@ def test_skeleton_stages_first_line_wins(tmp_path):
     # B item rides: a commit, but never a fire.
     assert items[3].commit == 1004.4        # "B — rides to belt end"
     assert items[3].fire is None
+
+
+def test_fire_uses_the_latest_compatible_route_commit(tmp_path):
+    log = tmp_path / "skeleton.log"
+    log.write_text(
+        "[python3-4] [INFO] [1000.000000000] [controller]: item 9: B — rides to belt end\n"
+        "[python3-4] [INFO] [1001.000000000] [controller]: item 9: C — firing pusher_c in 1.0s\n"
+        "[python3-4] [INFO] [1002.000000000] [controller]: item 9: pusher_c FIRED at t=25.0s\n",
+        encoding="utf-8",
+    )
+
+    stages = mt.parse_skeleton(log)[9]
+
+    assert stages.commit == 1001.0
+    assert stages.fire == 1002.0
+
+
+def test_route_replans_cancel_earlier_c_and_d_commits(tmp_path):
+    log = tmp_path / "skeleton.log"
+    log.write_text(
+        "[INFO] [2000.000000000] [controller]: item 10: C — firing pusher_c in 2.0s\n"
+        "[INFO] [2001.000000000] [controller]: item 10: D — firing pusher_d in 1.0s\n"
+        "[INFO] [2002.000000000] [controller]: item 10: pusher_d FIRED at t=30.0s\n"
+        "[INFO] [2010.000000000] [controller]: item 11: C — firing pusher_c in 3.0s\n"
+        "[INFO] [2011.000000000] [controller]: item 11: D — firing pusher_d in 2.0s\n"
+        "[INFO] [2012.000000000] [controller]: item 11: C — firing pusher_c in 1.0s\n"
+        "[INFO] [2012.500000000] [controller]: item 11: C — firing pusher_c in 0.5s\n"
+        "[INFO] [2013.000000000] [controller]: item 11: pusher_c FIRED at t=31.0s\n"
+        "[INFO] [2020.000000000] [controller]: item 12: C — firing pusher_c in 2.0s\n"
+        "[INFO] [2021.000000000] [controller]: item 12: D — firing pusher_d in 1.0s\n"
+        "[INFO] [2022.000000000] [controller]: item 12: pusher_c FIRED at t=32.0s\n",
+        encoding="utf-8",
+    )
+
+    items = mt.parse_skeleton(log)
+
+    assert (items[10].commit, items[10].fire) == (2001.0, 2002.0)
+    # Repeated countdown logs in the same C epoch do not move the decision time.
+    assert (items[11].commit, items[11].fire) == (2012.0, 2013.0)
+    assert items[12].commit is None
+    assert items[12].fire == 2022.0
 
 
 def test_reliable_latency_segments(tmp_path):

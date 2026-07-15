@@ -79,6 +79,7 @@ ROS_LINE = re.compile(
     r"\[(?P<stamp>\d+\.\d+)\]\s+\[(?P<node>perception|classifier|controller)\]:\s+"
     r"item\s+(?P<id>\d+):\s+(?P<rest>.*)"
 )
+FIRED_LINE = re.compile(r"^pusher_(?P<zone>[cd])\s+FIRED\b")
 # run_stream.sh's result line. PASS carries a landing time; FAIL deliberately
 # does not. Throughput uses only PASS arrivals, while week-3 long-horizon
 # reliability must retain BOTH outcomes instead of silently dropping failures.
@@ -97,13 +98,14 @@ ROUTED_LINE = re.compile(r"^routed\s+\d+/(?P<total>\d+)$")
 class Stages:
     """The stage stamps of ONE tracked item within a single skeleton.log.
 
-    Every field is the EARLIEST line of its kind, so detect is first camera sight
-    and commit is the moment the controller first committed a route (the "decision").
+    Detect/classify are the earliest lines of their kind. Commit is the first log
+    in the active route epoch compatible with the first FIRED command: a route
+    change cancels the old decision, repeated countdown logs do not move it.
     """
 
     detect: float | None = None       # first [perception] line — camera saw it
     classify: float | None = None     # first [classifier] line — first ItemClassification
-    commit: float | None = None       # first [controller] route line — the decision
+    commit: float | None = None       # latest compatible [controller] route plan
     fire: float | None = None         # [controller] pusher_x FIRED — command issued
 
 
@@ -164,8 +166,9 @@ class ReliabilitySummary:
 
 
 def parse_skeleton(path: Path) -> dict[int, Stages]:
-    """Per tracked item_id, the earliest stamp of each stage seen in skeleton.log."""
+    """Per tracked item_id, stage stamps paired in controller log order."""
     items: dict[int, Stages] = {}
+    active_routes: dict[int, tuple[str, float]] = {}
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         m = ROS_LINE.search(line)
         if not m:
@@ -182,12 +185,21 @@ def parse_skeleton(path: Path) -> dict[int, Stages]:
             if s.classify is None or t < s.classify:
                 s.classify = t
         elif node == "controller":
-            if "FIRED" in rest:
-                if s.fire is None or t < s.fire:
+            fired = FIRED_LINE.match(rest)
+            if fired:
+                if s.fire is None:
                     s.fire = t
+                    active = active_routes.get(iid)
+                    s.commit = (active[1] if active and active[0] == fired["zone"].upper()
+                                else None)
             elif rest[:1] in ("B", "C", "D"):  # "D — firing.." / "B — rides.." = route commit
-                if s.commit is None or t < s.commit:
-                    s.commit = t
+                if s.fire is None:
+                    route = rest[0]
+                    active = active_routes.get(iid)
+                    if active is None or active[0] != route:
+                        active = (route, t)
+                        active_routes[iid] = active
+                    s.commit = active[1]
     return items
 
 
