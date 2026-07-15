@@ -19,7 +19,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from src.constants import ROUND_K_THRESHOLD
+from src.constants import ROUND_K_THRESHOLD, SANE_DIM_MM_MAX, SANE_DIM_MM_MIN
 
 CAMERA_X_M = 1.5      # cell.sdf: camera model pose x
 CAMERA_Y_M = 0.0      # cell.sdf: camera model pose y
@@ -136,6 +136,14 @@ class Measurement:
     k: float             # r_inscribed / R_circumscribed of the top-view hull, [0..1]
     position_m: tuple    # (x, y, z) of the item center, meters, world frame
     bbox_px: tuple       # (x0, y0, x1, y1) pixel bbox, for overlays/debug
+
+
+def _dims_are_sane(dims_mm):
+    """Whether three measured dimensions are finite and physically plausible."""
+    return all(
+        np.isfinite(dim) and SANE_DIM_MM_MIN <= dim <= SANE_DIM_MM_MAX
+        for dim in dims_mm
+    )
 
 
 def _item_mask(depth_m, belt_depth_m, margin_m):
@@ -620,6 +628,8 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK
     # 1st percentile, not min: robust to stray depth returns.
     dz_mm = (belt_depth_m - float(np.percentile(depth_m[mask], 1.0))) * 1000.0
     dims = sorted([dx_mm, dy_mm, dz_mm], reverse=True)
+    if not _dims_are_sane(dims):
+        return None
 
     if cx is None:
         cx = depth_m.shape[1] / 2.0
@@ -643,6 +653,8 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK
                                       cx, cy, dims, dz_mm, top_depth_m / fx * 1000.0)
         if body_dims is not None:
             dims = body_dims
+    if not _dims_are_sane(dims):
+        return None
 
     # K = max of the top-view silhouette and the vertical cross-section: a body
     # of revolution lying on its side is a rectangle from above (low silhouette

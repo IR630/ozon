@@ -106,6 +106,14 @@ def test_measure_thin_item_9mm():
     assert dims[2] == pytest.approx(9.0)
 
 
+def test_corrupt_near_zero_depth_is_not_published_as_a_product():
+    """A nonzero invalid return must fail closed before classifier sanity checks."""
+    depth = np.full((480, 640), 1.5)
+    depth[100:105, 100:105] = 0.001
+
+    assert measure_item(depth, belt_depth_m=1.5, fx=500.0, fy=500.0) is None
+
+
 def test_partial_item_returns_none():
     # item touching the frame border = riding into view -> refuse to measure
     depth = _synthetic_box(rows=slice(0, 150), cols=slice(200, 300))
