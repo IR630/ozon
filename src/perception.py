@@ -292,6 +292,15 @@ def _find_items(depth_m, belt_depth_m, margin_m):
             ys, xs = np.where(mask)
             if xs.size < _MIN_ITEM_PX:
                 continue
+            # A diagonal one-pixel streak spans both x and y, so the bbox checks
+            # below accept it even though its point cloud is still rank 1. Such
+            # depth noise cannot have a 2-D hull and used to raise QhullError in
+            # measure_item(), killing the whole perception node. Reject it here
+            # so it also cannot win _find_item() over a valid small neighbour.
+            dx, dy = xs - xs[0], ys - ys[0]
+            anchor = np.flatnonzero((dx != 0) | (dy != 0))[0]
+            if not np.any(dx * dy[anchor] != dy * dx[anchor]):
+                continue
             x0, y0, x1, y1 = int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
             if x0 == x1 or y0 == y1:
                 continue

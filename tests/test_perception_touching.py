@@ -13,7 +13,7 @@ NEVER split into phantoms, at any yaw.
 import numpy as np
 import pytest
 
-from src.perception import _split_touching, measure_items
+from src.perception import _split_touching, measure_item, measure_items
 
 
 def _corner_touch(belt=1.5, top=1.3):
@@ -135,6 +135,16 @@ def test_partial_item_at_frame_edge_is_ignored_without_crashing():
     depth = np.full((480, 640), 1.5)
     depth[479, 268:375] = 1.3
 
+    assert measure_items(depth, belt_depth_m=1.5, fx=500.0, fy=500.0) == []
+
+
+def test_diagonal_one_pixel_speck_is_rejected_without_crashing():
+    """A rank-1 component may span both axes but is not a measurable body."""
+    depth = np.full((480, 640), 1.5)
+    diagonal = np.arange(100, 130)
+    depth[diagonal, diagonal] = 1.3
+
+    assert measure_item(depth, belt_depth_m=1.5, fx=500.0, fy=500.0) is None
     assert measure_items(depth, belt_depth_m=1.5, fx=500.0, fy=500.0) == []
 
 
