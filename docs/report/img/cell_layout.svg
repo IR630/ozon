@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
   <title id="title">Компоновка финальной ячейки сортировки</title>
-  <desc id="desc">Размерный вид сверху исполнительной ячейки с лентой, камерой, двумя шиберами, склизами, зонами B C D, опасным периметром и операторским проходом.</desc>
+  <desc id="desc">Размерный вид сверху исполнительной ячейки с лентой, камерой, прозрачными бортами камерной секции, двумя шиберами, склизами, зонами B C D, опасным периметром и операторским проходом.</desc>
   <defs>
     <marker id="arrow" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto-start-reverse">
       <path d="M0,0 L8,4 L0,8 Z" fill="#334155"/>
@@ -35,6 +35,14 @@
   <text x="520" y="325" class="t s label">Depth-окно</text>
   <text x="598" y="435" class="t xs label">камера</text>
   <text x="598" y="452" class="t xs label">x=1,50; z=1,90</text>
+
+  <!-- collision-only camera guards: real transparent polycarbonate analogue.
+       Pixel mapping is x_px=355+150*x_world, y_px=440-150*y_world. -->
+  <g id="camera-guards" data-sdf-model="belt_guides_camera">
+    <line id="camera-guard-left" x1="460" y1="399.2" x2="719.5" y2="399.2" stroke="#0891b2" stroke-width="6" stroke-opacity="0.85"/>
+    <line id="camera-guard-right" x1="460" y1="480.8" x2="794.5" y2="480.8" stroke="#0891b2" stroke-width="6" stroke-opacity="0.85"/>
+    <text x="470" y="388" class="t xs label" fill="#0e7490">прозрачные бортики · collision-only</text>
+  </g>
 
   <!-- zones, drawn before chutes -->
   <rect x="715" y="245" width="240" height="120" fill="#bfdbfe" stroke="#2563eb" stroke-width="2"/>
@@ -94,8 +102,9 @@
   <line x1="1120" y1="260" x2="1155" y2="260" stroke="#be123c" stroke-width="6"/><text x="1170" y="266" class="t s">лопасть припаркована</text>
   <line x1="1120" y1="295" x2="1155" y2="295" stroke="#be123c" stroke-width="5" stroke-dasharray="8 5"/><text x="1170" y="301" class="t s">лопасть выставлена</text>
   <line x1="1120" y1="330" x2="1155" y2="330" stroke="#7c3aed" stroke-width="4" stroke-dasharray="8 5"/><text x="1170" y="336" class="t s">физический проект, не SDF</text>
+  <line x1="1120" y1="365" x2="1155" y2="365" stroke="#0891b2" stroke-width="6" stroke-opacity="0.85"/><text x="1170" y="371" class="t s">прозрачный борт (в SDF: collision)</text>
 
-  <text x="1120" y="405" class="t h">Поперечный разрез склиза</text>
+  <text x="1120" y="415" class="t h">Поперечный разрез склиза</text>
   <line x1="1120" y1="650" x2="1510" y2="650" stroke="#475569" stroke-width="3"/>
   <rect x="1120" y="565" width="135" height="15" fill="#64748b"/>
   <line x1="1255" y1="580" x2="1405" y2="650" stroke="#94a3b8" stroke-width="16"/>

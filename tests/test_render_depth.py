@@ -42,22 +42,23 @@ MAX_K_GAP = 0.05
 @pytest.mark.parametrize("cell", CELLS)
 def test_a_rendered_frame_measures_like_the_real_one(cell):
     pytest.importorskip("trimesh")
-    cv2 = pytest.importorskip("cv2")
-    import numpy as np
+    pytest.importorskip("cv2")
 
     from build_item_models import ITEMS, STL_DIR
     from render_depth import load_mesh, read_resting_quat, render_depth
 
     from src.classification import classify_conservative
-    from src.perception import measure_item
+    from src.perception import load_depth_png, measure_item
 
     slug = cell.rsplit("_", 1)[0]
     stem, _ = ITEMS[slug]
     if not (STL_DIR / f"{stem}.stl").exists():
         pytest.skip("organizer STL artifacts are not present")
 
-    real = cv2.imread(str(FIXTURES / f"{cell}_depth.png"), cv2.IMREAD_UNCHANGED)
-    real_m = np.asarray(real, dtype=float) / 1000.0
+    # cv2.imread(path) is not Unicode-safe on Windows.  The repository may live
+    # under a participant's non-ASCII username, so exercise the production
+    # byte-decoding path instead of silently turning the fixture into None.
+    real_m = load_depth_png(FIXTURES / f"{cell}_depth.png")
     quat = read_resting_quat(FIXTURES / f"{cell}_pose.txt")
 
     got_real = measure_item(real_m)
