@@ -27,6 +27,10 @@ class ValidationCase:
     truth_dims_mm: tuple[float, float, float] | None
     truth_k: float | None
     expected_category: str | None
+    # Per-slice frozen regression budget, not a universal accuracy claim. The
+    # values are rounded above the measured real-frame error and make drift fail
+    # even when it remains on the same side of a category threshold.
+    dim_tolerance_mm: float | None = None
     expected_detected: bool = True
 
 
@@ -51,6 +55,7 @@ CASES = (
         (202.0, 176.0, 170.0),
         0.72,
         "B",
+        dim_tolerance_mm=20.0,
     ),
     ValidationCase(
         "Bag oi2 / alternate pose",
@@ -59,6 +64,7 @@ CASES = (
         (202.0, 176.0, 170.0),
         0.72,
         "B",
+        dim_tolerance_mm=20.0,
     ),
     ValidationCase(
         "Helmet oi2 / near K=0.8",
@@ -67,6 +73,7 @@ CASES = (
         (352.0, 298.0, 282.0),
         0.78,
         "B",
+        dim_tolerance_mm=25.0,
     ),
     ValidationCase(
         "Bottle side / hidden round section",
@@ -75,6 +82,7 @@ CASES = (
         (301.0, 91.0, 90.0),
         1.00,
         "D",
+        dim_tolerance_mm=20.0,
     ),
     ValidationCase(
         "Helmet tilted / 3D body OBB",
@@ -83,6 +91,7 @@ CASES = (
         (352.0, 298.0, 282.0),
         0.78,
         "B",
+        dim_tolerance_mm=25.0,
     ),
     ValidationCase(
         "Plate oi1 / round flat slice",
@@ -91,6 +100,7 @@ CASES = (
         (210.0, 209.0, 27.0),
         1.00,
         "D",
+        dim_tolerance_mm=5.0,
     ),
     ValidationCase(
         "Pen / 9 mm minimum",
@@ -99,6 +109,7 @@ CASES = (
         (148.0, 13.0, 9.0),
         0.99,
         "C",
+        dim_tolerance_mm=3.0,
     ),
     ValidationCase(
         "Partial box / border reject",
@@ -116,6 +127,7 @@ CASES = (
         (148.0, 13.0, 9.0),
         0.99,
         "C",
+        dim_tolerance_mm=3.0,
     ),
     # Documented limit, frozen on the day-3 world (cell.sdf): a pen balanced on
     # its end paints 12 px — under the 24 px speck gate — and is invisible. In
@@ -168,7 +180,11 @@ def evaluate(case: ValidationCase, measurement) -> Evaluation:
         dim_error = max(abs(actual - truth)
                         for actual, truth in zip(dims, case.truth_dims_mm))
     k_error = None if case.truth_k is None else abs(float(measurement.k) - case.truth_k)
-    passed = case.expected_detected and category == case.expected_category
+    dims_accurate = (
+        case.dim_tolerance_mm is None
+        or (dim_error is not None and dim_error <= case.dim_tolerance_mm)
+    )
+    passed = case.expected_detected and category == case.expected_category and dims_accurate
     return Evaluation(
         True,
         dims,
@@ -194,7 +210,7 @@ def main() -> int:
         results.append((case, evaluate(case, measure_item(load_depth_png(case.depth)))))
 
     print(
-        "| Slice | Detection | Measured dims, mm | max abs(dim error), mm | "
+        "| Slice | Detection | Measured dims, mm | max abs(dim error) / limit, mm | "
         "K | abs(K error) | Route | Result |"
     )
     print("|---|---:|---|---:|---:|---:|---:|---:|")
@@ -205,18 +221,24 @@ def main() -> int:
         route = result.category or "—"
         print(
             f"| {case.name} | {detection} | {dims} | "
-            f"{_fmt(result.max_dim_error_mm, 1)} | {_fmt(result.k)} | "
+            f"{_fmt(result.max_dim_error_mm, 1)} / {_fmt(case.dim_tolerance_mm, 1)} | "
+            f"{_fmt(result.k)} | "
             f"{_fmt(result.k_error)} | {route} | {'PASS' if result.passed else 'FAIL'} |"
         )
 
     visible = [(case, result) for case, result in results if case.expected_detected]
     detected = sum(result.detected for _, result in visible)
-    correct = sum(result.passed for _, result in visible)
+    category_correct = sum(
+        result.detected and result.category == case.expected_category
+        for case, result in visible
+    )
+    contract_passed = sum(result.passed for _, result in visible)
     partial = [(case, result) for case, result in results if not case.expected_detected]
     rejected = sum(result.passed for _, result in partial)
     print(
         f"\nvisible recall {detected}/{len(visible)}; "
-        f"category {correct}/{len(visible)}; "
+        f"category {category_correct}/{len(visible)}; "
+        f"visible contract {contract_passed}/{len(visible)}; "
         f"expected reject {rejected}/{len(partial)}"
     )
     return 0 if all(result.passed for _, result in results) else 1

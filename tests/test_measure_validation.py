@@ -12,6 +12,7 @@ def _case(**overrides):
         "truth_dims_mm": (100.0, 50.0, 20.0),
         "truth_k": 0.7,
         "expected_category": "B",
+        "dim_tolerance_mm": 5.0,
         "expected_detected": True,
     }
     values.update(overrides)
@@ -29,6 +30,17 @@ def test_evaluation_reports_dimension_and_k_error_and_route():
     assert result.k_error == pytest.approx(0.05)
     assert result.category == "B"
     assert result.passed
+
+
+def test_same_category_cannot_hide_gross_dimension_error():
+    result = validation.evaluate(
+        _case(),
+        SimpleNamespace(dims_mm=[280.0, 280.0, 280.0], k=0.7),
+    )
+
+    assert result.category == "B"
+    assert result.max_dim_error_mm == 260.0
+    assert not result.passed
 
 
 def test_visible_miss_fails_but_expected_partial_reject_passes():

@@ -12,24 +12,27 @@
 
 Ground truth габаритов и K взят из анализа исходных STL организаторов
 (`docs/md/models.md`). Все кадры сняты настоящей камерой Gazebo; синтетический
-рендер в эту таблицу не входит.
+рендер в эту таблицу не входит. Для каждого видимого среза задан отдельный
+регрессионный бюджет ошибки размеров: это округлённый запас над наблюдаемой
+ошибкой данного frozen-кадра, а не обещание общей точности на неизвестных позах.
 
-| Slice | Detection | Measured dims, mm | max \|Δdim\|, mm | K | \|ΔK\| | Route | Result |
+| Slice | Detection | Measured dims, mm | max \|Δdim\| / limit, mm | K | \|ΔK\| | Route | Result |
 |---|---:|---|---:|---:|---:|---:|---:|
-| Bag oi1 / K-straddle | detected | 214×175×168 | 12.2 | 0.74 | 0.02 | B | PASS |
-| Bag oi2 / alternate pose | detected | 192×171×170 | 9.9 | 0.00 | 0.72 | B | PASS |
-| Helmet oi2 / near K=0.8 | detected | 330×279×279 | 22.1 | 0.76 | 0.02 | B | PASS |
-| Bottle side / hidden round section | detected | 296×103×90 | 12.0 | 1.00 | 0.00 | D | PASS |
-| Helmet tilted / 3D body OBB | detected | 340×280×275 | 18.0 | 0.77 | 0.01 | B | PASS |
-| Plate oi1 / round flat slice | detected | 208×205×26 | 3.8 | 0.98 | 0.02 | D | PASS |
-| Pen / 9 mm minimum | detected | 146×14×7 | 2.4 | 0.06 | 0.93 | C | PASS |
-| Partial box / border reject | rejected | — | — | — | — | — | PASS |
-| Pen diagonal / thin mask at 45 deg | detected | 150×14×10 | 1.6 | 0.08 | 0.91 | C | PASS |
-| Pen standing / below-gate documented limit | rejected | — | — | — | — | — | PASS |
-| Partial helmet / border reject | rejected | — | — | — | — | — | PASS |
-| Partial pen / thin border reject | rejected | — | — | — | — | — | PASS |
+| Bag oi1 / K-straddle | detected | 214×175×168 | 12.2 / 20 | 0.74 | 0.02 | B | PASS |
+| Bag oi2 / alternate pose | detected | 192×171×170 | 9.9 / 20 | 0.00 | 0.72 | B | PASS |
+| Helmet oi2 / near K=0.8 | detected | 330×279×279 | 22.1 / 25 | 0.76 | 0.02 | B | PASS |
+| Bottle side / hidden round section | detected | 296×103×90 | 12.0 / 20 | 1.00 | 0.00 | D | PASS |
+| Helmet tilted / 3D body OBB | detected | 340×280×275 | 18.0 / 25 | 0.77 | 0.01 | B | PASS |
+| Plate oi1 / round flat slice | detected | 208×205×26 | 3.8 / 5 | 0.98 | 0.02 | D | PASS |
+| Pen / 9 mm minimum | detected | 146×14×7 | 2.4 / 3 | 0.06 | 0.93 | C | PASS |
+| Partial box / border reject | rejected | — | — / — | — | — | — | PASS |
+| Pen diagonal / thin mask at 45 deg | detected | 150×14×10 | 1.6 / 3 | 0.08 | 0.91 | C | PASS |
+| Pen standing / below-gate documented limit | rejected | — | — / — | — | — | — | PASS |
+| Partial helmet / border reject | rejected | — | — / — | — | — | — | PASS |
+| Partial pen / thin border reject | rejected | — | — / — | — | — | — | PASS |
 
-Итог: **visible recall 8/8; category 8/8; expected reject 4/4**.
+Итог: **visible recall 8/8; category 8/8; visible contract 8/8;
+expected reject 4/4**.
 
 ## Что именно проверяет каждый срез
 
