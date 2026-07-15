@@ -106,8 +106,10 @@ done <<< "$PLAN"
 declare -A HULL
 for i in "${!SLUGS[@]}"; do
     HULL[$i]=/tmp/item_hull_${SLUGS[$i]}.txt
-    "$PYTHON" scripts/body_pose.py --dump-hull "${SLUGS[$i]}" "${HULL[$i]}" 2>/dev/null \
-        || HULL[$i]=/dev/null
+    if ! "$PYTHON" scripts/body_pose.py --dump-hull "${SLUGS[$i]}" "${HULL[$i]}"; then
+        echo "ABORT: body hull precompute failed for ${SLUGS[$i]}" >&2
+        exit 2
+    fi
 done
 
 GAZEBO=""
@@ -164,16 +166,29 @@ T0=$(date +%s.%N)
 
 # Feed in the background so the poll loop can already time the arrivals of items
 # fed earlier: with a 4.5 s stream the first item lands before the last is fed.
+FEEDER_ERROR_FILE="$LOGDIR/feeder.error"
+rm -f "$FEEDER_ERROR_FILE"
 (
+    trap 'rc=$?; if [ "$rc" -ne 0 ] && [ ! -s "$FEEDER_ERROR_FILE" ]; then echo "FEEDER_ERROR: feeder exited with status $rc" > "$FEEDER_ERROR_FILE"; fi' EXIT
     ELAPSED=0
     for i in "${!SLUGS[@]}"; do
         WAIT=$("$PYTHON" -c "print(max(${DELAYS[$i]} - $ELAPSED, 0))")
         sleep "$WAIT"
         ELAPSED=${DELAYS[$i]}
         read -r OX OY OZ OW <<< "${QUATS[$i]}"
-        ign service -s /world/cell/create --reqtype ignition.msgs.EntityFactory \
-            --reptype ignition.msgs.Boolean --timeout 5000 \
-            --req "sdf_filename: \"$PWD/$ITEM_MODEL_ROOT/${SLUGS[$i]}/model.sdf\", name: \"item$i\", pose: {position: {x: ${SPAWN_X[$i]}, y: ${SPAWN_Y[$i]}, z: ${SPAWN_Z[$i]}}, orientation: {x: $OX, y: $OY, z: $OZ, w: $OW}}" > /dev/null
+        if ! CREATE_REPLY=$(ign service -s /world/cell/create \
+                --reqtype ignition.msgs.EntityFactory \
+                --reptype ignition.msgs.Boolean --timeout 5000 \
+                --req "sdf_filename: \"$PWD/$ITEM_MODEL_ROOT/${SLUGS[$i]}/model.sdf\", name: \"item$i\", pose: {position: {x: ${SPAWN_X[$i]}, y: ${SPAWN_Y[$i]}, z: ${SPAWN_Z[$i]}}, orientation: {x: $OX, y: $OY, z: $OZ, w: $OW}}" 2>&1); then
+            echo "FEEDER_ERROR: create command failed for item$i: $CREATE_REPLY" \
+                > "$FEEDER_ERROR_FILE"
+            exit 10
+        fi
+        if ! grep -Eq "data:[[:space:]]*true" <<< "$CREATE_REPLY"; then
+            echo "FEEDER_ERROR: create rejected for item$i: $CREATE_REPLY" \
+                > "$FEEDER_ERROR_FILE"
+            exit 11
+        fi
         # announce the feed to the controller's watchdog (see run_skeleton.sh);
         # backgrounded so the CLI's startup does not skew the next feed delay
         ros2 topic pub -w 1 --once /infeed/fed std_msgs/msg/Empty > /dev/null 2>&1 &
@@ -195,6 +210,9 @@ item_pose() {  # name -> "x y z roll pitch yaw"; an unfed item simply has no pos
 declare -A ARRIVED_AT
 declare -A LAST_POSE
 LANDED=0
+# A harness error invalidates every still-unobserved result. It must never be
+# rendered as a physical FAIL, because reliability analysis uses FAIL as data.
+RUN_ERROR=""
 for _ in $(seq 1 "$POLL_ITERS"); do
     for i in "${!SLUGS[@]}"; do
         NAME="item$i"
@@ -203,17 +221,43 @@ for _ in $(seq 1 "$POLL_ITERS"); do
         [ -z "$POSE" ] && continue          # not fed yet, or the CLI flaked — retry next lap
         read -r X Y Z RR PP YY <<< "$POSE"
         LAST_POSE[$NAME]="x=$X y=$Y z=$Z"
-        if [ "$("$PYTHON" scripts/zone_verdict.py "${ZONES[$i]}" "$X" "$Y" "$Z" \
-                "${HULL[$i]}" "$RR" "$PP" "$YY" 2>/dev/null)" = YES ]; then
-            NOW=$(date +%s.%N)
-            ARRIVED_AT[$NAME]=$("$PYTHON" -c "print(f'{$NOW - $T0:.1f}')")
-            LANDED=$((LANDED + 1))
+        if ! VERDICT_OUTPUT=$("$PYTHON" scripts/zone_verdict.py \
+                "${ZONES[$i]}" "$X" "$Y" "$Z" "${HULL[$i]}" \
+                "$RR" "$PP" "$YY" 2>&1); then
+            VERDICT_OUTPUT=${VERDICT_OUTPUT//$'\n'/ }
+            RUN_ERROR="$NAME verdict failed: $VERDICT_OUTPUT"
+            break 2
         fi
+        case "$VERDICT_OUTPUT" in
+            YES)
+                NOW=$(date +%s.%N)
+                ARRIVED_AT[$NAME]=$("$PYTHON" -c "print(f'{$NOW - $T0:.1f}')")
+                LANDED=$((LANDED + 1))
+                ;;
+            NO) ;;
+            *)
+                VERDICT_OUTPUT=${VERDICT_OUTPUT//$'\n'/ }
+                RUN_ERROR="$NAME verdict returned invalid output: $VERDICT_OUTPUT"
+                break 2
+                ;;
+        esac
     done
+    if [ -s "$FEEDER_ERROR_FILE" ]; then
+        RUN_ERROR=$(tr '\n' ' ' < "$FEEDER_ERROR_FILE")
+        break
+    fi
     [ "$LANDED" = "${#SLUGS[@]}" ] && break
     sleep 0.5
 done
-wait $FEEDER 2>/dev/null || true
+if [ -n "$RUN_ERROR" ] && [ -n "$FEEDER" ]; then
+    kill "$FEEDER" 2>/dev/null || true
+fi
+FEEDER_RC=0
+wait "$FEEDER" || FEEDER_RC=$?
+FEEDER=""
+if [ "$FEEDER_RC" -ne 0 ] && [ -z "$RUN_ERROR" ]; then
+    RUN_ERROR="feeder exited with status $FEEDER_RC"
+fi
 
 # The stream's own summary — arrivals (T0-relative, so Gazebo boot and the belt
 # soft-start are excluded) and the takt — is echoed AND saved to the run dir, so
@@ -228,6 +272,10 @@ for i in "${!SLUGS[@]}"; do
     T=${ARRIVED_AT[$NAME]:-}
     if [ -n "$T" ]; then
         echo "$NAME ${SLUGS[$i]} -> ${ZONES[$i]}: PASS at t=${T}s (${LAST_POSE[$NAME]})"
+    elif [ -n "$RUN_ERROR" ]; then
+        # measure_throughput deliberately ignores INVALID as a terminal verdict;
+        # the saved plan then makes this episode structurally INCOMPLETE.
+        echo "$NAME ${SLUGS[$i]} -> ${ZONES[$i]}: INVALID ($RUN_ERROR; ${LAST_POSE[$NAME]:-no pose})"
     else
         echo "$NAME ${SLUGS[$i]} -> ${ZONES[$i]}: FAIL (${LAST_POSE[$NAME]:-no pose})"
     fi
@@ -260,4 +308,5 @@ cleanup
 trap - EXIT
 sleep 1
 echo "logs: $LOGDIR"
+[ -z "$RUN_ERROR" ] || exit 2
 [ "$LANDED" = "${#SLUGS[@]}" ]
