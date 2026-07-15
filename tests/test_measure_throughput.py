@@ -6,6 +6,8 @@ this pins them with hand-written logs whose every stamp is known: camera->decisi
 and decision->command come out of skeleton.log, the takt out of stream.log, and the
 two are NOT joined across their different item-id namespaces.
 """
+import pytest
+
 import measure_throughput as mt
 from src.constants import BELT_SPEED_M_S
 
@@ -34,7 +36,7 @@ item0 box_400x400x300 -> C: PASS at t=3.0s (x=3.0 y=1.0 z=0.0)
 item1 pen -> C: PASS at t=4.3s (x=3.1 y=1.1 z=0.0)
 item2 bottle -> D: PASS at t=10.0s (x=3.5 y=-0.8 z=0.0)
 item3 helmet -> B: FAIL (no pose)
-routed 3/3
+routed 3/4
 """
 
 PLAN = """\
@@ -118,20 +120,72 @@ def test_stream_results_keep_failures_for_reliability(tmp_path):
 
 
 def test_reliability_counts_episodes_items_and_each_route(tmp_path):
-    first = mt.parse_stream_results(_run(tmp_path) / "stream.log")
-    second_log = tmp_path / "second.log"
-    second_log.write_text(
-        "item0 box_400x400x300 -> C: PASS at t=3.2s (x=3 y=1 z=0)\n"
-        "item1 helmet -> B: PASS at t=8.0s (x=5 y=0 z=0.4)\n",
+    first_dir = tmp_path / "first"
+    first_dir.mkdir()
+    first = mt.load_episode(_run(first_dir))
+    second_dir = tmp_path / "second"
+    second_dir.mkdir()
+    (second_dir / "plan.log").write_text(
+        "0 box_400x400x300 C -1.500 0.00\n"
+        "1 helmet B -1.500 3.10\n",
         encoding="utf-8",
     )
-    second = mt.parse_stream_results(second_log)
+    (second_dir / "stream.log").write_text(
+        "item0 box_400x400x300 -> C: PASS at t=3.2s (x=3 y=1 z=0)\n"
+        "item1 helmet -> B: PASS at t=8.0s (x=5 y=0 z=0.4)\n"
+        "routed 2/2\n",
+        encoding="utf-8",
+    )
+    second = mt.load_episode(second_dir)
 
-    summary = mt.summarize_reliability([first, [], second])
-    assert (summary.episodes, summary.all_pass_episodes) == (2, 1)
+    summary = mt.summarize_reliability([first, second])
+    assert (summary.episodes, summary.complete_episodes, summary.all_pass_episodes) == (2, 2, 1)
     assert (summary.items, summary.passed_items) == (6, 5)
+    assert (summary.terminal_fail_items, summary.incomplete_items) == (1, 0)
     assert summary.by_route[("box_400x400x300", "C")] == (2, 2)
     assert summary.by_route[("helmet", "B")] == (1, 2)
+
+
+@pytest.mark.parametrize(
+    ("stream_text", "passed_items", "incomplete_items"),
+    [
+        (None, 0, 4),
+        ("item0 box_400x400x300 -> C: PASS at t=3.0s (x=3 y=1 z=0)\n", 1, 3),
+        ("item0 box_400x400x300 -> C: PASS (x=3 y=1 z=0)\n", 0, 4),
+    ],
+)
+def test_started_episode_cannot_hide_missing_terminal_results(
+    tmp_path, stream_text, passed_items, incomplete_items
+):
+    """An accepted plan is the denominator even if the runner dies mid-summary."""
+    (tmp_path / "plan.log").write_text(PLAN, encoding="utf-8")
+    if stream_text is not None:
+        (tmp_path / "stream.log").write_text(stream_text, encoding="utf-8")
+
+    episode = mt.load_episode(tmp_path)
+    summary = mt.summarize_reliability([episode])
+
+    assert episode.complete is False
+    assert (summary.episodes, summary.complete_episodes, summary.incomplete_episodes) == (1, 0, 1)
+    assert (summary.items, summary.passed_items) == (4, passed_items)
+    assert summary.incomplete_items == incomplete_items
+    assert summary.by_route[("box_400x400x300", "C")] == (passed_items, 1)
+    assert summary.by_route[("pen", "C")] == (0, 1)
+
+
+def test_incomplete_episode_makes_cli_nonzero(tmp_path, monkeypatch, capsys):
+    (tmp_path / "plan.log").write_text(PLAN, encoding="utf-8")
+    (tmp_path / "stream.log").write_text(
+        "item0 box_400x400x300 -> C: PASS at t=3.0s (x=3 y=1 z=0)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(mt.sys, "argv", ["measure_throughput.py", str(tmp_path)])
+
+    assert mt.main() == 1
+    output = capsys.readouterr().out
+    assert "complete episodes:" in output
+    assert "incomplete items:" in output
+    assert "item1: missing terminal result" in output
 
 
 def test_malformed_pass_without_time_is_not_claimed_as_a_result(tmp_path):
@@ -192,3 +246,19 @@ def test_find_runs_direct_and_parent(tmp_path):
     # A parent dir resolves to the run(s) beneath it; a run dir resolves to itself.
     assert mt.find_runs([str(tmp_path)]) == [run]
     assert mt.find_runs([str(run)]) == [run]
+
+
+def test_find_runs_recurses_deduplicates_and_excludes_unrelated_skeletons(tmp_path):
+    top = tmp_path / "stream_top"
+    nested = tmp_path / "dense" / "stream_nested"
+    safety = tmp_path / "estop_probe"
+    for run in (top, nested, safety):
+        run.mkdir(parents=True)
+    (top / "stream.log").write_text(STREAM, encoding="utf-8")
+    (nested / "plan.log").write_text(PLAN, encoding="utf-8")
+    (safety / "skeleton.log").write_text(SKELETON, encoding="utf-8")
+
+    assert mt.find_runs([str(tmp_path), str(nested)]) == [nested, top]
+    # A skeleton-only latency probe remains available when explicitly requested,
+    # but parent discovery must not pollute stream latency/reliability with it.
+    assert mt.find_runs([str(safety)]) == [safety]

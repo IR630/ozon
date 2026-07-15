@@ -90,6 +90,7 @@ PLAN_LINE = re.compile(
     r"^(?P<index>\d+)\s+(?P<slug>\S+)\s+(?P<zone>[BCD])\s+"
     r"(?P<spawn_x>-?[\d.]+)\s+(?P<feed_s>[\d.]+)$"
 )
+ROUTED_LINE = re.compile(r"^routed\s+\d+/(?P<total>\d+)$")
 
 
 @dataclass
@@ -126,22 +127,40 @@ class StreamResult:
 
 
 @dataclass
-class ReliabilitySummary:
-    episodes: int
-    all_pass_episodes: int
-    items: int
-    passed_items: int
-    # (slug, expected zone) -> (passed, total). Keeping the expected zone in the
-    # key prevents two different routes of the same diagnostic model being mixed.
-    by_route: dict[tuple[str, str], tuple[int, int]]
-
-
-@dataclass
 class PlannedItem:
     index: int
     slug: str
     zone: str
     feed_s: float
+
+
+@dataclass
+class StreamEpisode:
+    """One accepted stream plan reconciled with its terminal result rows."""
+
+    run: Path
+    planned: list[PlannedItem]
+    results: dict[str, StreamResult]
+    issues: list[str]
+
+    @property
+    def complete(self) -> bool:
+        return not self.issues
+
+
+@dataclass
+class ReliabilitySummary:
+    episodes: int
+    complete_episodes: int
+    incomplete_episodes: int
+    all_pass_episodes: int
+    items: int
+    passed_items: int
+    terminal_fail_items: int
+    incomplete_items: int
+    # (slug, expected zone) -> (passed, total). Keeping the expected zone in the
+    # key prevents two different routes of the same diagnostic model being mixed.
+    by_route: dict[tuple[str, str], tuple[int, int]]
 
 
 def parse_skeleton(path: Path) -> dict[int, Stages]:
@@ -209,23 +228,118 @@ def parse_plan(path: Path) -> list[PlannedItem]:
     return sorted(items, key=lambda item: item.index)
 
 
-def summarize_reliability(episodes: list[list[StreamResult]]) -> ReliabilitySummary:
-    """Aggregate exact routing counts without inventing confidence from a small N."""
-    nonempty = [results for results in episodes if results]
+def _plan_path(run: Path) -> Path | None:
+    """Current plan.log, or the legacy console capture that contains the plan."""
+    for name in ("plan.log", "console.log"):
+        path = run / name
+        if path.exists():
+            return path
+    return None
+
+
+def _routed_total(path: Path) -> int | None:
+    """Expected item count from a legacy stream.log's `routed N/M` footer."""
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        match = ROUTED_LINE.match(line.strip())
+        if match:
+            return int(match["total"])
+    return None
+
+
+def load_episode(run: Path) -> StreamEpisode:
+    """Reconcile one started plan with exactly one terminal row per planned item.
+
+    A saved plan is proof that the episode started, even if stream.log was never
+    created. Older runs predate plan.log; their terminal rows plus `routed N/M`
+    footer form the best available roster and remain readable.
+    """
+    run = Path(run)
+    plan_path = _plan_path(run)
+    stream_path = run / "stream.log"
+    raw_results = parse_stream_results(stream_path) if stream_path.exists() else []
+    issues: list[str] = []
+
+    if plan_path is not None:
+        planned = parse_plan(plan_path)
+        if not planned:
+            issues.append("accepted plan contains no items")
+    else:
+        # Backward compatibility for pre-plan.log runs. Every current runner
+        # emits itemN lines in feed-index order and a routed N/M footer.
+        inferred: dict[int, PlannedItem] = {}
+        for result in raw_results:
+            index = int(result.name.removeprefix("item"))
+            inferred.setdefault(index, PlannedItem(index, result.slug, result.zone, float("nan")))
+        total = _routed_total(stream_path) if stream_path.exists() else None
+        if total is None:
+            issues.append("missing plan roster and routed total")
+            total = len(inferred)
+        if total < len(inferred):
+            issues.append(f"routed total {total} is smaller than {len(inferred)} terminal rows")
+            total = len(inferred)
+        for index in range(total):
+            inferred.setdefault(index, PlannedItem(index, "<unknown>", "?", float("nan")))
+        planned = sorted(inferred.values(), key=lambda item: item.index)
+
+    expected = {f"item{item.index}": item for item in planned}
+    matched: dict[str, StreamResult] = {}
+    for result in raw_results:
+        item = expected.get(result.name)
+        if result.name in matched:
+            issues.append(f"{result.name}: duplicate terminal result")
+            continue
+        if item is None:
+            issues.append(f"{result.name}: terminal result is absent from plan")
+            continue
+        if (result.slug, result.zone) != (item.slug, item.zone):
+            issues.append(
+                f"{result.name}: terminal route {result.slug}->{result.zone} "
+                f"does not match plan {item.slug}->{item.zone}"
+            )
+            continue
+        matched[result.name] = result
+
+    for name in expected:
+        if name not in matched:
+            issues.append(f"{name}: missing terminal result")
+
+    if plan_path is not None and stream_path.exists():
+        footer_total = _routed_total(stream_path)
+        if footer_total is not None and footer_total != len(planned):
+            issues.append(
+                f"routed footer expects {footer_total} items, plan contains {len(planned)}"
+            )
+    return StreamEpisode(run, planned, matched, issues)
+
+
+def summarize_reliability(episodes: list[StreamEpisode]) -> ReliabilitySummary:
+    """Aggregate exact routing counts using every accepted plan as denominator."""
     route_counts: dict[tuple[str, str], list[int]] = {}
-    items = passed_items = 0
-    for results in nonempty:
-        for result in results:
+    items = passed_items = terminal_fail_items = incomplete_items = 0
+    for episode in episodes:
+        for item in episode.planned:
+            result = episode.results.get(f"item{item.index}")
             items += 1
-            passed_items += int(result.passed)
-            counts = route_counts.setdefault((result.slug, result.zone), [0, 0])
-            counts[0] += int(result.passed)
+            passed = int(result is not None and result.passed)
+            passed_items += passed
+            terminal_fail_items += int(result is not None and not result.passed)
+            incomplete_items += int(result is None)
+            counts = route_counts.setdefault((item.slug, item.zone), [0, 0])
+            counts[0] += passed
             counts[1] += 1
+    complete = sum(episode.complete for episode in episodes)
     return ReliabilitySummary(
-        episodes=len(nonempty),
-        all_pass_episodes=sum(all(r.passed for r in results) for results in nonempty),
+        episodes=len(episodes),
+        complete_episodes=complete,
+        incomplete_episodes=len(episodes) - complete,
+        all_pass_episodes=sum(
+            episode.complete and all(result.passed for result in episode.results.values())
+            for episode in episodes
+        ),
         items=items,
         passed_items=passed_items,
+        terminal_fail_items=terminal_fail_items,
+        incomplete_items=incomplete_items,
         by_route={key: (counts[0], counts[1]) for key, counts in route_counts.items()},
     )
 
@@ -287,18 +401,23 @@ def _ratio(passed: int, total: int) -> str:
 
 
 def find_runs(paths: list[str]) -> list[Path]:
-    """Each path is a run dir (has skeleton.log or stream.log) or a parent of them."""
-    runs = []
+    """Resolve explicit runs or recursively discover unique stream-marked runs.
+
+    A directly named skeleton-only directory is a valid latency probe. Parent
+    discovery deliberately requires plan.log/stream.log, so unrelated E-stop or
+    single-item skeleton logs cannot pollute stream latency statistics.
+    """
+    runs: set[Path] = set()
     for raw in paths:
         p = Path(raw)
-        if (p / "skeleton.log").exists() or (p / "stream.log").exists():
-            runs.append(p)
+        if any((p / name).exists() for name in ("plan.log", "stream.log", "skeleton.log")):
+            runs.add(p.resolve())
             continue
-        for sub in sorted(p.glob("*")):
-            if sub.is_dir() and ((sub / "skeleton.log").exists()
-                                 or (sub / "stream.log").exists()):
-                runs.append(sub)
-    return runs
+        if not p.is_dir():
+            continue
+        for marker in ("plan.log", "stream.log"):
+            runs.update(path.parent.resolve() for path in p.rglob(marker))
+    return sorted(runs, key=lambda path: str(path))
 
 
 def main() -> int:
@@ -318,7 +437,7 @@ def main() -> int:
     change_takts: list[float] = []   # zone change: the blade must hold+retract (floor > 0)
     noair_takts: list[float] = []    # nose to tail, or a B item riding through (floor 0)
     n_runs_timed = 0
-    reliability_episodes: list[list[StreamResult]] = []
+    reliability_episodes: list[StreamEpisode] = []
     planned_change_gaps: list[float] = []
     planned_change_margins: list[float] = []
 
@@ -326,12 +445,8 @@ def main() -> int:
     for run in runs:
         skel = run / "skeleton.log"
         strm = run / "stream.log"
-        # plan.log is produced by current run_stream. console.log is a backward-
-        # compatible source for older episodes whose stdout happened to be saved.
-        plan_path = run / "plan.log"
-        if not plan_path.exists() and (run / "console.log").exists():
-            plan_path = run / "console.log"
-        if plan_path.exists():
+        plan_path = _plan_path(run)
+        if plan_path is not None:
             plan = parse_plan(plan_path)
             for front, back in zip(plan, plan[1:]):
                 floor = takt_floor_s(front.zone, back.zone)
@@ -348,18 +463,22 @@ def main() -> int:
                 # jitter is tolerable (unlike camera->decision, which is one frame).
                 if s.detect is not None and s.fire is not None:
                     cam_to_cmd.append(s.fire - s.detect)
-        if strm.exists():
-            results = parse_stream_results(strm)
-            reliability_episodes.append(results)
+        if plan_path is not None or strm.exists():
+            episode = load_episode(run)
+            reliability_episodes.append(episode)
+            results = list(episode.results.values())
             arrivals = [Arrival(r.name, r.slug, r.zone, r.t)
                         for r in results if r.passed and r.t is not None]
             arrivals.sort(key=lambda a: a.t)
             gaps = takt_gaps(arrivals)
+            status = "complete" if episode.complete else f"INCOMPLETE ({len(episode.issues)} issues)"
             if gaps:
                 n_runs_timed += 1
                 run_takt = median([g.gap_s for g in gaps])
                 print(f"  {run.name}: {len(arrivals)} arrivals, "
-                      f"takt {run_takt:.2f}s ({60.0 / run_takt:.0f}/min)")
+                      f"takt {run_takt:.2f}s ({60.0 / run_takt:.0f}/min), {status}")
+            else:
+                print(f"  {run.name}: {len(arrivals)} arrivals, no takt, {status}")
             for g in gaps:
                 all_takts.append(g.gap_s)
                 (change_takts if g.feed_floor_s > 0 else noair_takts).append(g.gap_s)
@@ -368,10 +487,19 @@ def main() -> int:
 
     reliability = summarize_reliability(reliability_episodes)
     print("\n=== routing reliability (stream.log; PASS and FAIL) ===")
+    print(f"  complete episodes: {_ratio(reliability.complete_episodes, reliability.episodes)}")
     print(f"  all-pass episodes: {_ratio(reliability.all_pass_episodes, reliability.episodes)}")
     print(f"  routed items:      {_ratio(reliability.passed_items, reliability.items)}")
+    print(f"  terminal FAIL:     {reliability.terminal_fail_items}")
+    print(f"  incomplete items:  {reliability.incomplete_items}")
     for (slug, zone), (passed, total) in sorted(reliability.by_route.items()):
         print(f"  {slug:24s} -> {zone}: {_ratio(passed, total)}")
+    for episode in reliability_episodes:
+        if episode.complete:
+            continue
+        print(f"  {episode.run.name}: INCOMPLETE")
+        for issue in episode.issues:
+            print(f"    {issue}")
 
     print("\n=== per-stage latency (skeleton.log) ===")
     print(_row("decision -> command", dec_to_cmd))
@@ -418,7 +546,7 @@ def main() -> int:
     print("  same-zone takt floor: item length / belt speed (geometry-independent)")
     print(f"  per-item belt transit (spawn x={stream_plan.FIRST_SPAWN_X_M:.1f} -> "
           f"target x={stream_plan.TARGET_X_M:.1f}): {transit:.1f}s at {BELT_SPEED_M_S:.1f} m/s")
-    return 0
+    return int(reliability.incomplete_episodes > 0)
 
 
 if __name__ == "__main__":
