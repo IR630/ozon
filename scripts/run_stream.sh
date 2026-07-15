@@ -99,13 +99,43 @@ while read -r INDEX SLUG ZONE X DELAY; do
     SPAWN_X+=("$X"); SPAWN_Y+=("$SY"); SPAWN_Z+=("$SZ"); QUATS+=("$OX $OY $OZ $OW")
 done <<< "$PLAN"
 
-pkill -f "ign gazebo" 2>/dev/null || true
-pkill -f "skeleton.launch" 2>/dev/null || true
-pkill -f "src\..*_node" 2>/dev/null || true
-pkill -f parameter_bridge 2>/dev/null || true
+# One convex hull per item, dumped ONCE before the timed episode: the verdict
+# scores the body, and doing this inside the poll loop costs 1.33 s a call. It
+# must also finish before T0 and before the feeder starts, otherwise mesh loading
+# inflates the reported latency and races the first item onto the belt.
+declare -A HULL
+for i in "${!SLUGS[@]}"; do
+    HULL[$i]=/tmp/item_hull_${SLUGS[$i]}.txt
+    "$PYTHON" scripts/body_pose.py --dump-hull "${SLUGS[$i]}" "${HULL[$i]}" 2>/dev/null \
+        || HULL[$i]=/dev/null
+done
+
+GAZEBO=""
+LAUNCH=""
+FEEDER=""
+cleanup() {
+    if [ -n "$FEEDER" ]; then
+        kill "$FEEDER" 2>/dev/null || true
+        wait "$FEEDER" 2>/dev/null || true
+    fi
+    if [ -n "$LAUNCH" ]; then
+        kill "$LAUNCH" 2>/dev/null || true
+    fi
+    if [ -n "$GAZEBO" ]; then
+        kill "$GAZEBO" 2>/dev/null || true
+    fi
+    pkill -f "skeleton.launch" 2>/dev/null || true
+    pkill -f "src\..*_node" 2>/dev/null || true
+    pkill -f parameter_bridge 2>/dev/null || true
+    pkill -f "ign gazebo" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+cleanup
 sleep 2
 
 ign gazebo -s -r -v 0 "$WORLD" > "$LOGDIR/gazebo.log" 2>&1 &
+GAZEBO=$!
 sleep 10
 
 # Pre-roll the belt against its lower joint limit: the slab's stroke is the
@@ -161,16 +191,6 @@ item_pose() {  # name -> "x y z roll pitch yaw"; an unfed item simply has no pos
     ign model -m "$1" --pose 2>/dev/null | grep -A2 "XYZ" | tail -2 \
         | tr -d "[]" | awk '{printf "%s %s %s ", $1, $2, $3}'
 }
-
-# One convex hull per item, dumped ONCE: the verdict scores the body, and doing that with
-# trimesh inside the poll loop costs 1.33 s a call (see run_skeleton.sh). A stream polls
-# every item on every lap, so the cost would be multiplied by the number of items.
-declare -A HULL
-for i in "${!SLUGS[@]}"; do
-    HULL[$i]=/tmp/item_hull_${SLUGS[$i]}.txt
-    "$PYTHON" scripts/body_pose.py --dump-hull "${SLUGS[$i]}" "${HULL[$i]}" 2>/dev/null \
-        || HULL[$i]=/dev/null
-done
 
 declare -A ARRIVED_AT
 declare -A LAST_POSE
@@ -236,11 +256,8 @@ echo "=== controller decisions ==="
 grep -E "item [0-9]+: (B —|C —|D —)|FIRED|mis-sort|MISSED" "$LOGDIR/skeleton.log" \
     | sed -E 's/.*\[controller\]: //' | awk '!seen[$0]++' || true
 
-kill $LAUNCH 2>/dev/null || true
+cleanup
+trap - EXIT
 sleep 1
-pkill -f "skeleton.launch" 2>/dev/null || true
-pkill -f "src\..*_node" 2>/dev/null || true
-pkill -f parameter_bridge 2>/dev/null || true
-pkill -f "ign gazebo" 2>/dev/null || true
 echo "logs: $LOGDIR"
 [ "$LANDED" = "${#SLUGS[@]}" ]

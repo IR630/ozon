@@ -27,3 +27,30 @@ def test_the_accepted_feed_plan_is_saved_beside_the_terminal_result():
     launch = text.index('ros2 launch launch/skeleton.launch.py')
     result = text.index('| tee "$LOGDIR/stream.log"')
     assert plan < launch < result
+
+
+def test_hulls_are_precomputed_before_the_timed_feeder_starts():
+    """Mesh loading must not inflate T0-relative latency or race the first feed."""
+    text = SCRIPT.read_text(encoding="utf-8")
+
+    hull_precompute = text.index("declare -A HULL")
+    timer_start = text.index("T0=$(date +%s.%N)")
+    feeder_started = text.index("FEEDER=$!")
+
+    assert hull_precompute < timer_start < feeder_started
+
+
+def test_early_exit_cleans_up_the_stream_processes():
+    """Any failure after launch must reap the feeder, ROS nodes and Gazebo."""
+    text = SCRIPT.read_text(encoding="utf-8")
+
+    trap = text.index("trap cleanup EXIT")
+    gazebo_start = text.index('ign gazebo -s -r -v 0 "$WORLD"')
+    cleanup_start = text.index("cleanup() {")
+    cleanup_end = text.index("\n}", cleanup_start)
+    cleanup = text[cleanup_start:cleanup_end]
+
+    assert trap < gazebo_start
+    assert 'kill "$FEEDER"' in cleanup
+    assert 'kill "$LAUNCH"' in cleanup
+    assert 'pkill -f "ign gazebo"' in cleanup
