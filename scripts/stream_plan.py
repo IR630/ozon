@@ -44,14 +44,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # src/ (cwd is not on the path)
 
 from src.constants import BELT_SPEED_M_S  # noqa: E402
+from scripts.zone_verdict import PAST_MECHANISMS_X  # noqa: E402
 
 # Feed point — the spot a single-item episode spawns at (run_skeleton.sh), inside
 # the infeed rails and far enough upstream that the item settles before the camera.
 FIRST_SPAWN_X_M = -1.5
-# How far down the belt an item must be carried for its episode to be decided:
-# past the D blade pivot (x=3.75, the farthest actuator in cell_diverter.sdf) and
-# past the B verdict line (x>=3.5), plus room to land.
-TARGET_X_M = 4.0
+# How far down the belt an item must be carried for its episode to be decided.
+# A B item is terminal only after it has passed the last blade's full sweep; keep
+# this coupled to the body-scored verdict instead of restating its x threshold.
+TARGET_X_M = PAST_MECHANISMS_X
 # Belt already spent on the controller's soft-start ramp before the first item is
 # fed (8 steps x 0.3 s at a rising speed, src/controller_node.py). Charged to the
 # stroke budget so the guard errs on the side of "the belt will still be running".

@@ -3,10 +3,13 @@
 import pytest
 
 from stream_plan import (
+    FIRST_SPAWN_X_M,
+    RAMP_TRAVEL_M,
     belt_stroke_m,
     min_gap_between_zones_m,
     plan_stream,
 )
+from zone_verdict import PAST_MECHANISMS_X
 
 DIVERTER_WORLD = "sim/worlds/cell_diverter.sdf"
 # The stream run_stream.sh runs by default, and the one the world is sized for.
@@ -54,6 +57,16 @@ def test_a_stream_longer_than_the_belt_stroke_is_refused():
     # ...and that old stroke did not even fit ONE item plus a feed interval:
     with pytest.raises(ValueError, match="belt travel"):
         plan_stream(["box_300x200x200:B:0", "bottle:D:3.5"], stroke_m=6.4)
+
+
+def test_stroke_budget_carries_the_last_item_into_the_terminal_b_band():
+    """A plan must not spend the belt before a B item can receive PASS."""
+    physically_short_m = (
+        RAMP_TRAVEL_M + PAST_MECHANISMS_X - FIRST_SPAWN_X_M - 0.01
+    )
+
+    with pytest.raises(ValueError, match="belt travel"):
+        plan_stream(["box_300x200x200:B:0"], stroke_m=physically_short_m)
 
 
 def test_the_diverter_world_can_actually_carry_the_default_stream():
