@@ -611,7 +611,8 @@ def _body_obb_dims_mm(xs, ys, depth_col_m, heights_m, fx, fy, cx, cy,
 
 
 def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK_MARGIN_M,
-                 camera_x_m=CAMERA_X_M, camera_y_m=CAMERA_Y_M, cx=None, cy=None):
+                 camera_x_m=CAMERA_X_M, camera_y_m=CAMERA_Y_M, cx=None, cy=None,
+                 _found=None):
     """Measurement of the single item on the belt, or None (empty / partial view).
 
     depth_m: HxW depth image in meters (0 = no return). Two lateral dims come
@@ -621,7 +622,10 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK
     mapping. cx/cy: principal point (px); default to the image center — the node
     passes CameraInfo's k[2]/k[5] so a shifted principal point is honored.
     """
-    found = _find_item(depth_m, belt_depth_m, margin_m)
+    # measure_items() has already segmented the full frame. Reusing its exact
+    # mask avoids copying a belt-sized frame and running _find_items once more
+    # per product; ordinary single-item callers keep the public behavior.
+    found = _find_item(depth_m, belt_depth_m, margin_m) if _found is None else _found
     if found is None:
         return None
     mask, (x0, y0, x1, y1) = found
@@ -711,16 +715,14 @@ def measure_items(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY,
                   camera_y_m=CAMERA_Y_M, cx=None, cy=None):
     """Measure every disconnected, fully visible item in a depth frame.
 
-    Geometry remains single-sourced in measure_item(): each component is isolated
-    against belt depth and passed through that existing path. Touching products
-    form one component and are intentionally not split yet.
+    Geometry remains single-sourced in measure_item(), but the masks found in the
+    one full-frame segmentation are passed directly into that path. Touching
+    products may already be separate masks after the conservative EDT split.
     """
     measurements = []
-    for mask, _ in _find_items(depth_m, belt_depth_m, margin_m):
-        isolated = np.full_like(depth_m, belt_depth_m)
-        isolated[mask] = depth_m[mask]
+    for found in _find_items(depth_m, belt_depth_m, margin_m):
         measurement = measure_item(
-            isolated,
+            depth_m,
             belt_depth_m=belt_depth_m,
             fx=fx,
             fy=fy,
@@ -729,6 +731,7 @@ def measure_items(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY,
             camera_y_m=camera_y_m,
             cx=cx,
             cy=cy,
+            _found=found,
         )
         if measurement is not None:
             measurements.append(measurement)

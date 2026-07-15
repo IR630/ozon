@@ -221,6 +221,25 @@ def test_measure_items_keeps_each_items_own_dims():
                                           pytest.approx(_BIG_DIMS)]
 
 
+def test_measure_items_segments_the_full_frame_once(monkeypatch):
+    import src.perception as perception
+
+    original = perception._find_items
+    calls = 0
+
+    def counted(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(perception, "_find_items", counted)
+
+    assert len(perception.measure_items(
+        _two_boxes(), belt_depth_m=1.5, fx=500.0, fy=500.0
+    )) == 2
+    assert calls == 1
+
+
 def test_measure_item_returns_largest_not_fused_union():
     # the single-item entry point still feeds the debug overlay and the offline
     # scripts. On a two-item frame it must degrade to "the largest item", never
