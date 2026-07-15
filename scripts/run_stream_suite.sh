@@ -9,7 +9,8 @@
 #
 # Each orientation is split into two episodes so the accepted feed schedule fits
 # the finite belt stroke.  Same-zone products may run nose-to-tail; a zone change
-# receives the planner's measured 3.1 m hold+retract clearance.
+# receives the planner's measured 3.1 m hold+retract clearance.  The Pen trails
+# the slow Pouf by the separately measured 2.5 m transport floor.
 set -u
 set -o pipefail
 cd "$(dirname "$0")/.."
@@ -39,7 +40,7 @@ MIXED_SPECS=(
     plate:D:1.0
     box_400x400x300:C:3.1
     pouf:C:1.0
-    pen:C:1.0
+    pen:C:2.5
 )
 B_SPECS=(
     box_300x200x200:B:0
@@ -75,6 +76,9 @@ run_episode() {
     local rc=${PIPESTATUS[0]}
     set -e
     printf 'rc=%s\n' "$rc" > "$LOGDIR/${episode}.status"
+    if [ -d "$episode_log" ]; then
+        printf 'rc=%s\n' "$rc" > "$episode_log/runner.status"
+    fi
 
     if [ "$rc" -eq 0 ]; then
         passed=$((passed + 1))

@@ -92,6 +92,45 @@ def test_verdict_tool_error_is_reported_as_invalid_not_physical_fail():
     assert '[ -z "$RUN_ERROR" ] || exit 2' in text
 
 
+def test_documented_lowercase_negative_verdict_keeps_polling():
+    """A not-yet-arrived item is normal, not a malformed runner response."""
+    verdict = SCRIPT.with_name("zone_verdict.py")
+    result = subprocess.run(
+        [sys.executable, str(verdict), "B", "-1.5", "0", "0.4"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    text = SCRIPT.read_text(encoding="utf-8")
+
+    assert result.returncode == 0
+    assert result.stdout.strip() == "no"
+    assert "NO|no)" in text
+
+
+def test_aborted_feeder_reaps_background_watchdog_publishers():
+    """An old /infeed/fed event must never leak into the next Gazebo world."""
+    text = SCRIPT.read_text(encoding="utf-8")
+    feeder = text[text.index("feeder_cleanup() {"):text.index("FEEDER=$!")]
+
+    assert "jobs -pr" in feeder
+    assert 'kill "$child"' in feeder
+    assert "wait 2>/dev/null || true" in feeder
+    assert "trap 'exit 143' TERM" in feeder
+
+
+def test_physical_landing_cannot_hide_a_missing_pipeline_id():
+    """An item swept by its predecessor's blade is not a valid system PASS."""
+    text = SCRIPT.read_text(encoding="utf-8")
+    roster = text[text.index("EXPECTED_IDS="):text.index("# The stream's own summary")]
+
+    assert "PERCEPTION_COUNT" in roster
+    assert "CLASSIFIER_COUNT" in roster
+    assert "CONTROLLER_COUNT" in roster
+    assert 'RUN_ERROR="roster mismatch:' in roster
+    assert "roster: planned=$EXPECTED_IDS" in text
+
+
 def test_feeder_failure_and_false_create_reply_reach_the_parent():
     """Failed creation must stop the run instead of becoming N terminal FAIL rows."""
     text = SCRIPT.read_text(encoding="utf-8")

@@ -12,8 +12,9 @@
 # an infeed works — see scripts/stream_plan.py, which turns the specs into feed
 # delays and REFUSES a stream the scene cannot carry: the belt stroke, and above
 # all the diverter hold (a blade held across the belt sweeps whatever arrives
-# during the hold, so a zone CHANGE needs ~3 m of air while two items bound for
-# the SAME zone may ride nose to tail — that asymmetry is the throughput ceiling).
+# during the hold, so a zone CHANGE needs ~3 m of air. Same-zone items may share
+# a hold only while measured transport keeps the bodies apart: the planner also
+# rejects a fast follower that would catch a slow leader before the camera).
 #
 # Reproducibility: SEED and ORIENT_INDEX pick each spawn pose exactly as the
 # matrix does (scripts/spawn_orientations.py) — ORIENT_INDEX=0 is the default STL
@@ -173,7 +174,26 @@ T0=$(date +%s.%N)
 FEEDER_ERROR_FILE="$LOGDIR/feeder.error"
 rm -f "$FEEDER_ERROR_FILE"
 (
-    trap 'rc=$?; if [ "$rc" -ne 0 ] && [ ! -s "$FEEDER_ERROR_FILE" ]; then echo "FEEDER_ERROR: feeder exited with status $rc" > "$FEEDER_ERROR_FILE"; fi' EXIT
+    # `ros2 topic pub` is backgrounded below.  If the parent aborts an episode,
+    # killing only this feeder shell used to orphan that publisher; it could then
+    # announce the OLD item in the next fresh world and instantly trigger its
+    # feed watchdog.  Reap every publisher on normal exit and on signals.
+    feeder_cleanup() {
+        local rc=$?
+        local child
+        trap - EXIT TERM INT
+        for child in $(jobs -pr); do
+            kill "$child" 2>/dev/null || true
+        done
+        wait 2>/dev/null || true
+        if [ "$rc" -ne 0 ] && [ ! -s "$FEEDER_ERROR_FILE" ]; then
+            echo "FEEDER_ERROR: feeder exited with status $rc" > "$FEEDER_ERROR_FILE"
+        fi
+        exit "$rc"
+    }
+    trap feeder_cleanup EXIT
+    trap 'exit 143' TERM
+    trap 'exit 130' INT
     ELAPSED=0
     for i in "${!SLUGS[@]}"; do
         WAIT=$("$PYTHON" -c "print(max(${DELAYS[$i]} - $ELAPSED, 0))")
@@ -238,7 +258,9 @@ for _ in $(seq 1 "$POLL_ITERS"); do
                 ARRIVED_AT[$NAME]=$("$PYTHON" -c "print(f'{$NOW - $T0:.1f}')")
                 LANDED=$((LANDED + 1))
                 ;;
-            NO) ;;
+            # zone_verdict.py's documented negative token is lowercase `no`.
+            # Accept legacy uppercase too, but reject every other output loudly.
+            NO|no) ;;
             *)
                 VERDICT_OUTPUT=${VERDICT_OUTPUT//$'\n'/ }
                 RUN_ERROR="$NAME verdict returned invalid output: $VERDICT_OUTPUT"
@@ -263,6 +285,26 @@ if [ "$FEEDER_RC" -ne 0 ] && [ -z "$RUN_ERROR" ]; then
     RUN_ERROR="feeder exited with status $FEEDER_RC"
 fi
 
+# Physical landing alone is not a valid system PASS: an undetected item can be
+# swept into the expected chute by a blade that is still engaged for its
+# predecessor.  Require one distinct perception, classifier and controller ID
+# per accepted roster entry before the episode can be green.
+EXPECTED_IDS=${#SLUGS[@]}
+PERCEPTION_IDS=$(grep -oE "\[perception\]: item [0-9]+" "$LOGDIR/skeleton.log" \
+    | sed -E 's/.*item //' | sort -nu | tr '\n' ' ' || true)
+CLASSIFIER_IDS=$(grep -oE "\[classifier\]: item [0-9]+" "$LOGDIR/skeleton.log" \
+    | sed -E 's/.*item //' | sort -nu | tr '\n' ' ' || true)
+CONTROLLER_IDS=$(grep -oE "\[controller\]: item [0-9]+: [BCD] —" "$LOGDIR/skeleton.log" \
+    | sed -E 's/.*item ([0-9]+):.*/\1/' | sort -nu | tr '\n' ' ' || true)
+PERCEPTION_COUNT=$(wc -w <<< "$PERCEPTION_IDS")
+CLASSIFIER_COUNT=$(wc -w <<< "$CLASSIFIER_IDS")
+CONTROLLER_COUNT=$(wc -w <<< "$CONTROLLER_IDS")
+if [ -z "$RUN_ERROR" ] && { [ "$PERCEPTION_COUNT" -ne "$EXPECTED_IDS" ] \
+        || [ "$CLASSIFIER_COUNT" -ne "$EXPECTED_IDS" ] \
+        || [ "$CONTROLLER_COUNT" -ne "$EXPECTED_IDS" ]; }; then
+    RUN_ERROR="roster mismatch: planned=$EXPECTED_IDS perception=$PERCEPTION_COUNT classifier=$CLASSIFIER_COUNT controller=$CONTROLLER_COUNT"
+fi
+
 # The stream's own summary — arrivals (T0-relative, so Gazebo boot and the belt
 # soft-start are excluded) and the takt — is echoed AND saved to the run dir, so
 # scripts/measure_throughput.py can recover per-item landing times offline. The
@@ -271,6 +313,7 @@ fi
 # parser). tee'd as one whole block, so no line is lost to a race on exit.
 {
 echo "=== stream result ==="
+echo "roster: planned=$EXPECTED_IDS perception=$PERCEPTION_COUNT classifier=$CLASSIFIER_COUNT controller=$CONTROLLER_COUNT"
 for i in "${!SLUGS[@]}"; do
     NAME="item$i"
     T=${ARRIVED_AT[$NAME]:-}
@@ -309,7 +352,7 @@ PY
 # Proof that perception kept the items apart: a merged blob would show ONE id, a
 # jumping tracker MORE ids than items.
 echo "=== ids seen by perception ==="
-grep -oE "\[perception\]: item [0-9]+" "$LOGDIR/skeleton.log" | sort -u | tr '\n' ' ' || true
+echo "$PERCEPTION_IDS"
 echo
 echo "=== controller decisions ==="
 grep -E "item [0-9]+: (B —|C —|D —)|FIRED|mis-sort|MISSED" "$LOGDIR/skeleton.log" \

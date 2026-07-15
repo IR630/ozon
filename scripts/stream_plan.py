@@ -16,9 +16,9 @@ run:
    after firing. Any item reaching the blade during that hold is swept into the
    same zone, whatever its own category. So two items bound for DIFFERENT zones
    must be at least (hold + retract) * belt_speed apart, while two bound for the
-   SAME zone may ride nose to tail — the blade simply stays up (the controller
-   keeps it engaged, see ControllerNode.fire). That asymmetry, not the camera, is
-   what caps throughput.
+   SAME zone may share one blade hold only while transport keeps their bodies
+   separated. A slow leading item can still be caught by its follower before the
+   camera, so measured transport gaps are enforced independently of cross-fire.
 
 Items are fed from ONE point (FIRST_SPAWN_X_M) at intervals in TIME, the way an
 infeed actually works — the gap in metres is just the interval times belt speed.
@@ -64,6 +64,14 @@ HOLD_S = float(os.environ.get("HOLD_S", 2.5))
 RETRACT_S = float(os.environ.get("RETRACT_S", 0.6))
 
 ZONES = ("B", "C", "D")
+# The convex Pouf rides this low-friction belt at 0.44 m/s while a flat Pen rides
+# at 1.00 m/s. With a 1.0-1.5 m timed feed gap the Pen catches it before the
+# camera (measured centre distance 0.17 m), the two bodies become one depth mask,
+# and the Pen can reach C only accidentally under the Pouf's still-engaged blade.
+# 2.5 m was the first differential replay with a complete 2/2
+# perception/classifier/controller roster. This is an infeed constraint, not a
+# classifier threshold; a future singulator or belt-physics fix may replace it.
+MIN_GAP_AFTER_SLOW_ITEM_M = {"pouf": 2.5}
 
 
 def min_gap_between_zones_m(front_zone, back_zone,
@@ -79,6 +87,11 @@ def min_gap_between_zones_m(front_zone, back_zone,
     if front_zone == "B" or front_zone == back_zone:
         return 0.0
     return (hold_s + retract_s) * belt_speed_m_s
+
+
+def min_transport_gap_m(front_slug):
+    """Measured feed gap that prevents a faster follower catching `front_slug`."""
+    return MIN_GAP_AFTER_SLOW_ITEM_M.get(front_slug, 0.0)
 
 
 def belt_stroke_m(world_path):
@@ -124,8 +137,16 @@ def plan_stream(specs, stroke_m, belt_speed_m_s=BELT_SPEED_M_S):
         slug, zone, gap_m = parse_spec(spec)
         if index > 0:
             front_slug, front_zone, _ = items[-1]
-            required_m = min_gap_between_zones_m(front_zone, zone)
+            zone_required_m = min_gap_between_zones_m(front_zone, zone)
+            transport_required_m = min_transport_gap_m(front_slug)
+            required_m = max(zone_required_m, transport_required_m)
             if gap_m < required_m:
+                if transport_required_m > zone_required_m:
+                    raise ValueError(
+                        f"item {index} ({slug} -> {zone}) trails slow {front_slug} "
+                        f"by {gap_m} m, but measured transport needs "
+                        f"{transport_required_m:.1f} m: a faster follower catches it "
+                        "before the camera and the two bodies become one depth mask")
                 raise ValueError(
                     f"item {index} ({slug} -> {zone}) trails {front_slug} -> {front_zone} "
                     f"by {gap_m} m, but a zone change needs {required_m:.1f} m: the "

@@ -88,4 +88,3 @@ def test_each_runner_failure_gets_a_durable_status(tmp_path):
     assert "episodes 0/2; failed 2" in result.stdout
     assert (tmp_path / "oi0_mixed_cd.status").read_text(encoding="utf-8") == "rc=7\n"
     assert (tmp_path / "oi0_pass_b.status").read_text(encoding="utf-8") == "rc=7\n"
-
