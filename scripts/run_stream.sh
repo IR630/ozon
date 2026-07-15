@@ -8,9 +8,9 @@
 #   bash scripts/run_stream.sh [slug:zone:gap_m ...]
 #   # default stream: box_400 -> C, pen 1 m behind it -> C, bottle 3.5 m back -> D
 #
-# Items are fed from ONE point at intervals in TIME (gap_m / belt speed), the way
-# an infeed works — see scripts/stream_plan.py, which turns the specs into feed
-# delays and REFUSES a stream the scene cannot carry: the belt stroke, and above
+# Items are fed from ONE point at intervals in GAZEBO SIMULATION TIME (gap_m /
+# belt speed), the way an infeed works — see scripts/stream_plan.py, which turns
+# the specs into feed delays and REFUSES a stream the scene cannot carry: the belt stroke, and above
 # all the diverter hold (a blade held across the belt sweeps whatever arrives
 # during the hold, so a zone CHANGE needs ~3 m of air. Same-zone items may share
 # a hold only while measured transport keeps the bodies apart: the planner also
@@ -194,11 +194,25 @@ rm -f "$FEEDER_ERROR_FILE"
     trap feeder_cleanup EXIT
     trap 'exit 143' TERM
     trap 'exit 130' INT
-    ELAPSED=0
+    # `sleep` measures host wall time, but Gazebo under CPU/render load can run
+    # much slower than real time.  The old feeder therefore promised 2.5 m and
+    # physically produced less, letting a Pen catch a Pouf before the camera.
+    # One clock subscriber emits every absolute tick from Gazebo's bridged
+    # /clock; a single process avoids startup skew on every item.
+    coproc FEED_CLOCK { "$PYTHON" scripts/feed_schedule.py "${DELAYS[@]}"; }
+    SCHEDULER_PID=$FEED_CLOCK_PID
+    SCHEDULER_FD=${FEED_CLOCK[0]}
     for i in "${!SLUGS[@]}"; do
-        WAIT=$("$PYTHON" -c "print(max(${DELAYS[$i]} - $ELAPSED, 0))")
-        sleep "$WAIT"
-        ELAPSED=${DELAYS[$i]}
+        if ! read -r TICK_INDEX TICK_SIM <&"$SCHEDULER_FD"; then
+            echo "FEEDER_ERROR: simulation clock schedule ended before item$i" \
+                > "$FEEDER_ERROR_FILE"
+            exit 12
+        fi
+        if [ "$TICK_INDEX" != "$i" ]; then
+            echo "FEEDER_ERROR: simulation clock emitted item$TICK_INDEX, expected item$i" \
+                > "$FEEDER_ERROR_FILE"
+            exit 13
+        fi
         read -r OX OY OZ OW <<< "${QUATS[$i]}"
         if ! CREATE_REPLY=$(ign service -s /world/cell/create \
                 --reqtype ignition.msgs.EntityFactory \
@@ -216,19 +230,24 @@ rm -f "$FEEDER_ERROR_FILE"
         # announce the feed to the controller's watchdog (see run_skeleton.sh);
         # backgrounded so the CLI's startup does not skew the next feed delay
         ros2 topic pub -w 1 --once /infeed/fed std_msgs/msg/Empty > /dev/null 2>&1 &
-        echo "fed item$i: ${SLUGS[$i]} -> ${ZONES[$i]} at t=${DELAYS[$i]}s"
+        echo "fed item$i: ${SLUGS[$i]} -> ${ZONES[$i]} at sim_t=${TICK_SIM}s (planned ${DELAYS[$i]}s)"
     done
+    # Bash may auto-reap a completed coprocess after its pipe is drained.
+    wait "$SCHEDULER_PID" 2>/dev/null || true
 ) &
 FEEDER=$!
 
-# Position AND orientation, from ONE query: the verdict scores the item's BODY, and the
-# reported pose is only its ORIGIN — Gazebo rotates the model about the default pose's
-# bottom, so at ORIENT_INDEX>0 the two drift apart by up to 349 mm (zone_verdict.py).
-# At the default ORIENT_INDEX=0 the origin IS the contact point and the extra columns
-# simply confirm it.
-item_pose() {  # name -> "x y z roll pitch yaw"; an unfed item simply has no pose yet
-    ign model -m "$1" --pose 2>/dev/null | grep -A2 "XYZ" | tail -2 \
-        | tr -d "[]" | awk '{printf "%s %s %s ", $1, $2, $3}' || true
+# Position AND orientation of EVERY item from ONE SceneBroadcaster message per
+# poll lap.  The previous loop launched one `ign model` process per unresolved
+# item: a five-item episode could spend >300 wall seconds querying an otherwise
+# healthy world.  The verdict still scores each item's BODY from the same origin
+# pose; only the transport of those poses is batched.
+ITEM_NAMES=()
+for i in "${!SLUGS[@]}"; do ITEM_NAMES+=("item$i"); done
+pose_snapshot() {
+    timeout 3 ign topic -e --json-output -n 1 \
+        -t /world/cell/dynamic_pose/info 2>/dev/null \
+        | "$PYTHON" scripts/pose_snapshot.py "${ITEM_NAMES[@]}"
 }
 
 declare -A ARRIVED_AT
@@ -237,11 +256,16 @@ LANDED=0
 # A harness error invalidates every still-unobserved result. It must never be
 # rendered as a physical FAIL, because reliability analysis uses FAIL as data.
 RUN_ERROR=""
+PHYSICAL_STOP=""
 for _ in $(seq 1 "$POLL_ITERS"); do
+    declare -A CURRENT_POSE=()
+    while read -r NAME X Y Z RR PP YY; do
+        CURRENT_POSE[$NAME]="$X $Y $Z $RR $PP $YY"
+    done < <(pose_snapshot || true)
     for i in "${!SLUGS[@]}"; do
         NAME="item$i"
         [ -n "${ARRIVED_AT[$NAME]:-}" ] && continue
-        POSE=$(item_pose "$NAME")
+        POSE=${CURRENT_POSE[$NAME]:-}
         [ -z "$POSE" ] && continue          # not fed yet, or the CLI flaked — retry next lap
         read -r X Y Z RR PP YY <<< "$POSE"
         LAST_POSE[$NAME]="x=$X y=$Y z=$Z"
@@ -272,6 +296,17 @@ for _ in $(seq 1 "$POLL_ITERS"); do
         RUN_ERROR=$(tr '\n' ' ' < "$FEEDER_ERROR_FILE")
         break
     fi
+    # A controller-latched E-stop is already a terminal PHYSICAL outcome.  The
+    # old runner kept polling the frozen world for minutes, repeated thousands
+    # of identical frames and finally reported only a generic timeout/fail.
+    # Preserve the first named JAM/FEED JAM line and finish immediately; do not
+    # turn it into RUN_ERROR/INVALID, because the harness itself is healthy.
+    if grep -q "E-STOP active" "$LOGDIR/skeleton.log"; then
+        PHYSICAL_STOP=$(grep -m1 -E "JAM:|FEED JAM:|E-STOP active" \
+            "$LOGDIR/skeleton.log" | sed -E 's/.*\[controller\]: //' || true)
+        [ -n "$PHYSICAL_STOP" ] || PHYSICAL_STOP="E-STOP active"
+        break
+    fi
     [ "$LANDED" = "${#SLUGS[@]}" ] && break
     sleep 0.5
 done
@@ -299,7 +334,7 @@ CONTROLLER_IDS=$(grep -oE "\[controller\]: item [0-9]+: [BCD] —" "$LOGDIR/skel
 PERCEPTION_COUNT=$(wc -w <<< "$PERCEPTION_IDS")
 CLASSIFIER_COUNT=$(wc -w <<< "$CLASSIFIER_IDS")
 CONTROLLER_COUNT=$(wc -w <<< "$CONTROLLER_IDS")
-if [ -z "$RUN_ERROR" ] && { [ "$PERCEPTION_COUNT" -ne "$EXPECTED_IDS" ] \
+if [ -z "$RUN_ERROR" ] && [ -z "$PHYSICAL_STOP" ] && { [ "$PERCEPTION_COUNT" -ne "$EXPECTED_IDS" ] \
         || [ "$CLASSIFIER_COUNT" -ne "$EXPECTED_IDS" ] \
         || [ "$CONTROLLER_COUNT" -ne "$EXPECTED_IDS" ]; }; then
     RUN_ERROR="roster mismatch: planned=$EXPECTED_IDS perception=$PERCEPTION_COUNT classifier=$CLASSIFIER_COUNT controller=$CONTROLLER_COUNT"
@@ -314,6 +349,7 @@ fi
 {
 echo "=== stream result ==="
 echo "roster: planned=$EXPECTED_IDS perception=$PERCEPTION_COUNT classifier=$CLASSIFIER_COUNT controller=$CONTROLLER_COUNT"
+[ -z "$PHYSICAL_STOP" ] || echo "physical stop: $PHYSICAL_STOP"
 for i in "${!SLUGS[@]}"; do
     NAME="item$i"
     T=${ARRIVED_AT[$NAME]:-}

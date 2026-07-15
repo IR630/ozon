@@ -19,8 +19,8 @@ DEFAULT_STREAM = ["box_400x400x300:C:0", "pen:C:1.0", "bottle:D:3.5"]
 WIDE_STROKE_M = 100.0  # plenty: isolates the constraint under test
 
 
-def test_a_gap_in_metres_is_fed_as_an_interval_in_time():
-    """Every item is fed from the same point, so the gap is belt speed x delay."""
+def test_a_gap_in_metres_is_fed_as_an_interval_in_simulation_time():
+    """The feeder consumes these delays on Gazebo /clock, independent of host load."""
     items = plan_stream(DEFAULT_STREAM, WIDE_STROKE_M)
 
     assert [(slug, zone) for slug, zone, _ in items] == [

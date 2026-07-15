@@ -57,6 +57,26 @@ def test_hulls_are_precomputed_before_the_timed_feeder_starts():
     assert hull_precompute < timer_start < feeder_started
 
 
+def test_feeder_uses_gazebo_simulation_clock_not_wall_sleep():
+    """Metre gaps must not shrink when Gazebo runs below real time."""
+    text = SCRIPT.read_text(encoding="utf-8")
+    feeder = text[text.index("coproc FEED_CLOCK"):text.index("FEEDER=$!")]
+
+    assert 'scripts/feed_schedule.py "${DELAYS[@]}"' in feeder
+    assert 'read -r TICK_INDEX TICK_SIM' in feeder
+    assert 'sleep "$WAIT"' not in feeder
+
+
+def test_verdict_poll_batches_all_model_poses_in_one_world_snapshot():
+    """Poll cost must not grow by one Ignition CLI launch per unresolved item."""
+    text = SCRIPT.read_text(encoding="utf-8")
+    poll = text[text.index("pose_snapshot() {"):text.index("# Physical landing alone")]
+
+    assert "ign topic -e --json-output -n 1" in poll
+    assert 'scripts/pose_snapshot.py "${ITEM_NAMES[@]}"' in poll
+    assert "ign model -m" not in poll
+
+
 def test_early_exit_cleans_up_the_stream_processes():
     """Any failure after launch must reap the feeder, ROS nodes and Gazebo."""
     text = SCRIPT.read_text(encoding="utf-8")
@@ -129,6 +149,18 @@ def test_physical_landing_cannot_hide_a_missing_pipeline_id():
     assert "CONTROLLER_COUNT" in roster
     assert 'RUN_ERROR="roster mismatch:' in roster
     assert "roster: planned=$EXPECTED_IDS" in text
+
+
+def test_latched_estop_ends_poll_as_named_physical_failure():
+    """A frozen world must not burn the remaining poll budget or become INVALID."""
+    text = SCRIPT.read_text(encoding="utf-8")
+    poll = text[text.index('RUN_ERROR=""'):text.index("# Physical landing alone")]
+
+    assert 'grep -q "E-STOP active"' in poll
+    assert 'grep -m1 -E "JAM:|FEED JAM:|E-STOP active"' in poll
+    assert 'PHYSICAL_STOP=' in poll
+    assert 'RUN_ERROR="$PHYSICAL_STOP"' not in poll
+    assert 'echo "physical stop: $PHYSICAL_STOP"' in text
 
 
 def test_feeder_failure_and_false_create_reply_reach_the_parent():

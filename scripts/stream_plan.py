@@ -20,8 +20,9 @@ run:
    separated. A slow leading item can still be caught by its follower before the
    camera, so measured transport gaps are enforced independently of cross-fire.
 
-Items are fed from ONE point (FIRST_SPAWN_X_M) at intervals in TIME, the way an
-infeed actually works — the gap in metres is just the interval times belt speed.
+Items are fed from ONE point (FIRST_SPAWN_X_M) at intervals in GAZEBO SIMULATION
+TIME, the way an infeed actually works — the gap in metres is the interval times
+belt speed and therefore does not shrink when the simulator runs below real time.
 The first stream run instead queued the items along the belt, each spawning
 metres further back, and the item farthest back arrived 190 mm off-centre: the
 belt has low lateral friction on purpose (mu2=0.2, so the blade can slide items
