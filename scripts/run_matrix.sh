@@ -121,15 +121,32 @@ for i in $(seq "$START_ITEM" "$END_ITEM"); do
             CAPTURE_DYNAMICS=$SAVE_DYNAMICS DYNAMICS_TRACE="$dynamics_log" \
             timeout --kill-after=15 "$CELL_TIMEOUT" $SKELETON "$slug" "$zone" \
             > "$log" 2>&1 || rc=$?
-        if [ "$rc" = 0 ]; then
+        status="$LOGDIR/matrix_${slug}_${oi}.status"
+        status_tmp="${status}.tmp.$$"
+        if ! printf 'rc=%s\n' "$rc" > "$status_tmp" || ! mv "$status_tmp" "$status"; then
+            echo "ABORT: cannot save runner status for $slug oi=$oi" >&2
+            exit 1
+        fi
+
+        terminal=$(grep -E "^${slug} -> ${zone}: (PASS|FAIL) " "$log" | tail -1 || true)
+        terminal_verdict=""
+        case "$terminal" in
+            "${slug} -> ${zone}: PASS "*) terminal_verdict=PASS ;;
+            "${slug} -> ${zone}: FAIL "*) terminal_verdict=FAIL ;;
+        esac
+
+        if [ "$rc" = 0 ] && [ "$terminal_verdict" = PASS ]; then
             v=PASS
             pass=$((pass + 1))
             item_pass[$slug]=$((item_pass[$slug] + 1))
-        elif [ "$rc" = 124 ] || [ "$rc" = 137 ]; then
-            # 124: SIGTERM at CELL_TIMEOUT; 137: SIGKILL after --kill-after grace
-            v=TIMEOUT
-        else
+        elif [ "$rc" = 1 ] && [ "$terminal_verdict" = FAIL ]; then
             v=FAIL
+        elif [ "$rc" = 124 ] && [ -z "$terminal_verdict" ]; then
+            v=TIMEOUT
+        elif [ "$rc" != 0 ] && [ -z "$terminal_verdict" ]; then
+            v=RUNNER_ERROR
+        else
+            v=HARNESS_ERROR
         fi
         # perception line "item N: WxHxD mm K=.. at (..)" — measured dims vs models.md
         meas=$(grep -E "item [0-9]+: [0-9]" "$log" | tail -1)

@@ -118,6 +118,29 @@ def test_cell_timeout_bounds_a_wedged_episode(tmp_path):
     assert "TIMEOUT" in result.stdout, result.stdout + result.stderr
     assert "routing correctness 0/1" in result.stdout
     assert result.returncode != 0  # a timed-out cell is not a pass
+    assert (tmp_path / "matrix_bottle_0.status").read_text(encoding="utf-8") == "rc=124\n"
+
+
+def test_runner_error_is_saved_in_a_durable_cell_status(tmp_path):
+    bash, env = _bash_env()
+    env.pop("MATRIX_DRY_RUN", None)
+    env["LOGDIR"] = tmp_path.as_posix()
+    stub = tmp_path / "runner_error.sh"
+    stub.write_text("#!/usr/bin/env bash\nexit 7\n", encoding="utf-8")
+    env["SKELETON"] = f"bash {stub.as_posix()}"
+
+    result = subprocess.run(
+        [bash, str(SCRIPT), "0", "1", "0", "0"],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "RUNNER_ERROR" in result.stdout
+    assert (tmp_path / "matrix_bottle_0.status").read_text(encoding="utf-8") == "rc=7\n"
 
 
 def test_targeted_replay_can_keep_a_pose_trace_per_cell(tmp_path):
@@ -129,7 +152,8 @@ def test_targeted_replay_can_keep_a_pose_trace_per_cell(tmp_path):
     stub = tmp_path / "trace.sh"
     stub.write_text(
         '#!/usr/bin/env bash\nprintf "capture=%s\\n" "$CAPTURE_DYNAMICS" '
-        '> "$DYNAMICS_TRACE"\n',
+        '> "$DYNAMICS_TRACE"\nprintf "%s -> %s: PASS (pose x=0 y=0 z=0, '
+        'cycle 1.0s from launch)\\n" "$1" "$2"\n',
         encoding="utf-8",
     )
     env["SKELETON"] = f"bash {stub.as_posix()}"

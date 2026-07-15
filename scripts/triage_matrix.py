@@ -61,6 +61,24 @@ CONTROLLER_RE = re.compile(r"\[controller\]: item \d+: (?P<cat>[BCD])\b")
 FIRED_RE = re.compile(r"pusher_(?P<side>[cd]) FIRED")
 
 
+def _termination_verdict(
+    terminal: str | None, runner_rc: int | None, status_present: bool
+) -> str:
+    if not status_present:
+        return terminal or "UNKNOWN_TERMINATION"
+    if runner_rc is None:
+        return "HARNESS_ERROR"
+    if terminal == "PASS" and runner_rc == 0:
+        return "PASS"
+    if terminal == "FAIL" and runner_rc == 1:
+        return "FAIL"
+    if terminal is None and runner_rc == 124:
+        return "TIMEOUT"
+    if terminal is None and runner_rc != 0:
+        return "RUNNER_ERROR"
+    return "HARNESS_ERROR"
+
+
 @dataclass
 class Cell:
     """One census episode, reduced to what decides its root cause."""
@@ -68,8 +86,9 @@ class Cell:
     slug: str
     orient: int
     mtime: float  # last write to the log — identifies the cell still in flight
+    runner_rc: int | None  # durable run_matrix.sh exit status; absent in legacy runs
     expected: str | None  # None when the episode was killed before its verdict
-    verdict: str  # PASS | FAIL | TIMEOUT
+    verdict: str  # terminal verdict or an explicit termination classification
     category: str | None  # what the classifier decided
     k: float | None
     dims_mm: tuple[int, int, int] | None
@@ -106,16 +125,33 @@ def parse_cell(path: str) -> Cell:
     classifier_m = last(CLASSIFIER_RE)
     controller_m = last(CONTROLLER_RE)
     fired_m = last(FIRED_RE)
+    status_path = os.path.splitext(path)[0] + ".status"
+    try:
+        status_text = open(status_path, encoding="utf-8").read().strip()
+    except FileNotFoundError:
+        status_present = False
+        runner_rc = None
+    else:
+        status_present = True
+        status_m = re.fullmatch(r"rc=(\d+)", status_text)
+        runner_rc = int(status_m[1]) if status_m else None
+
+    termination = _termination_verdict(
+        verdict_m["verdict"] if verdict_m else None,
+        runner_rc,
+        status_present,
+    )
 
     return Cell(
         slug=m["slug"],
         orient=int(m["oi"]),
         mtime=os.path.getmtime(path),
+        runner_rc=runner_rc,
         expected=verdict_m["zone"] if verdict_m else None,
-        # No verdict line = the cell was killed by the per-cell timeout (physics
-        # wedged): run_skeleton.sh always prints one otherwise. The single
-        # exception — the cell still in flight — is re-labelled in main().
-        verdict=verdict_m["verdict"] if verdict_m else "TIMEOUT",
+        # The sidecar distinguishes an actual timeout from runner/harness errors.
+        # Legacy logs without either signal remain UNKNOWN; main may re-label the
+        # newest one RUNNING only while a Gazebo process proves a cell is in flight.
+        verdict=termination,
         # The controller's route beats the classifier's line (see CONTROLLER_RE).
         category=(controller_m or classifier_m)["cat"] if (controller_m or classifier_m) else None,
         k=float(classifier_m["k"]) if classifier_m else None,
@@ -153,6 +189,24 @@ def diagnose(cell: Cell) -> Cell:
     if cell.verdict == "TIMEOUT":
         cell.cause = "physics_wedge"
         cell.detail = "episode killed by per-cell timeout (no verdict line)"
+        return cell
+
+    if cell.verdict == "RUNNER_ERROR":
+        cell.cause = "runner_error"
+        cell.detail = f"runner exited rc={cell.runner_rc} without a terminal verdict"
+        return cell
+
+    if cell.verdict == "HARNESS_ERROR":
+        cell.cause = "harness_error"
+        cell.detail = (
+            f"runner status rc={cell.runner_rc} and terminal verdict are "
+            "inconsistent or malformed"
+        )
+        return cell
+
+    if cell.verdict == "UNKNOWN_TERMINATION":
+        cell.cause = "unknown_termination"
+        cell.detail = "legacy log has neither a terminal verdict nor runner status"
         return cell
 
     # Judge the GOODS. `pose` is the model origin, which Gazebo rotates the body about:
@@ -270,7 +324,9 @@ def main() -> int:
     # another, so while Gazebo is alive the newest log is the episode still in
     # flight — it has no verdict line YET and must not be scored as a wedge.
     if census_in_flight():
-        max(parsed, key=lambda c: c.mtime).verdict = "RUNNING"
+        unfinished = [c for c in parsed if c.verdict == "UNKNOWN_TERMINATION"]
+        if unfinished:
+            max(unfinished, key=lambda c: c.mtime).verdict = "RUNNING"
 
     everything = [diagnose(c) for c in parsed]
     running = [c for c in everything if c.cause == "in_progress"]

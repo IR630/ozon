@@ -20,6 +20,11 @@ def write_cell(tmp_path, slug, oi, lines):
     return str(path)
 
 
+def write_status(tmp_path, slug, oi, rc):
+    path = tmp_path / f"matrix_{slug}_{oi}.status"
+    path.write_text(f"rc={rc}\n", encoding="utf-8")
+
+
 def cause_of(tmp_path, slug, oi, lines):
     return diagnose(parse_cell(write_cell(tmp_path, slug, oi, lines))).cause
 
@@ -280,14 +285,76 @@ def test_in_flight_probe_only_matches_a_real_gazebo_command(monkeypatch):
     ]
 
 
-def test_killed_episode_without_a_verdict_line_is_a_physics_wedge(tmp_path):
+def test_nonzero_runner_exit_without_a_terminal_verdict_is_a_runner_error(tmp_path):
+    for oi, rc in enumerate((7, 137)):
+        path = write_cell(tmp_path, "bottle", oi, ["runner crashed before verdict"])
+        write_status(tmp_path, "bottle", oi, rc)
+
+        cell = diagnose(parse_cell(path))
+
+        assert cell.runner_rc == rc
+        assert cell.verdict == "RUNNER_ERROR"
+        assert cell.cause == "runner_error"
+
+
+def test_terminal_pass_with_nonzero_exit_is_a_harness_error(tmp_path):
+    path = write_cell(
+        tmp_path,
+        "bottle",
+        0,
+        [verdict("bottle", "D", "PASS", 3.74, -0.58, 0.058)],
+    )
+    write_status(tmp_path, "bottle", 0, 1)
+
+    cell = diagnose(parse_cell(path))
+
+    assert cell.verdict == "HARNESS_ERROR"
+    assert cell.cause == "harness_error"
+
+
+def test_other_inconsistent_status_verdict_pairs_are_harness_errors(tmp_path):
+    cases = [
+        (0, [verdict("bottle", "D", "FAIL", 3.74, -0.58, 0.058)]),
+        (124, [verdict("bottle", "D", "PASS", 3.74, -0.58, 0.058)]),
+        (0, ["runner returned without verdict"]),
+    ]
+    for oi, (rc, lines) in enumerate(cases):
+        path = write_cell(tmp_path, "bottle", oi, lines)
+        write_status(tmp_path, "bottle", oi, rc)
+        assert diagnose(parse_cell(path)).cause == "harness_error"
+
+
+def test_matching_status_preserves_terminal_pass_and_fail(tmp_path):
+    for oi, (terminal, rc) in enumerate((("PASS", 0), ("FAIL", 1))):
+        path = write_cell(
+            tmp_path,
+            "bottle",
+            oi,
+            [verdict("bottle", "D", terminal, 3.74, -0.58, 0.058)],
+        )
+        write_status(tmp_path, "bottle", oi, rc)
+        assert parse_cell(path).verdict == terminal
+
+
+def test_rc_124_without_a_verdict_line_is_a_physics_wedge(tmp_path):
     # CELL_TIMEOUT kills the cell mid-episode: run_skeleton.sh never gets to
     # print its verdict, so the log simply ends (pouf, seed-0 census).
+    path = write_cell(
+        tmp_path, "pouf", 1, ["[python3-2] [INFO] booting", "spawning pouf"]
+    )
+    write_status(tmp_path, "pouf", 1, 124)
+    cell = diagnose(parse_cell(path))
+    assert cell.cause == "physics_wedge"
+    assert cell.verdict == "TIMEOUT"
+    assert cell.expected is None
+
+
+def test_legacy_log_without_status_or_verdict_has_unknown_termination(tmp_path):
     cell = diagnose(
         parse_cell(
             write_cell(tmp_path, "pouf", 1, ["[python3-2] [INFO] booting", "spawning pouf"])
         )
     )
-    assert cell.cause == "physics_wedge"
-    assert cell.verdict == "TIMEOUT"
-    assert cell.expected is None
+    assert cell.cause == "unknown_termination"
+    assert cell.verdict == "UNKNOWN_TERMINATION"
+    assert cell.runner_rc is None
