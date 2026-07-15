@@ -69,3 +69,49 @@ def test_a_rendered_frame_measures_like_the_real_one(cell):
     assert abs(got_real.k - got_syn.k) <= MAX_K_GAP
     assert (classify_conservative(got_real.dims_mm, got_real.k)
             == classify_conservative(got_syn.dims_mm, got_syn.k))
+
+
+@pytest.mark.parametrize(
+    ("slug", "quat", "expected_dims"),
+    [
+        (
+            "box_400x400x300",
+            (0.699874976, 0.108176654, -0.697740574, 0.107846749),
+            [402.32, 401.14, 303.08],
+        ),
+        (
+            "box_400x400x300",
+            (-0.701157299, -0.099526944, -0.699018986, 0.099223418),
+            [402.49, 401.14, 303.31],
+        ),
+        (
+            "pouf",
+            (-0.315538130, -0.632799880, 0.632799880, 0.315538130),
+            [482.23, 475.58, 256.12],
+        ),
+    ],
+)
+def test_one_irregular_item_is_not_split_into_phantom_products(slug, quat, expected_dims):
+    """Regression from the full stable-support sweep (seed 0).
+
+    Two Box400 supports and one Pouf have respectively 3, 2, and 10 prominent
+    EDT peaks. Treating every peak as a touching item measured only the largest
+    fragment and changed both true C products to B.
+    """
+    pytest.importorskip("trimesh")
+
+    from build_item_models import ITEMS, STL_DIR
+    from render_depth import load_mesh, render_depth
+
+    from src.classification import classify_conservative
+    from src.perception import measure_items
+
+    stem, _ = ITEMS[slug]
+    if not (STL_DIR / f"{stem}.stl").exists():
+        pytest.skip("organizer STL artifacts are not present")
+
+    items = measure_items(render_depth(load_mesh(slug), quat))
+
+    assert len(items) == 1
+    assert items[0].dims_mm == pytest.approx(expected_dims, abs=10.0)
+    assert classify_conservative(items[0].dims_mm, items[0].k) == "C"

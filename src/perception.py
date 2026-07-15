@@ -65,11 +65,18 @@ _TOUCH_PEAK_PROMINENCE_PX = 3.0
 # between two touching bodies pulls solidity down: every single rectangle (any
 # yaw) fills its hull (solidity 1.0), while a necked pair drops well below (corner
 # touch 0.71, partial-edge 0.78..0.92). The gate is a pure fast path — a low
-# solidity still routes to the split, which itself returns one mask for a genuine
-# (merely concave) single item — so it never forces a wrong split; it just keeps
-# the common convex-item frame off the reconstruction path. Validated on the real
-# single-item frames (they stay one component) — docs/experiments.md.
+# solidity only licenses a split attempt; peak count and compactness below can
+# still keep an irregular single item whole. The fast path just keeps the common
+# convex-item frame off the reconstruction path. Validated on the real single-item
+# frames (they stay one component) — docs/experiments.md.
 _TOUCH_MIN_SOLIDITY = 0.97
+
+# Normalized inradius evidence for two full bodies rather than a thin articulated
+# silhouette: max EDT radius / short side of the component's oriented box. Across
+# 24 unequal/offset rectangle contacts the measured range is 0.367..0.495; the
+# known Box400 false splits are 0.109..0.116 over eight yaws. The midpoint leaves
+# a wide rasterization margin while preserving all measured two-product contacts.
+_TOUCH_MIN_COMPACTNESS = 0.20
 
 # Vertical cross-section roundness (day 4, P2). A body of revolution lying on
 # its side (Бутылка) shows a rectangular top-view silhouette, so silhouette K
@@ -206,9 +213,9 @@ def _split_touching(mask):
     geodesic seeded split, not scipy's background-leaking watershed_ift — see
     docs/decisions.md): the neck is reached from both bodies at once, so the cut
     lands on it and each body keeps its true footprint. One prominent peak -> the
-    mask is returned unchanged (no over-split); two -> one sub-mask each. Sub-masks
-    partition the input exactly (no pixels lost or shared). The transforms run on
-    the component's bbox crop for speed.
+    mask is returned unchanged (no over-split); two compact body-like lobes -> one
+    sub-mask each. Sub-masks partition the input exactly (no pixels lost or shared).
+    The transforms run on the component's bbox crop for speed.
     """
     from scipy.ndimage import distance_transform_edt, label
     from scipy.spatial import ConvexHull, QhullError
@@ -224,7 +231,8 @@ def _split_touching(mask):
     # h-maxima reconstruction and grassfire in that (common) case.
     pts = np.column_stack([xs, ys]).astype(float)
     try:
-        hull_area = float(ConvexHull(pts).volume)
+        component_hull = ConvexHull(pts)
+        hull_area = float(component_hull.volume)
     except QhullError:
         # A split is an optional refinement. If the hull cannot be constructed,
         # fail closed to one component instead of crashing the perception node;
@@ -239,6 +247,10 @@ def _split_touching(mask):
     dist = distance_transform_edt(sub).astype(float)
     if dist.max() <= 0.0:
         return [mask]
+    _, short_px, _ = _obb_dims_px(pts[component_hull.vertices])
+    compactness = float(dist.max()) / short_px if short_px > 0.0 else 0.0
+    if compactness < _TOUCH_MIN_COMPACTNESS:
+        return [mask]
     # h-maxima: reconstruct dist from (dist - h). This flattens every sub-h bump
     # into its surroundings, so the ridge/cap of one item becomes a single
     # regional maximum while two touching items keep two, split by their (deeper)
@@ -250,7 +262,14 @@ def _split_touching(mask):
     hmax = _reconstruct_by_dilation(dist - _TOUCH_PEAK_PROMINENCE_PX, dist)
     peaks = (hmax > _reconstruct_by_dilation(hmax - 1e-6, hmax)) & (dist > 0.0)
     markers, n = label(peaks, structure=np.ones((3, 3), dtype=int))
-    if n < 2:
+    # This optional refinement has evidence for one specific ambiguity only:
+    # TWO touching products.  With three or more prominent peaks the binary
+    # silhouette cannot distinguish several products from one irregular body
+    # (Box400 and Pouf produced 3 and 10 peaks in valid single-item poses).  Fail
+    # closed to the original component: under-splitting an unsupported 3-way
+    # contact is preferable to inventing phantom items and measuring only the
+    # largest fragment of a real product.
+    if n != 2:
         return [mask]
     # Grassfire from the markers, constrained to the mask: grow every label one
     # pixel per step into unassigned mask pixels until the whole component is

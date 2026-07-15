@@ -13,6 +13,7 @@ NEVER split into phantoms, at any yaw.
 import numpy as np
 import pytest
 
+from src.classification import classify_conservative
 from src.perception import _split_touching, measure_item, measure_items
 
 
@@ -36,6 +37,14 @@ def _offset_edge_touch(belt=1.5, top=1.3):
     return depth
 
 
+def _unequal_offset_edge_touch(belt=1.5, top=1.3):
+    """A 50 px and an 80 px box sharing a 30 px offset edge."""
+    depth = np.full((480, 640), belt)
+    depth[175:225, 270:320] = top
+    depth[195:275, 320:400] = top
+    return depth
+
+
 def _rotated_rect(l_px, w_px, angle_deg, top=1.3, belt=1.5):
     depth = np.full((480, 640), belt)
     yy, xx = np.mgrid[0:480, 0:640]
@@ -45,6 +54,32 @@ def _rotated_rect(l_px, w_px, angle_deg, top=1.3, belt=1.5):
     yr = -np.sin(a) * dx + np.cos(a) * dy
     depth[(np.abs(xr) <= l_px / 2) & (np.abs(yr) <= w_px / 2)] = top
     return depth
+
+
+def _three_lobed_single_mask():
+    """One concave product whose silhouette has three prominent EDT peaks.
+
+    A binary silhouette cannot prove whether three lobes are three touching
+    products or one irregular product.  Inventing three measurements is the
+    unsafe outcome: the single product's dimensions and category are then
+    computed from only its largest fragment.
+    """
+    mask = np.zeros((240, 300), dtype=bool)
+    mask[80:140, 30:90] = True
+    mask[30:90, 120:180] = True
+    mask[100:160, 210:270] = True
+    mask[80:120, 80:220] = True
+    return mask
+
+
+def _thin_bent_single_mask():
+    """One thin bent product with two thick ends and two prominent EDT peaks."""
+    yy, xx = np.mgrid[:260, :340]
+    mask = ((xx - 60) ** 2 + (yy - 50) ** 2 <= 20 ** 2)
+    mask |= ((xx - 280) ** 2 + (yy - 210) ** 2 <= 20 ** 2)
+    mask[46:55, 60:281] = True
+    mask[50:211, 276:285] = True
+    return mask
 
 
 def test_corner_touch_splits_into_two_correct_items():
@@ -64,6 +99,20 @@ def test_offset_edge_touch_keeps_each_true_footprint():
     assert len(items) == 2
     for m in items:
         assert m.dims_mm == pytest.approx([260.0, 260.0, 200.0], abs=20.0)
+
+
+def test_unequal_offset_touch_keeps_both_products():
+    """The optional split keeps two IDs/categories on a harder asymmetric neck.
+
+    Grassfire does not recover each exact rectangle on this wide offset contact;
+    that geometric limitation is preferable to fusing both into one 338 mm blob.
+    """
+    items = measure_items(_unequal_offset_edge_touch(), belt_depth_m=1.5,
+                          fx=500.0, fy=500.0)
+
+    assert len(items) == 2
+    assert all(max(item.dims_mm) < 260.0 for item in items)
+    assert all(classify_conservative(item.dims_mm, item.k) == "B" for item in items)
 
 
 def test_touching_pair_is_one_connected_component():
@@ -87,6 +136,24 @@ def test_single_rotated_item_is_never_oversplit(angle):
     assert len(items) == 1
     long_mm = (200 + 1) * 1.3 / 500.0 * 1000.0
     assert items[0].dims_mm[0] == pytest.approx(long_mm, rel=0.04)
+
+
+def test_ambiguous_three_peak_single_is_not_split_into_phantoms():
+    mask = _three_lobed_single_mask()
+
+    pieces = _split_touching(mask)
+
+    assert len(pieces) == 1
+    assert np.array_equal(pieces[0], mask)
+
+
+def test_thin_bent_two_peak_single_is_not_split_into_phantoms():
+    mask = _thin_bent_single_mask()
+
+    pieces = _split_touching(mask)
+
+    assert len(pieces) == 1
+    assert np.array_equal(pieces[0], mask)
 
 
 def test_split_partitions_the_mask_exactly():
