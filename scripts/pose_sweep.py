@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Where does the classification rule actually break, over ALL poses — not just seed 0's?
+"""Where does the rule break across stable supports beyond seed 0's three poses?
 
 The census tests 33 cells. Every residual risk on the milestone list is a claim about a
 pose that did NOT come up: "Тарелка on edge", "Шлем 317 mm from a 320 limit", "Мешок's K
 sits on the 0.8 threshold". Those are guesses until someone measures them, and a Gazebo
 cell costs ~30 s. Rendered off the mesh a pose costs milliseconds (scripts/render_depth.py,
 whose domain gap against real Gazebo frames is measured at 3 mm / 0.01 K), so this sweep
-answers the question directly: per item, over N uniformly random orientations, how often is
-the category right, and how close are the misses to their threshold?
+screens the question directly: per item, over a bounded area-weighted sample of stable
+supports and random yaw, how often is the category right, and how close are misses to a
+threshold?
 
 Every pose here is one the item can physically REST in — the mesh is dropped onto the belt
 in that rotation, exactly as the simulator drops it. What the sweep cannot model is the
@@ -53,6 +54,13 @@ REFERENCE = {
     "cylinder": "B", "helmet": "B",
 }
 
+# A fine collision hull may have hundreds of individually stable triangles. Rendering all
+# of them would make the default 8-yaw sweep unbounded by mesh tessellation. Systematic
+# weighted resampling approximates the normalized support-area distribution while capping
+# one item at 16 * 8 = 128 rendered frames. The sampled weights still sum to one; `seed`
+# remains solely responsible for yaw sampling.
+MAX_REST_SAMPLES = 16
+
 
 def stable_rests(mesh):
     """The orientations the item can actually COME TO REST in, with a rough weight each.
@@ -75,8 +83,17 @@ def stable_rests(mesh):
 
     hull = mesh.convex_hull
     com = np.asarray(hull.center_mass)
+    support_faces = [np.asarray(facet, dtype=int) for facet in hull.facets]
+    support_normals = [np.asarray(normal) for normal in hull.facets_normal]
+    grouped = np.zeros(len(hull.faces), dtype=bool)
+    for facet in support_faces:
+        grouped[facet] = True
+    for face_id in np.flatnonzero(~grouped):
+        support_faces.append(np.array([face_id], dtype=int))
+        support_normals.append(hull.face_normals[face_id])
+
     rests = []
-    for facet, normal in zip(hull.facets, hull.facets_normal):
+    for facet, normal in zip(support_faces, support_normals):
         poly = hull.vertices[np.unique(hull.faces[facet].ravel())]
         if len(poly) < 3:
             continue
@@ -111,18 +128,26 @@ def _point_in_convex_polygon(pt, poly_pts):
 
 
 def presentable_poses(mesh, yaws, seed):
-    """Every stable rest, sampled over yaw: the population the camera actually sees.
+    """A bounded area-weighted sample of stable rests, each sampled over yaw.
 
     Yaw about the vertical does not change stability but does change the pixels, so each
-    rest is measured at several yaws.
+    selected rest is measured at several yaws. Fine meshes are reduced by deterministic
+    systematic resampling rather than an individual-weight cutoff: sampled weights sum to
+    one, CDF strata approximate the whole support-area distribution without deleting every
+    individually small rest, and tessellation cannot explode render count.
     """
     import trimesh
 
     rng = np.random.RandomState(seed)
     out = []
-    for transform, weight in stable_rests(mesh):
-        if weight < 0.01:  # a rest an item finds once in a hundred drops is not a risk
-            continue
+    rests = stable_rests(mesh)
+    if len(rests) > MAX_REST_SAMPLES:
+        cumulative = np.cumsum([weight for _, weight in rests])
+        cumulative[-1] = 1.0  # protect searchsorted from floating-point normalization drift
+        targets = (np.arange(MAX_REST_SAMPLES) + 0.5) / MAX_REST_SAMPLES
+        indices = np.searchsorted(cumulative, targets)
+        rests = [(rests[int(index)][0], 1.0 / MAX_REST_SAMPLES) for index in indices]
+    for transform, weight in rests:
         for _ in range(yaws):
             yaw = trimesh.transformations.rotation_matrix(rng.uniform(0, 2 * np.pi), [0, 0, 1])
             w, x, y, z = trimesh.transformations.quaternion_from_matrix(yaw @ transform)
@@ -158,7 +183,10 @@ def main():
     yaws = int(sys.argv[1]) if len(sys.argv) > 1 else 8
     seed = int(sys.argv[2]) if len(sys.argv) > 2 else 0
 
-    print(f"=== pose sweep: every STABLE rest x {yaws} yaws, seed={seed} ===")
+    print(
+        f"=== pose sweep: up to {MAX_REST_SAMPLES} area-weighted STABLE rests "
+        f"x {yaws} yaws, seed={seed} ==="
+    )
     print(f"{'item':18} {'ref':>3} {'correct':>9} {'poses':>6}  "
           f"{'tightest size margin':>21} {'tightest K margin':>18}")
     print("-" * 84)
