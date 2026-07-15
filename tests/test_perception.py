@@ -541,6 +541,22 @@ def test_items_overlay_draws_every_item_with_id_and_state(tmp_path):
     assert green[254:280, 430:640].any()
 
 
+def test_single_item_overlay_writes_to_unicode_path(tmp_path):
+    cv2 = pytest.importorskip("cv2")
+    from src.perception import save_overlay
+
+    unicode_dir = tmp_path / "данные"
+    unicode_dir.mkdir()
+    out = unicode_dir / "оверлей.png"
+
+    dims = save_overlay(_synthetic_box(), out, belt_depth_m=1.5)
+
+    assert dims is not None
+    encoded = np.frombuffer(out.read_bytes(), dtype=np.uint8)
+    vis = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
+    assert vis.shape == (480, 640, 3)
+
+
 def test_load_depth_png_from_unicode_path(tmp_path):
     pytest.importorskip("cv2")
     from src.perception import load_depth_png

@@ -761,6 +761,17 @@ def load_depth_png(path):
     return mm.astype(np.float64) / 1000.0
 
 
+def _write_png(image, out_path):
+    """Encode a PNG in memory and write it through Python's Unicode path API."""
+    import cv2
+
+    ok, encoded = cv2.imencode(".png", image)
+    if not ok:
+        raise RuntimeError(f"OpenCV could not encode PNG: {out_path}")
+    with open(out_path, "wb") as stream:
+        stream.write(encoded.tobytes())
+
+
 def save_overlay(depth_m, out_path, belt_depth_m=BELT_DEPTH_M):
     """Draw the measured bbox, dims and K over the depth frame (Karpathy #4)."""
     import cv2
@@ -774,7 +785,7 @@ def save_overlay(depth_m, out_path, belt_depth_m=BELT_DEPTH_M):
         label = " x ".join(f"{d:.0f}" for d in m.dims_mm) + f" mm  K={m.k:.2f}"
         cv2.putText(vis, label, (x0, max(y0 - 8, 14)),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-    cv2.imwrite(str(out_path), vis)
+    _write_png(vis, out_path)
     return None if m is None else m.dims_mm
 
 
@@ -811,10 +822,4 @@ def save_items_overlay(depth_m, tagged_items, out_path):
     mojibake path when a directory or filename is non-ASCII. Encode in memory
     and let Python's Unicode-aware file API own the path instead.
     """
-    import cv2
-
-    ok, encoded = cv2.imencode(".png", render_items_overlay(depth_m, tagged_items))
-    if not ok:
-        raise RuntimeError(f"OpenCV could not encode overlay PNG: {out_path}")
-    with open(out_path, "wb") as stream:
-        stream.write(encoded.tobytes())
+    _write_png(render_items_overlay(depth_m, tagged_items), out_path)
