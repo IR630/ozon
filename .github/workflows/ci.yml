@@ -37,8 +37,8 @@ jobs:
           source /opt/ros/humble/setup.bash
           colcon build --packages-select ros_msgs --event-handlers console_direct+
 
-      # the plain pytest job skips rclpy/cv2 tests (no ROS there); this one
-      # runs the FULL suite so node-level tests are exercised on every push
+      # the plain pytest job exercises cv2 from requirements.txt but skips rclpy;
+      # this one runs the FULL suite so node-level tests are exercised on every push
       - name: Node and geometry tests (rclpy + cv2)
         shell: bash
         run: |

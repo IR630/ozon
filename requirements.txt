@@ -1,5 +1,6 @@
 numpy
 scipy
 trimesh
+opencv-python-headless
 pytest
 ruff
