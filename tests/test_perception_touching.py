@@ -82,6 +82,19 @@ def _thin_bent_single_mask():
     return mask
 
 
+def _long_tie_rod_single_mask():
+    """One long relief body with two wide ends and a narrow middle waist.
+
+    This is the binary analogue of the real Cylinder stream frames: its two
+    prominent EDT peaks are parts of ONE 10:1 product, not two touching items.
+    """
+    mask = np.zeros((260, 120), dtype=bool)
+    mask[20:40, 50:70] = True
+    mask[40:200, 58:62] = True
+    mask[200:220, 50:70] = True
+    return mask
+
+
 def test_corner_touch_splits_into_two_correct_items():
     # go/no-go: two touching boxes -> two measurements, each its OWN 208x208x200,
     # never one fused ~400 mm blob spanning both.
@@ -149,6 +162,16 @@ def test_ambiguous_three_peak_single_is_not_split_into_phantoms():
 
 def test_thin_bent_two_peak_single_is_not_split_into_phantoms():
     mask = _thin_bent_single_mask()
+
+    pieces = _split_touching(mask)
+
+    assert len(pieces) == 1
+    assert np.array_equal(pieces[0], mask)
+
+
+def test_long_two_peak_single_is_not_split_into_phantoms():
+    """Regression for Cylinder in a dense B stream (one body became 3 IDs)."""
+    mask = _long_tie_rod_single_mask()
 
     pieces = _split_touching(mask)
 

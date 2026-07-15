@@ -78,6 +78,17 @@ _TOUCH_MIN_SOLIDITY = 0.97
 # a wide rasterization margin while preserving all measured two-product contacts.
 _TOUCH_MIN_COMPACTNESS = 0.20
 
+# A two-peak silhouette is not by itself proof of two products.  Long relief
+# bodies such as Cylinder have two thick end lobes joined by a thinner waist;
+# depending on the exact belt pose, h-maxima sees those lobes as two products
+# and the tracker publishes phantom IDs.  The real failing stream frames measure
+# 8.58..9.06 long/short, while every supported synthetic two-box contact is
+# 1.30..2.01.  Only split reasonably compact components; an elongated contact
+# stays one conservative measurement.  This intentionally gives up splitting
+# unsupported end-to-end contacts between two long thin products rather than
+# inventing commands for one real product.
+_TOUCH_MAX_SPLIT_ASPECT = 4.0
+
 # Vertical cross-section roundness (day 4, P2). A body of revolution lying on
 # its side (Бутылка) shows a rectangular top-view silhouette, so silhouette K
 # alone reads it as B — but its hidden end section is a circle (K=1 -> D). The
@@ -247,7 +258,10 @@ def _split_touching(mask):
     dist = distance_transform_edt(sub).astype(float)
     if dist.max() <= 0.0:
         return [mask]
-    _, short_px, _ = _obb_dims_px(pts[component_hull.vertices])
+    long_px, short_px, _ = _obb_dims_px(pts[component_hull.vertices])
+    aspect = long_px / short_px if short_px > 0.0 else float("inf")
+    if aspect > _TOUCH_MAX_SPLIT_ASPECT:
+        return [mask]
     compactness = float(dist.max()) / short_px if short_px > 0.0 else 0.0
     if compactness < _TOUCH_MIN_COMPACTNESS:
         return [mask]
