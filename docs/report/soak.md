@@ -9,11 +9,13 @@ body-OBB. Разные сценарии не складываются в оди�
 
 | Набор | Эпизоды | Товары / проверки | Результат | Сырые каталоги |
 |---|---:|---:|---|---|
+| Freeze-census текущего `main@6618ded`, 11 моделей × 3 ориентации | 1/1 all-pass | 33/33 routed; каждая модель 3/3 | classification 0, execution 0, TIMEOUT 0; triage 33/33 | `runs/week3_freeze_main_20260715` |
 | Два census слитого main, 11 моделей × 3 ориентации | 2/2 all-pass | 66/66 routed; каждая модель 6/6; B 36/36, C 18/18, D 12/12 | 33/33 + 33/33; classification 0, execution 0, ни одна ячейка не разошлась | `runs/census_merged_1`, `runs/census_merged_2` |
 | Пограничный replay Pouf/Pen/Plate/Cylinder/Helmet × 3 | 1/1 all-pass | 15/15 routed; каждая модель 3/3 | classification 0, execution 0, TIMEOUT 0 | `runs/week3_boundary_main_20260715` |
 | Штатный поток, seeds 0/2/3/4 | 4/4 all-pass | 12/12 routed | камера→решение median 0.094 с, p95 0.186 с | `runs/stream_lat_seed*` |
 | Плотный пяти-товарный контрольный план | 5/5 all-pass | 25/25 routed; каждый маршрут 5/5 | старый Lunchbox B→D в этой серии не воспроизведён и остаётся историческим ограничением | `runs/week3_dense_{baseline,repeat2..5}_20260715_seed0` |
 | Safety после синхронизации main | 2/2 сценария | multi-item: 2/2 в B; occupied E-stop: 2 товара + engaged blade неподвижны | отдельные `item_id`; `FIRED` не растёт после E-stop | `runs/week3_post_sync_estop_20260715` |
+| Safety freeze-кандидата | 2/2 сценария | multi-item: 2/2 в B; occupied E-stop: 2 товара + engaged blade неподвижны | `ids=[1,2]`; оба `dx=0`; C-blade 0.710→0.709 рад; `FIRED` 2→2 | `runs/week3_freeze_estop_20260715` |
 
 Frozen real-frame набор отдельно даёт visible contract **8/8** и expected reject
 **4/4** (`scripts/measure_validation.py`). Это регрессия perception, не физический
