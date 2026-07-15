@@ -23,24 +23,24 @@ import os
 import re
 import sys
 
+from triage_matrix import parse_cell
+
 # run_skeleton.sh prints the body-scored verdict on the cell line, and the legacy
 # origin-scored one under it (that second line exists only from day 11 on).
-VERDICT_RE = re.compile(
-    r"^(?P<slug>\S+) -> (?P<zone>[BCD]): (?P<verdict>PASS|FAIL) \(pose ", re.MULTILINE
-)
 LEGACY_RE = re.compile(
     r"^\s+legacy origin-scored verdict: (?P<legacy>PASS|FAIL)", re.MULTILINE
 )
+TERMINAL_VERDICTS = {"PASS", "FAIL"}
 
 
 def read_cell(path):
     """(zone, body verdict, legacy verdict) of one cell log; None where absent."""
+    cell = parse_cell(path)
     text = open(path, encoding="utf-8", errors="replace").read()
-    v = VERDICT_RE.search(text)
     lg = LEGACY_RE.search(text)
     return (
-        v["zone"] if v else None,
-        v["verdict"] if v else "TIMEOUT",   # no verdict line = the cell was killed
+        cell.expected,
+        cell.verdict,
         lg["legacy"] if lg else None,
     )
 
@@ -78,9 +78,14 @@ def main():
 
         for _, cells in censuses:
             zone, body, legacy = cells.get(name, (None, None, None))
-            if legacy and body != legacy and name not in ruler_moved:
+            if (legacy and body in TERMINAL_VERDICTS and body != legacy
+                    and name not in ruler_moved):
                 ruler_moved.append(name)
-        bodies = {cells.get(name, (None, None, None))[1] for _, cells in censuses}
+        bodies = {
+            body
+            for _, cells in censuses
+            if (body := cells.get(name, (None, None, None))[1]) in TERMINAL_VERDICTS
+        }
         if len(bodies) > 1:
             physics_moved.append(name)
 
