@@ -3,8 +3,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-MAX_MATCH_DISTANCE_M = 0.25
-MAX_MISSED_FRAMES = 2
+MAX_MATCH_DISTANCE_M = 0.30
+MAX_MISSED_FRAMES = 3
 
 
 @dataclass
@@ -68,4 +68,3 @@ class ItemTracker:
             if self._tracks[item_id].missed > self.max_missed_frames:
                 del self._tracks[item_id]
         return result
-
