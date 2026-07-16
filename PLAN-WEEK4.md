@@ -40,6 +40,9 @@
   кадра: в повторе Pouf→Helmet оба маршрута физически PASS, но roster 2→3.
 - [ ] Не вводить нейросеть или новый порог без сравнения с текущим baseline.
 
+Статус метрики 16.07: добавлен типизированный evaluator split/merge, phantom ID
+и category consistency. Чекбокс открыт до подключения synthetic/real кадров.
+
 Статус 16.07: host-кандидат увеличивает удержание track с 2 до 3 пропущенных
 кадров и match-distance с 0.25 до 0.30 м; красный replay Helmet и соседний
 Pouf→Helmet guard стали зелёными, полный host pytest/frozen validation зелёные.
