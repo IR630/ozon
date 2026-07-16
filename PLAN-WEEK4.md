@@ -34,14 +34,16 @@
 
 ## Этап 23 — сложные сцены perception
 
-- [ ] Добавить synthetic/real набор касаний, частичных перекрытий и входа/выхода
+- [x] Добавить synthetic/real набор касаний, частичных перекрытий и входа/выхода
   из границы кадра; считать split/merge, phantom ID и category consistency.
 - [ ] Закрыть смену ID у кувыркающегося Helmet после временного выпадения из
   кадра: в повторе Pouf→Helmet оба маршрута физически PASS, но roster 2→3.
 - [ ] Не вводить нейросеть или новый порог без сравнения с текущим baseline.
 
-Статус метрики 16.07: добавлен типизированный evaluator split/merge, phantom ID
-и category consistency. Чекбокс открыт до подключения synthetic/real кадров.
+Статус набора 16.07: `measure_hard_scenes.py` гоняет production baseline на
+synthetic touch/occlusion/entry-exit и frozen real Gazebo visible/partial кадрах.
+Baseline: split=0, merge=1, phantom=0, category=9/9; merge полной гранью —
+зафиксированное ограничение top-view, а не скрытый PASS.
 
 Статус 16.07: host-кандидат увеличивает удержание track с 2 до 3 пропущенных
 кадров и match-distance с 0.25 до 0.30 м; красный replay Helmet и соседний
