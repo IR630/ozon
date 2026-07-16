@@ -161,6 +161,7 @@ bash scripts/record_skeleton_video.sh plate D
 | Один товар | `run_skeleton.sh <slug> <B\|C\|D> [spawn_x]`; `WORLD`, `SPAWN_Y`, `SPAWN_Z`, `ORIENT_{X,Y,Z,W}` | Точечный сквозной replay. Для финального механизма всегда задавать `WORLD=sim/worlds/cell_diverter.sdf` |
 | Матрица | `run_matrix.sh [seed] [N] [start_item] [end_item]`; `LOGDIR`, `CELL_TIMEOUT=180` | Последовательный census 11 товаров × N ориентаций; диапазон индексов позволяет продолжить оборванный хвост |
 | Поток | `run_stream.sh [slug:zone:gap_m ...]`; `SEED`, `ORIENT_INDEX`, `LOGDIR` | `gap_m` — расстояние позади предыдущего товара; первый gap равен 0. Небезопасный план отвергается до старта Gazebo |
+| Потоковая матрица | `run_stream_suite.sh [seed] [start_orient] [end_orient]`; `SAME_ZONE_GAP_M` | Все 11 моделей двумя эпизодами на ориентацию; A/B-ручка меняет только same-zone gap, default 1.0 м |
 | Диагностика | `MATRIX_DRY_RUN=1`, `STREAM_DRY_RUN=1`, `SAVE_DYNAMICS=1` | Показать точный план без Gazebo либо сохранить траектории ячеек матрицы |
 
 `slug` должен совпадать с каталогом в `sim/models/items`, а ожидаемая зона — с

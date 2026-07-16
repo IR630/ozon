@@ -53,6 +53,27 @@ def test_dry_run_covers_every_model_once_per_orientation():
     assert "6 episodes, 33 planned items" in result.stdout
 
 
+def test_same_zone_gap_override_keeps_cross_zone_and_slow_item_guards():
+    bash, env = _bash_env()
+    env["STREAM_SUITE_DRY_RUN"] = "1"
+    env["SAME_ZONE_GAP_M"] = "0.8"
+    result = subprocess.run(
+        [bash, str(SCRIPT), "0", "0", "0"],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "plate:D:0.8" in result.stdout
+    assert "pouf:C:0.8" in result.stdout
+    assert result.stdout.count(":B:0.8") == 5
+    assert "box_400x400x300:C:3.1" in result.stdout
+    assert "pen:C:2.5" in result.stdout
+
+
 def test_reversed_orientation_range_is_rejected():
     bash, env = _bash_env()
     env["STREAM_SUITE_DRY_RUN"] = "1"

@@ -21,6 +21,9 @@ END_ORIENT=${3:-2}
 STREAM_RUNNER=${STREAM_RUNNER:-bash scripts/run_stream.sh}
 EPISODE_TIMEOUT=${EPISODE_TIMEOUT:-300}
 LOGDIR=${LOGDIR:-runs/stream_suite_$(date +%Y%m%d_%H%M%S)_seed${SEED}}
+# A/B knob for nose-to-tail items using the same mechanism state. Cross-zone
+# clearance and the measured Pouf transport floor remain fixed safety guards.
+SAME_ZONE_GAP_M=${SAME_ZONE_GAP_M:-1.0}
 
 if ! [[ "$SEED" =~ ^[0-9]+$ ]]; then
     echo "ABORT: seed must be a non-negative integer, got '$SEED'" >&2
@@ -37,18 +40,18 @@ fi
 
 MIXED_SPECS=(
     bottle:D:0
-    plate:D:1.0
+    plate:D:$SAME_ZONE_GAP_M
     box_400x400x300:C:3.1
-    pouf:C:1.0
+    pouf:C:$SAME_ZONE_GAP_M
     pen:C:2.5
 )
 B_SPECS=(
     box_300x200x200:B:0
-    lunchbox:B:1.0
-    bag:B:1.0
-    detergent:B:1.0
-    cylinder:B:1.0
-    helmet:B:1.0
+    lunchbox:B:$SAME_ZONE_GAP_M
+    bag:B:$SAME_ZONE_GAP_M
+    detergent:B:$SAME_ZONE_GAP_M
+    cylinder:B:$SAME_ZONE_GAP_M
+    helmet:B:$SAME_ZONE_GAP_M
 )
 
 total=0
