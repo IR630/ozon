@@ -120,7 +120,18 @@ done
 GAZEBO=""
 LAUNCH=""
 FEEDER=""
+RESOURCE_WATCHER=""
+stop_resource_watcher() {
+    local rc=0
+    if [ -n "$RESOURCE_WATCHER" ]; then
+        kill -TERM "$RESOURCE_WATCHER" 2>/dev/null || true
+        wait "$RESOURCE_WATCHER" 2>/dev/null || rc=$?
+        RESOURCE_WATCHER=""
+    fi
+    return "$rc"
+}
 cleanup() {
+    stop_resource_watcher || true
     if [ -n "$FEEDER" ]; then
         kill "$FEEDER" 2>/dev/null || true
         wait "$FEEDER" 2>/dev/null || true
@@ -237,6 +248,13 @@ rm -f "$FEEDER_ERROR_FILE"
 ) &
 FEEDER=$!
 
+# Observe the complete Linux process trees without psutil or another runtime
+# dependency. The watcher is read-only and its own process is not counted.
+"$PYTHON" scripts/sample_process_resources.py \
+    --pid "$GAZEBO" --pid "$LAUNCH" --pid "$FEEDER" \
+    --csv "$LOGDIR/resources.csv" --json "$LOGDIR/resources.json" &
+RESOURCE_WATCHER=$!
+
 # Position AND orientation of EVERY item from ONE SceneBroadcaster message per
 # poll lap.  The previous loop launched one `ign model` process per unresolved
 # item: a five-item episode could spend >300 wall seconds querying an otherwise
@@ -318,6 +336,11 @@ wait "$FEEDER" || FEEDER_RC=$?
 FEEDER=""
 if [ "$FEEDER_RC" -ne 0 ] && [ -z "$RUN_ERROR" ]; then
     RUN_ERROR="feeder exited with status $FEEDER_RC"
+fi
+if ! stop_resource_watcher && [ -z "$RUN_ERROR" ]; then
+    RUN_ERROR="resource watcher exited with an error"
+elif [ ! -s "$LOGDIR/resources.json" ] && [ -z "$RUN_ERROR" ]; then
+    RUN_ERROR="resource watcher produced no summary"
 fi
 
 # Physical landing alone is not a valid system PASS: an undetected item can be

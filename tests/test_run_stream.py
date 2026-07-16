@@ -93,6 +93,21 @@ def test_early_exit_cleans_up_the_stream_processes():
     assert 'pkill -f "ign gazebo"' in cleanup
 
 
+def test_stream_saves_cpu_and_memory_profile_for_all_runtime_process_trees():
+    text = SCRIPT.read_text(encoding="utf-8")
+
+    watcher = text.index("scripts/sample_process_resources.py")
+    feeder_started = text.index("FEEDER=$!")
+    poll_started = text.index('RUN_ERROR=""')
+    watcher_stop = text.index("if ! stop_resource_watcher", poll_started)
+
+    assert feeder_started < watcher < poll_started < watcher_stop
+    assert '--pid "$GAZEBO" --pid "$LAUNCH" --pid "$FEEDER"' in text
+    assert '--csv "$LOGDIR/resources.csv" --json "$LOGDIR/resources.json"' in text
+    assert "stop_resource_watcher || true" in text
+    assert 'RUN_ERROR="resource watcher produced no summary"' in text
+
+
 def test_hull_precompute_failure_aborts_instead_of_degrading_the_verdict():
     """A missing body hull invalidates rotated body scoring; it is not a pose FAIL."""
     text = SCRIPT.read_text(encoding="utf-8")
