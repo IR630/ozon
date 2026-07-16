@@ -9,6 +9,7 @@ body-OBB. Разные сценарии не складываются в оди�
 
 | Набор | Эпизоды | Товары / проверки | Результат | Сырые каталоги |
 |---|---:|---:|---|---|
+| Helmet ID gate `main@c91c541`: Pouf→Helmet ×2 + census + occupied E-stop | 2/2 handoff + 1 census + 1 safety | handoff 4/4; census 33/33; E-stop 2 товара + engaged blade | roster 2/2/2 в обоих handoff; triage 0/0; `dx=0`, `FIRED 2→2` | `runs/week4_{pouf_helmet_idfix_replay*,idfix_census,idfix_estop}_c91c541` |
 | Stream-suite `main@3f3a7ed`, 11 моделей × 3 ориентации | 6/6 all-pass | 33/33 terminal PASS; roster 33/33/33 | 0 FAIL/TIMEOUT/JAM; без phantom ID; наблюдаемый темп 3–12 шт/мин | `runs/week4_suite_gate_3f3a7ed_seed0_oi{0,1,2}` |
 | Freeze-census текущего `main@6618ded`, 11 моделей × 3 ориентации | 1/1 all-pass | 33/33 routed; каждая модель 3/3 | classification 0, execution 0, TIMEOUT 0; triage 33/33 | `runs/week3_freeze_main_20260715` |
 | Два census слитого main, 11 моделей × 3 ориентации | 2/2 all-pass | 66/66 routed; каждая модель 6/6; B 36/36, C 18/18, D 12/12 | 33/33 + 33/33; classification 0, execution 0, ни одна ячейка не разошлась | `runs/census_merged_1`, `runs/census_merged_2` |

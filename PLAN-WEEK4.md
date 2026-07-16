@@ -40,20 +40,20 @@ FAIL/TIMEOUT/JAM. Сырые каталоги: `runs/week4_suite_gate_3f3a7ed_se
 
 - [x] Добавить synthetic/real набор касаний, частичных перекрытий и входа/выхода
   из границы кадра; считать split/merge, phantom ID и category consistency.
-- [ ] Закрыть смену ID у кувыркающегося Helmet после временного выпадения из
+- [x] Закрыть смену ID у кувыркающегося Helmet после временного выпадения из
   кадра: в повторе Pouf→Helmet оба маршрута физически PASS, но roster 2→3.
-- [ ] Не вводить нейросеть или новый порог без сравнения с текущим baseline.
+- [x] Не вводить нейросеть или новый порог без сравнения с текущим baseline.
 
 Статус набора 16.07: `measure_hard_scenes.py` гоняет production baseline на
 synthetic touch/occlusion/entry-exit и frozen real Gazebo visible/partial кадрах.
 Baseline: split=0, merge=1, phantom=0, category=9/9; merge полной гранью —
 зафиксированное ограничение top-view, а не скрытый PASS.
 
-Статус 16.07: host-кандидат увеличивает удержание track с 2 до 3 пропущенных
-кадров и match-distance с 0.25 до 0.30 м; красный replay Helmet и соседний
-Pouf→Helmet guard стали зелёными, полный host pytest/frozen validation зелёные.
-Чекбокс остаётся открытым до повторов Pouf→Helmet и полной проверки gate 4 на
-тихом Gazebo-стенде: SDF, одиночный census, stream-suite и occupied E-stop.
+Статус 16.07: tracker 3 кадра/0.30 м принят после полного gate. Два одинаковых
+Pouf→Helmet replay с безопасным C→B gap 3.1 м дали 4/4 физических PASS и roster
+2/2/2; stream-suite 33/33, отдельный census 33/33 (`classification=0`,
+`execution=0`), occupied E-stop и SDF 13/13 зелёные. Попытка gap 2.5 м была
+отклонена planner до запуска Gazebo, как и требует защита от cross-fire.
 
 ## Этап 24 — длительная физическая устойчивость
 
