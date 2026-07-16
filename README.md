@@ -83,6 +83,7 @@ pytest -q                        # unit-тесты; ROS-node тесты гоня
 python scripts/build_item_models.py
 python scripts/measure_validation.py
 python scripts/measure_hard_scenes.py
+python scripts/measure_private_shapes.py
 ```
 
 ## Запуск в WSL2 (нативно, без Docker)
