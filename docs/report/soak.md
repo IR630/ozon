@@ -9,6 +9,7 @@ body-OBB. Разные сценарии не складываются в оди�
 
 | Набор | Эпизоды | Товары / проверки | Результат | Сырые каталоги |
 |---|---:|---:|---|---|
+| Stage 24 stability `main@f4d3540`: seed0 repeat + seed1/oi0 | 6/8 all-pass | **42/44** terminal; roster 44/44/44 | 2 execution FAIL: только Pouf seed0 oi0/oi1; TIMEOUT/JAM/E-stop 0; seed1/oi0 11/11 | `runs/week4_stability_{seed0_repeat,seed1_oi0}_f4d3540` |
 | Helmet ID gate `main@c91c541`: Pouf→Helmet ×2 + census + occupied E-stop | 2/2 handoff + 1 census + 1 safety | handoff 4/4; census 33/33; E-stop 2 товара + engaged blade | roster 2/2/2 в обоих handoff; triage 0/0; `dx=0`, `FIRED 2→2` | `runs/week4_{pouf_helmet_idfix_replay*,idfix_census,idfix_estop}_c91c541` |
 | Stream-suite `main@3f3a7ed`, 11 моделей × 3 ориентации | 6/6 all-pass | 33/33 terminal PASS; roster 33/33/33 | 0 FAIL/TIMEOUT/JAM; без phantom ID; наблюдаемый темп 3–12 шт/мин | `runs/week4_suite_gate_3f3a7ed_seed0_oi{0,1,2}` |
 | Freeze-census текущего `main@6618ded`, 11 моделей × 3 ориентации | 1/1 all-pass | 33/33 routed; каждая модель 3/3 | classification 0, execution 0, TIMEOUT 0; triage 33/33 | `runs/week3_freeze_main_20260715` |
@@ -25,11 +26,14 @@ soak, поэтому она не включена в routed-знаменател
 
 ## Учёт отказов
 
-В актуальных наборах таблицы терминальных физических FAIL/INVALID/TIMEOUT нет.
-Это не стирает старые неудачные попытки: исправленный анализ сохранённых потоков
-считает оборванные эпизоды в знаменателе и дал исторический аудит **6/10 all-pass,
-27/36 routed**. Плотный Lunchbox B→D не выдан за исправленный без различающего
-trace; штатный безопасный план и контрольная серия названы явно.
+В Stage 24 есть два терминальных физических FAIL, и оба оставлены в знаменателе.
+Pouf seed0 oi0/oi1 имел полный roster, верную категорию C и `pusher_c FIRED`, но
+не осел в body-окне зоны; oi2 и новый seed1/oi0 прошли. Поэтому прежний 33/33
+остаётся фактом отдельного запуска, но не гарантией повторяемости. В остальных
+актуальных наборах таблицы терминальных FAIL/INVALID/TIMEOUT нет. Старые неудачные
+попытки также не стираются: исправленный аудит сохранённых потоков дал **6/10
+all-pass, 27/36 routed**. Плотный Lunchbox B→D не выдан за исправленный без
+различающего trace; каждый безопасный план назван явно.
 
 Перед двумя завершёнными `census_merged_*` одна попытка цепочки завершилась до
 появления roster/status (нулевой лог, процессов уже не было). Это отдельный
