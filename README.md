@@ -80,6 +80,8 @@ source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 pytest -q                        # unit-тесты; ROS-node тесты гоняет CI и Docker-среда
 python scripts/build_item_models.py
+python scripts/measure_validation.py
+python scripts/measure_hard_scenes.py
 ```
 
 ## Запуск в WSL2 (нативно, без Docker)
