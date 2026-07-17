@@ -1,13 +1,20 @@
 <?xml version="1.0"?>
-<!-- Spectator camera for run videos (day 3, P5). NOT part of cell.sdf on
-     purpose: a rendering sensor costs RTF under llvmpipe, so it is spawned
-     into the running world only by scripts/record_skeleton_video.sh.
-     Three-quarter view from the D side covering the guide-rail exit, the
-     camera window, both pushers and all three zones. -->
+<!-- Spectator camera for run videos (day 3, P5; hero framing week 5). NOT part
+     of cell.sdf on purpose: a rendering sensor costs RTF under llvmpipe, so it
+     is spawned into the running world only by scripts/record_skeleton_video.sh.
+     Elevated three-quarter from the upstream-D corner looking DOWN the line:
+     the belt leads the eye from the infeed (near) through the camera station,
+     both diverters and all three zones B/C/D (far). Pose chosen against the
+     cell.sdf geometry and previewed with scripts/frame_spectator.sh (week 5,
+     candidate b3) — the earlier D-side pose framed half the frame as empty
+     floor with the action off to one side. This overview pose frames all three
+     zones for ANY item; for a tighter D-side close-up where the divert fills the
+     frame, use the "action" pose "0.8 -2.6 2.2 0 0.544 0.880" (previewed the same
+     way) — kept out of the committed default because it clips zone C. -->
 <sdf version="1.8">
   <model name="spectator">
     <static>true</static>
-    <pose>1.2 -3.6 2.9 0 0.66 1.5708</pose>
+    <pose>-1.0 -3.0 3.0 0 0.545 0.753</pose>
     <link name="link">
       <sensor name="cam" type="camera">
         <update_rate>10</update_rate>

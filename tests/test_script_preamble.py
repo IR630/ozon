@@ -39,6 +39,7 @@ ROS_SCRIPTS = [
     "smoke_estop_recover.sh",
     "dump_item_frame.sh",
     "record_skeleton_video.sh",
+    "frame_spectator.sh",
 ]
 
 NOUNSET = re.compile(r"^set -[a-z]*u", re.M)
