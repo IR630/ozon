@@ -40,6 +40,7 @@ ROS_SCRIPTS = [
     "dump_item_frame.sh",
     "record_skeleton_video.sh",
     "frame_spectator.sh",
+    "record_stream_video.sh",
 ]
 
 NOUNSET = re.compile(r"^set -[a-z]*u", re.M)
