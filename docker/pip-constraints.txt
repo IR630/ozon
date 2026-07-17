@@ -1,0 +1,14 @@
+# Deployment lock for docker/Dockerfile (Stage 25): the exact versions the
+# validated image resolved on 2026-07-17. Constraints only cap what pip touches:
+# numpy/scipy/pytest come from the ROS base image's apt (Ubuntu 22.04) and stay
+# apt-owned — pip sees them satisfied and must not upgrade them, or the apt-built
+# cv_bridge/scipy extensions break (numpy 1.x ABI, see Dockerfile).
+# requirements.txt stays unpinned on purpose: the CI lint job and dev hosts run
+# Python 3.11/3.12, where e.g. numpy 1.21.5 has no wheels. This file pins the
+# DEPLOYMENT image only.
+numpy==1.21.5
+scipy==1.8.0
+pytest==6.2.5
+opencv-python-headless==4.11.0.86
+trimesh==4.12.2
+ruff==0.15.21
