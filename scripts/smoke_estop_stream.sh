@@ -14,8 +14,9 @@
 # Passes when, after the E-stop: the items stop moving, the blade's ANGLE does not
 # change (measured on the joint, not assumed from the command), and no item fires.
 # Then the operator-clear/reset half removes the stopped goods, proves that the
-# blade physically parks BEFORE belt soft-start and sends a fresh B item straight
-# past both diverters without another actuation.
+# controller's fresh-feedback gate accepts both parked blades, re-reads the real
+# joint after that gate, and sends a fresh B item straight past both diverters
+# without another actuation.
 # errexit first, and a loud check before sourcing install/setup.bash — same
 # defect/fix as run_skeleton.sh (see that file's header for the full story).
 set -e
@@ -90,10 +91,6 @@ spawn box_400x400x300 item0
 sleep 1
 spawn box_400x400x300 item1
 
-item_x() {
-    ign model -m "$1" --pose 2>/dev/null | grep -A1 "XYZ" | tail -1 \
-        | tr -d "[]" | awk '{print $1}'
-}
 item_pose() {
     ign model -m "$1" --pose 2>/dev/null | grep -A1 "XYZ" | tail -1 \
         | tr -d "[]" | awk '{print $1, $2, $3}'
@@ -116,9 +113,17 @@ done
 [ "$ENGAGED" = 1 ] || { echo "FAIL: the blade never engaged — nothing to E-stop"; exit 1; }
 
 A_BEFORE=$(blade_angle)
-FIRED_BEFORE=$(grep -c "FIRED" "$LOGDIR/skeleton.log" || true)
 
 ros2 topic pub --once /emergency_stop std_msgs/msg/Bool "{data: true}" > /dev/null
+for _ in $(seq 1 30); do
+    grep -q "E-STOP active" "$LOGDIR/skeleton.log" && break
+    sleep 0.1
+done
+grep -q "E-STOP active" "$LOGDIR/skeleton.log" \
+    || { echo "FAIL: controller did not process the E-stop"; exit 1; }
+# A fire that raced immediately BEFORE the controller processed the E-stop is
+# not a post-stop violation. From this log boundary onward, no new fire may occur.
+FIRED_AT_STOP=$(grep -c "FIRED" "$LOGDIR/skeleton.log" || true)
 
 # An E-stop cannot cancel physics: an item already sliding down the chute keeps
 # going under gravity, and a heavy item leaning on the blade keeps pressing it.
@@ -126,34 +131,41 @@ ros2 topic pub --once /emergency_stop std_msgs/msg/Bool "{data: true}" > /dev/nu
 # single-item smoke uses. The blade's 0.4 s swing is long over by then: a blade
 # that was being parked would be home.
 sleep 3
-X0_1=$(item_x item0); X1_1=$(item_x item1)
+P0_1=$(item_pose item0); P1_1=$(item_pose item1)
 sleep 2
-X0_2=$(item_x item0); X1_2=$(item_x item1)
+P0_2=$(item_pose item0); P1_2=$(item_pose item1)
 A_AFTER=$(blade_angle)
 FIRED_AFTER=$(grep -c "FIRED" "$LOGDIR/skeleton.log" || true)
 
-echo "settled dx item0: $X0_1 -> $X0_2"
-echo "settled dx item1: $X1_1 -> $X1_2"
+echo "settled pose item0: [$P0_1] -> [$P0_2]"
+echo "settled pose item1: [$P1_1] -> [$P1_2]"
 echo "blade C angle: $A_BEFORE -> $A_AFTER rad (parked = 0.0)"
-echo "FIRED lines: $FIRED_BEFORE -> $FIRED_AFTER"
+echo "FIRED lines after E-stop activation: $FIRED_AT_STOP -> $FIRED_AFTER"
 
 python3 - <<PY
-x0 = abs(float("$X0_2") - float("$X0_1"))
-x1 = abs(float("$X1_2") - float("$X1_1"))
+import math
+
+p0_before = tuple(map(float, "$P0_1".split()))
+p0_after = tuple(map(float, "$P0_2".split()))
+p1_before = tuple(map(float, "$P1_1".split()))
+p1_after = tuple(map(float, "$P1_2".split()))
+d0 = math.dist(p0_before, p0_after)
+d1 = math.dist(p1_before, p1_after)
+blade_before = float("$A_BEFORE")
 blade_after = float("$A_AFTER")
-assert x0 < 0.05, f"FAIL: item0 still moving 3 s after E-stop (dx={x0:.3f} m / 2 s)"
-assert x1 < 0.05, f"FAIL: item1 still moving 3 s after E-stop (dx={x1:.3f} m / 2 s)"
+assert d0 < 0.05, (
+    f"FAIL: item0 still moving 3 s after E-stop (d3={d0:.3f} m / 2 s)")
+assert d1 < 0.05, (
+    f"FAIL: item1 still moving 3 s after E-stop (d3={d1:.3f} m / 2 s)")
 # THE safety property: the engaged blade must not be sent home. It may be pushed
 # FURTHER open by the item leaning on it (measured: box_400 drives it past its own
 # 0.95 limit — the force-controlled blade is compliant, docs/decisions.md), but it
 # must never swing back across the item's path.
-assert blade_after > 0.5, (
-    f"FAIL: the blade was PARKED during the E-stop (angle={blade_after:.3f} rad) "
-    "— it swung out from under the item it was holding")
-assert $FIRED_AFTER == $FIRED_BEFORE, "FAIL: an item fired after the E-stop"
+assert blade_after >= blade_before - 0.05, (
+    f"FAIL: blade moved toward park during E-stop "
+    f"({blade_before:.3f}->{blade_after:.3f} rad)")
+assert $FIRED_AFTER == $FIRED_AT_STOP, "FAIL: an item fired after the E-stop"
 PY
-
-grep -q "E-STOP active" "$LOGDIR/skeleton.log"
 
 # The operator has inspected/cleared the cell. Removing the stopped test goods
 # models that manual step; reset is never an automatic jam-clear.
@@ -170,9 +182,10 @@ done
 grep -q "parking mechanism C/D before belt soft-start" "$LOGDIR/skeleton.log" \
     || { echo "FAIL: reset did not start occupied-mechanism recovery"; exit 1; }
 
-# This log is emitted only after the controller has received a fresh joint-state
-# sample inside its parking tolerance. Re-read the Gazebo joint directly as an
-# independent physical assertion before accepting the subsequent soft-start.
+# The controller emits this log only after fresh post-command C/D samples entered
+# the parking tolerance and before arming its ramp timer. Re-read Gazebo after the
+# gate as a physical confirmation; controller logs/tests establish causal order,
+# while the fresh terminal-B item below proves the transport path stayed clear.
 for _ in $(seq 1 30); do
     grep -q "E-STOP reset: restarting belt with soft-start" \
         "$LOGDIR/skeleton.log" && break
@@ -185,7 +198,7 @@ A_PARKED=$(blade_angle)
     || { echo "FAIL: no C joint feedback after occupied recovery"; exit 1; }
 python3 -c "
 angle = abs(float('$A_PARKED'))
-print(f'blade C before belt restart: {angle:.3f} rad')
+print(f'blade C after recovery gate: {angle:.3f} rad')
 assert angle < 0.015, f'FAIL: belt restarted with blade still over the belt ({angle:.3f} rad)'
 "
 
@@ -225,5 +238,5 @@ FIRED_AFTER_RESET=$(grep -c "FIRED" "$LOGDIR/skeleton.log" || true)
 [ "$(grep -c 'E-STOP active' "$LOGDIR/skeleton.log")" = 1 ] \
     || { echo "FAIL: the cell re-latched during occupied recovery"; exit 1; }
 
-echo "PASS: occupied E-stop froze the cell; reset parked C before soft-start; fresh B crossed straight"
+echo "PASS: occupied E-stop froze the cell; feedback gate accepted parked C/D; fresh B crossed straight"
 echo "logs: $LOGDIR"

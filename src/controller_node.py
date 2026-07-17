@@ -28,7 +28,12 @@ from std_msgs.msg import Bool, Empty, Float64
 
 from ros_msgs.msg import ItemClassification
 
-from src.constants import BELT_SPEED_M_S, DIVERTER_PARK_TOL_RAD
+from src.constants import (
+    BELT_SPEED_M_S,
+    DIVERTER_FEEDBACK_MAX_RAD,
+    DIVERTER_FEEDBACK_MIN_RAD,
+    DIVERTER_PARK_TOL_RAD,
+)
 from src.tracking import ACTUATION_LATENCY_S, plan_push
 
 _RAMP_STEPS = 8          # soft-start fractions of BELT_SPEED_M_S
@@ -89,9 +94,9 @@ class ControllerNode(Node):
         # "stop" is 0.0 — the paddle freezes mid-stroke. For the POSITION-driven
         # diverter, 0.0 is not "stop", it is "go to the parked angle": an E-stop
         # would SWING the blade home, possibly out from under the item leaning on
-        # it. Motion during an emergency stop defeats the whole point, so a
-        # positional mechanism is instead re-commanded to the angle it already
-        # holds — it freezes exactly where it is.
+        # it. With fresh post-command feedback, re-command the measured angle.
+        # Without that proof, stop the belt, retain the last target and report
+        # that the physical hold is unverified.
         self.estop_hold_mechanism = bool(
             self.declare_parameter("estop_hold_mechanism", False).value)
         self.mech_cmd = {"C": 0.0, "D": 0.0}  # last command sent to each mechanism
@@ -101,7 +106,13 @@ class ControllerNode(Node):
         self.mech_position = {}
         self.mech_feedback_seq = {"C": 0, "D": 0}
         self.mech_feedback_at = {}
+        self.mech_feedback_stamp_ns = {}
         self.mech_command_feedback_seq = {"C": 0, "D": 0}
+        self.mech_command_at_ns = {"C": -1, "D": -1}
+        # A reset temporarily replaces the verified E-stop hold with a park
+        # target. If another stop arrives before the next sample, restore this
+        # last measured hold instead of blindly continuing the park motion.
+        self.estop_verified_hold = {}
         # A controller can restart while the Gazebo world keeps an old 1 m/s
         # belt target. It may start a positional cell only after both blades are
         # freshly observed parked; an engaged startup requires operator reset.
@@ -354,16 +365,17 @@ class ControllerNode(Node):
         """The safe state, whether a human or the jam detector asked for it."""
         self.on_emergency_stop(Bool(data=True))
 
-    def command_mechanism(self, zone, value):
+    def command_mechanism(self, zone, value, *, require_new_feedback=False):
         """Every mechanism command goes through here, so the controller always
-        knows what it is currently holding — which is what an E-stop must keep."""
+        knows its last target and which feedback can prove the resulting state."""
         target_changed = abs(value - self.mech_cmd[zone]) > 1e-9
         self.mech_cmd[zone] = value
         # A sample received before this target cannot prove where the moving
         # blade is now. A redundant re-publish does not invalidate a newer
-        # measurement: the physical target did not change.
-        if target_changed:
+        # measurement unless this is an explicit startup/reset ownership gate.
+        if target_changed or require_new_feedback:
             self.mech_command_feedback_seq[zone] = self.mech_feedback_seq[zone]
+            self.mech_command_at_ns[zone] = self.get_clock().now().nanoseconds
         self.pusher_pubs[zone].publish(Float64(data=value))
 
     def on_mechanism_state(self, zone, msg):
@@ -371,13 +383,29 @@ class ControllerNode(Node):
         if not msg.position:
             return
         position = float(msg.position[0])
-        if not math.isfinite(position):
+        if (not math.isfinite(position)
+                or not DIVERTER_FEEDBACK_MIN_RAD
+                <= position <= DIVERTER_FEEDBACK_MAX_RAD):
             self.get_logger().error(
-                f"diverter {zone}: non-finite joint position {position}")
+                f"diverter {zone}: invalid joint position {position}; expected "
+                f"{DIVERTER_FEEDBACK_MIN_RAD}..{DIVERTER_FEEDBACK_MAX_RAD} rad")
+            if self.estop_hold_mechanism:
+                self.latch_emergency_stop()
+            return
+        stamp_ns = (
+            msg.header.stamp.sec * 1_000_000_000
+            + msg.header.stamp.nanosec
+        )
+        # /clock and JointState are separate bridge topics, so a state from the
+        # next simulation tick can arrive first. Drop it at receipt: retaining
+        # it would let the same old packet become "causal" when /clock catches
+        # up, without any new sensor acquisition.
+        if not 0 <= stamp_ns <= self.get_clock().now().nanoseconds:
             return
         self.mech_position[zone] = position
         self.mech_feedback_seq[zone] += 1
         self.mech_feedback_at[zone] = self.now_s()
+        self.mech_feedback_stamp_ns[zone] = stamp_ns
         self._check_startup_interlock()
 
     def _joint_feedback_fresh(self, zone):
@@ -386,6 +414,17 @@ class ControllerNode(Node):
             return False
         age_s = self.now_s() - received_s
         return 0.0 <= age_s <= _MAX_MECHANISM_FEEDBACK_AGE_S
+
+    def _joint_feedback_after_command(self, zone):
+        """Prove acquisition happened after the target, not merely its callback."""
+        stamp_ns = self.mech_feedback_stamp_ns.get(zone, -1)
+        now_ns = self.get_clock().now().nanoseconds
+        return (
+            self._joint_feedback_fresh(zone)
+            and self.mech_feedback_seq[zone]
+            > self.mech_command_feedback_seq[zone]
+            and self.mech_command_at_ns[zone] < stamp_ns <= now_ns
+        )
 
     def _check_startup_interlock(self):
         """Start automatically only when both positional blades are freshly parked."""
@@ -418,10 +457,16 @@ class ControllerNode(Node):
             # Take ownership from any position target retained by a still-live
             # Gazebo controller, then require feedback newer than these commands.
             for zone in sorted(self.pusher_pubs):
-                self.command_mechanism(zone, self.retract_cmd)
+                self.command_mechanism(
+                    zone, self.retract_cmd, require_new_feedback=True)
             self.startup_park_commanded = True
-            self.startup_parked_since_s = self.now_s()
-            self.startup_parked_feedback_seq = dict(self.mech_feedback_seq)
+            self.startup_parked_since_s = None
+            self.startup_parked_feedback_seq.clear()
+            return
+        if any(not self._joint_feedback_after_command(zone)
+               for zone in self.pusher_pubs):
+            self.startup_parked_since_s = None
+            self.startup_parked_feedback_seq.clear()
             return
         if self.startup_parked_since_s is None:
             self.startup_parked_since_s = self.now_s()
@@ -504,6 +549,9 @@ class ControllerNode(Node):
         if requested:
             if self.emergency_stopped and not self.estop_resetting:
                 return
+            was_resetting = self.estop_resetting
+            if not was_resetting:
+                self.estop_verified_hold.clear()
             self.emergency_stopped = True
             active_zones = set(self.returning) | self.estop_recovery_zones
             active_zones.update(
@@ -533,18 +581,28 @@ class ControllerNode(Node):
                 # the blade home mid-emergency (see estop_hold_mechanism)
                 can_hold_measured = (
                     self.estop_hold_mechanism
-                    and self._joint_feedback_fresh(zone)
-                    and self.mech_feedback_seq[zone]
-                    > self.mech_command_feedback_seq[zone]
+                    and self._joint_feedback_after_command(zone)
                 )
-                halt = self.mech_position[zone] if can_hold_measured else (
-                    self.mech_cmd[zone] if self.estop_hold_mechanism else 0.0)
-                if self.estop_hold_mechanism and not can_hold_measured:
+                if can_hold_measured:
+                    halt = self.mech_position[zone]
+                    self.estop_verified_hold[zone] = halt
+                elif (self.estop_hold_mechanism and was_resetting
+                      and zone in self.estop_verified_hold):
+                    halt = self.estop_verified_hold[zone]
                     self.get_logger().error(
                         f"E-STOP mechanism {zone}: no fresh feedback after its "
-                        "last command; retaining target, physical hold unverified")
-                self.command_mechanism(zone, halt)
-            self.get_logger().error("E-STOP active: belt and mechanisms stopped")
+                        "parking command; restoring last verified hold, "
+                        "physical hold unverified")
+                else:
+                    halt = self.mech_cmd[zone] if self.estop_hold_mechanism else 0.0
+                    if self.estop_hold_mechanism:
+                        self.get_logger().error(
+                            f"E-STOP mechanism {zone}: no fresh feedback after its "
+                            "last command; retaining target, physical hold unverified")
+                self.command_mechanism(
+                    zone, halt, require_new_feedback=self.estop_hold_mechanism)
+            self.get_logger().error(
+                "E-STOP active: belt stopped; mechanism hold commands issued")
             return
 
         if not self.emergency_stopped or self.estop_resetting:
@@ -559,14 +617,25 @@ class ControllerNode(Node):
         self.feed_deadlines.clear()
         unavailable_feedback = [
             zone for zone in sorted(self.estop_recovery_zones)
-            if self.estop_hold_mechanism and not self._joint_feedback_fresh(zone)
+            if (self.estop_hold_mechanism
+                and not self._joint_feedback_after_command(zone))
         ]
         if unavailable_feedback:
             zones = "/".join(unavailable_feedback)
             self.get_logger().error(
-                f"E-STOP reset refused: no fresh joint feedback for mechanism {zones}")
+                f"E-STOP reset refused: no fresh post-hold joint feedback "
+                f"for mechanism {zones}")
             return
 
+        if self.estop_hold_mechanism:
+            # Snapshot the latest measured positions atomically BEFORE park
+            # replaces their targets. An immediate second E-stop can then undo
+            # that blind park command without moving a loaded blade back toward
+            # an older angle captured at the first stop.
+            self.estop_verified_hold = {
+                zone: self.mech_position[zone]
+                for zone in self.estop_recovery_zones
+            }
         self.estop_resetting = True
         if self.estop_recovery_zones:
             self.estop_recovery_feedback_seq = {
@@ -574,7 +643,8 @@ class ControllerNode(Node):
                 for zone in self.estop_recovery_zones
             }
             for zone in sorted(self.estop_recovery_zones):
-                self.command_mechanism(zone, self.retract_cmd)
+                self.command_mechanism(
+                    zone, self.retract_cmd, require_new_feedback=True)
             self.estop_recovery_not_before_s = self.now_s() + _STROKE_S
             self.estop_recovery_timer.reset()
             zones = "/".join(sorted(self.estop_recovery_zones))
@@ -598,7 +668,7 @@ class ControllerNode(Node):
             zone for zone in sorted(self.estop_recovery_zones)
             if (self.mech_feedback_seq[zone]
                 <= self.estop_recovery_feedback_seq[zone]
-                or not self._joint_feedback_fresh(zone)
+                or not self._joint_feedback_after_command(zone)
                 or abs(self.mech_position[zone] - self.retract_cmd)
                 > DIVERTER_PARK_TOL_RAD)
         ]
@@ -613,6 +683,7 @@ class ControllerNode(Node):
             self.command_mechanism(zone, 0.0)
         self.estop_recovery_zones.clear()
         self.estop_recovery_feedback_seq.clear()
+        self.estop_verified_hold.clear()
         self.estop_resetting = False
         self.emergency_stopped = False
         self.startup_interlock_complete = True

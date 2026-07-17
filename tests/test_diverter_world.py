@@ -18,7 +18,11 @@ from pathlib import Path
 
 import pytest
 
-from src.constants import DIVERTER_PARK_TOL_RAD
+from src.constants import (
+    DIVERTER_FEEDBACK_MAX_RAD,
+    DIVERTER_FEEDBACK_MIN_RAD,
+    DIVERTER_PARK_TOL_RAD,
+)
 
 WORLD = Path(__file__).resolve().parents[1] / "sim" / "worlds" / "cell_diverter.sdf"
 BRIDGE = Path(__file__).resolve().parents[1] / "sim" / "bridge.yaml"
@@ -60,6 +64,20 @@ def test_controller_parking_tolerance_keeps_the_whole_blade_outside_belt(blade):
     )
 
     assert inner_edge_y >= BELT_EDGE_Y
+
+
+@pytest.mark.parametrize("blade", ["diverter_c", "diverter_d"])
+def test_feedback_sanity_envelope_covers_joint_and_measured_load_deflection(blade):
+    """Reject sensor corruption without rejecting the observed loaded mechanism."""
+    root = ET.parse(WORLD).getroot()
+    model = root.find(f".//model[@name='{blade}']")
+    lower = float(model.find("joint/axis/limit/lower").text)
+    upper = float(model.find("joint/axis/limit/upper").text)
+
+    assert DIVERTER_FEEDBACK_MIN_RAD <= lower
+    assert DIVERTER_FEEDBACK_MAX_RAD >= upper
+    assert DIVERTER_FEEDBACK_MAX_RAD >= 1.24
+    assert DIVERTER_FEEDBACK_MAX_RAD < 2.0
 
 
 def model_pose_and_size(name):

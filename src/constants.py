@@ -22,6 +22,13 @@ BELT_SPEED_M_S = 1.0
 # 0.015 rad leaves about 3 mm geometric clearance (sim/worlds/cell_diverter.sdf).
 DIVERTER_PARK_TOL_RAD = 0.015
 
+# Joint hard stops are 0..0.95 rad, but the occupied E-stop smoke observed the
+# loaded blade deflect to about 1.24 rad. Keep that real state valid with a small
+# margin while rejecting corrupt finite sensor values before they can become
+# actuator targets.
+DIVERTER_FEEDBACK_MIN_RAD = -0.10
+DIVERTER_FEEDBACK_MAX_RAD = 1.30
+
 # Sanity bounds for measured dims (Karpathy principle 6: no physical dim
 # is ever 0 or 5 meters in this task; input items are <= 500 mm).
 SANE_DIM_MM_MIN = 1.0
