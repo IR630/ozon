@@ -19,13 +19,13 @@
 
 | Критерий | Балл | Артефакт | Статус |
 |---|---|---|---|
-| Матрица 4×4 (классификация × исполнение) | 0–20 | `docs/report/calc_vs_sim.md` (5 величин расчёт↔сим → «исполнение 4»), `methodology_and_limitations.md` §1.7, census 33/33 ×3, `mechanism.md` | ✅ CV 4 × исполнение 4 обосновано (балл — сверка командой) |
+| Матрица 4×4 (классификация × исполнение) | 0–20 | `docs/report/calc_vs_sim.md` (5 расчётных якорей → «исполнение 4»), `methodology_and_limitations.md` §1.7, v0.5 stream-suite 33/33 + 33/33, `mechanism.md` | ✅ CV 4 × исполнение 4 обосновано (балл — сверка командой) |
 
 ## Раздел 3. Корректность определения категории (до 20)
 
 | Критерий | Балл | Артефакт | Статус |
 |---|---|---|---|
-| Корректность на тестовом наборе | 0–10 | `src/classification.py`, `src/perception.py`, census 33/33 ×3, `scripts/census_ruler_diff.py`, `tests/` | ✅ 33/33 body-scored |
+| Корректность на тестовом наборе | 0–10 | `src/classification.py`, `src/perception.py`, v0.5 suite 66/66 и census-покрытие 33 уникальных ячеек (32/32 + Helmet 3/3), `scripts/census_ruler_diff.py`, `tests/` | ✅ 33/33 body-scored coverage |
 | Полнота правил классификации | 0–5 | `docs/report/classification.md`, `src/constants.py` (пороги 10³/450×320×320, K=0.8), тесты пограничных случаев из `docs/md/models.md` | ✅ |
 | Устойчивость в пограничных случаях | 0–5 | Тесты Цилиндр K=0.74, Шлем K=0.78, Ручка 9 мм, Пуфик 489 мм; `scripts/measure_private_shapes.py` (12/12 на процедурных формах), `scripts/measure_hard_scenes.py` | ✅ |
 
@@ -36,14 +36,14 @@
 | Корректность физической маршрутизации + полный цикл | 0–10 | `sim/` (шиберы pusher_c/d, склизы, зоны), `src/controller_node.py`, возврат механизма (`returning[zone]`), census 33/33; смок возврата | ✅ полный цикл вкл. возврат |
 | Качество манипуляции, бережность, отсутствие брака | 0–10 | `docs/report/mechanism.md` (peak accel/impulse, `scripts/capture_dynamics.py`), A/B HOLD/LEAD | ✅ измерено, ограничения в отчёте |
 | Работа с различной геометрией | 0–5 | 11 моделей × 3 ориентации (census), `docs/md/models.md`, `scripts/run_matrix.sh` | ✅ |
-| Безопасность эксплуатации | 0–5 | `docs/report/safety.md`, E-stop (`scripts/smoke_estop*.sh`, `probe_estop.py`), разделение зон, ограждения камерной секции | ✅ |
+| Безопасность эксплуатации | 0–5 | `docs/report/safety.md`, подтверждённый v0.5 E-stop/freeze (`scripts/smoke_estop*.sh`, `probe_estop.py`), разделение зон; feedback-gated Stage 26 изолирован до gate | ✅ для v0.5; кандидат не переобещан |
 
 ## Раздел 5. Производительность и синхронизация (до 20)
 
 | Критерий | Балл | Артефакт | Статус |
 |---|---|---|---|
 | Cycle time и производительность | 0–10 | `scripts/measure_throughput.py`, sustained медиана **10 шт/мин** на полной матрице 33/33 (`runs/stream_suite_*`), `calc_vs_sim.md`, `soak.md` | ✅ честная sustained-цифра, заявка переписана вниз |
-| Синхронизация по времени | 0–5 | камера→решение median 0.094 с (прямой замер на общем sim-clock), `docs/report/methodology_and_limitations.md`, FIRE_LEAD упреждение | ✅ |
+| Синхронизация по времени | 0–5 | камера→решение median 0.030 с на полной suite (прямой замер на общем sim-clock), `docs/report/methodology_and_limitations.md`, FIRE_LEAD упреждение | ✅ |
 | Устойчивость к нештатным ситуациям | 0–5 | E-stop + recovery смоки, feed watchdog/jam detection (`src/controller_node.py`), плотный поток `docs/report/failure_scenarios.md` | ✅ |
 
 ## Раздел 6. Связность и инженерная состоятельность (до 15)
