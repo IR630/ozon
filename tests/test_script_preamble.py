@@ -36,6 +36,7 @@ ROS_SCRIPTS = [
     "smoke_multi_item.sh",
     "smoke_estop.sh",
     "smoke_estop_stream.sh",
+    "smoke_estop_recover.sh",
     "dump_item_frame.sh",
     "record_skeleton_video.sh",
 ]
