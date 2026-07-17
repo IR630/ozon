@@ -43,6 +43,14 @@ def test_image_installs_through_the_constraints_lock():
     assert "-r /tmp/requirements.txt -c /tmp/pip-constraints.txt" in DOCKERFILE
 
 
+def test_dockerignore_lets_every_copied_file_into_the_build_context():
+    """.dockerignore excludes ** — each COPY source needs its own whitelist line."""
+    ignore = (ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()
+
+    for src in re.findall(r"^COPY (\S+) ", DOCKERFILE, re.M):
+        assert f"!{src}" in ignore, f"COPY {src} is excluded from the build context"
+
+
 def test_every_requirement_is_locked_to_an_exact_version():
     required = _names(REQUIREMENTS, r"([A-Za-z0-9._-]+)")
     locked = _names(CONSTRAINTS, r"([A-Za-z0-9._-]+)==[A-Za-z0-9.]+")

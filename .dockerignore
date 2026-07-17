@@ -1,5 +1,6 @@
-# The image only COPYs requirements; source is bind-mounted at runtime.
-# Excluding everything else keeps CI context tiny and avoids local root-owned caches.
+# The image only COPYs requirements and the deployment pin lock; source is
+# bind-mounted at runtime. Excluding everything else keeps CI context tiny
+# and avoids local root-owned caches.
 **
 !requirements.txt
-
+!docker/pip-constraints.txt
