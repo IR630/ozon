@@ -58,7 +58,7 @@ jobs:
       - name: Build ROS + Gazebo runtime image
         run: docker build -t ozon-e2e -f docker/Dockerfile .
 
-      - name: Full contour smoke (camera to final diverter world)
+      - name: Full contour and occupied E-stop smokes
         run: |
           docker run --name ozon-e2e-run --network host --shm-size=1g \
             -v "$GITHUB_WORKSPACE:/ws" ozon-e2e bash scripts/ci_e2e.sh
@@ -69,6 +69,9 @@ jobs:
           mkdir -p ci-logs
           docker cp ozon-e2e-run:/tmp/gz_e2e.log ci-logs/ 2>/dev/null || true
           docker cp ozon-e2e-run:/tmp/skeleton_e2e.log ci-logs/ 2>/dev/null || true
+          mkdir -p ci-logs/estop
+          docker cp ozon-e2e-run:/tmp/estop_stream_e2e/gazebo.log ci-logs/estop/ 2>/dev/null || true
+          docker cp ozon-e2e-run:/tmp/estop_stream_e2e/skeleton.log ci-logs/estop/ 2>/dev/null || true
 
       - uses: actions/upload-artifact@v4
         if: failure()

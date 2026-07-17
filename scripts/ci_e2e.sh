@@ -14,3 +14,6 @@ export WORLD=sim/worlds/cell_diverter.sdf
 export ITEM_MODEL_ROOT=sim/models/fixtures
 export ROS_INSTALL_ROOT="$COLCON_ROOT/install"
 timeout 120 bash scripts/run_skeleton.sh box_300x200x200 B
+
+export LOGDIR=/tmp/estop_stream_e2e
+timeout 180 bash scripts/smoke_estop_stream.sh

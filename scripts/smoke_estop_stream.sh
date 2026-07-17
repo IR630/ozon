@@ -42,6 +42,7 @@ export FIRE_LEAD_S=${FIRE_LEAD_S:-0.5}
 export ENGAGE_CMD=${ENGAGE_CMD:-0.90}
 export RETRACT_CMD=${RETRACT_CMD:-0.0}
 export ESTOP_HOLD_MECHANISM=${ESTOP_HOLD_MECHANISM:-true}
+ITEM_MODEL_ROOT=${ITEM_MODEL_ROOT:-sim/models/items}
 LOGDIR=${LOGDIR:-runs/estop_stream_$(date +%Y%m%d_%H%M%S)}
 
 cleanup() {
@@ -75,7 +76,7 @@ grep -q "soft-start done" "$LOGDIR/skeleton.log" \
 spawn() {  # slug name
     ign service -s /world/cell/create --reqtype ignition.msgs.EntityFactory \
         --reptype ignition.msgs.Boolean --timeout 5000 \
-        --req "sdf_filename: \"$PWD/sim/models/items/$1/model.sdf\", name: \"$2\", pose: {position: {x: -1.5, y: 0, z: 0.405}}" > /dev/null
+        --req "sdf_filename: \"$PWD/$ITEM_MODEL_ROOT/$1/model.sdf\", name: \"$2\", pose: {position: {x: -1.5, y: 0, z: 0.405}}" > /dev/null
 }
 remove_model() {  # name
     local reply
