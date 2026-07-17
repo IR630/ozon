@@ -591,6 +591,28 @@ def test_load_depth_png_from_unicode_path(tmp_path):
     assert depth[240, 320] == pytest.approx(1.3)
 
 
+def test_save_depth_png_round_trips_through_unicode_path(tmp_path):
+    # The perception dump (PERCEPTION_DUMP_DIR) used cv2.imwrite for the depth PNG
+    # while the overlay beside it was already Unicode-safe; cv2.imwrite silently
+    # misses a non-ASCII Windows path (a participant may check out under one), so a
+    # dump under such a path lost every depth frame. save_depth_png routes through
+    # the in-memory encoder like the overlay writers do.
+    pytest.importorskip("cv2")
+    from src.perception import load_depth_png, save_depth_png
+
+    unicode_dir = tmp_path / "данные"
+    unicode_dir.mkdir()
+    out = unicode_dir / "глубина.png"
+
+    depth = np.full((480, 640), 1.9, dtype=np.float64)
+    depth[200:260, 300:360] = 1.35  # an item standing above the belt
+    save_depth_png(depth, out)
+
+    loaded = load_depth_png(out)  # would raise FileNotFoundError on a mojibake write
+    assert loaded.shape == (480, 640)
+    np.testing.assert_allclose(loaded, depth, atol=1e-3)  # uint16-mm quantization
+
+
 def test_tilted_helmet_dims_measure_the_body_not_its_shadow():
     """A B item resting on a tilted hull facet must not read as oversized.
 

@@ -102,13 +102,14 @@ class PerceptionNode(Node):
         plus the human-readable overlay with per-item id and aggregation state."""
         import os as _os
 
-        import cv2
+        from src.perception import save_depth_png
 
         _os.makedirs(self._dump_dir, exist_ok=True)
         k = max(measurements, key=lambda m: m.dims_mm[0] * m.dims_mm[1]).k
-        mm = (np.nan_to_num(depth64) * 1000.0).clip(0, 65535).astype(np.uint16)
         path = _os.path.join(self._dump_dir, f"depth_{self._dump_n:03d}_k{k:.2f}.png")
-        cv2.imwrite(path, mm)
+        # Unicode-safe (a participant may run under a non-ASCII username); the
+        # overlay below is already Unicode-safe, the depth PNG must match.
+        save_depth_png(depth64, path)
         tagged = [(item_id, m, self._agg_state.get(item_id))
                   for item_id, m in zip(item_ids, measurements)]
         save_items_overlay(

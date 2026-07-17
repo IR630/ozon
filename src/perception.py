@@ -789,6 +789,18 @@ def _write_png(image, out_path):
         stream.write(encoded.tobytes())
 
 
+def save_depth_png(depth_m, out_path):
+    """Write a depth frame (meters) as the uint16-millimeter PNG load_depth_png reads.
+
+    Inverse of load_depth_png and Unicode-safe by construction: encodes in memory
+    and writes through Python's path API. cv2.imwrite silently misses a non-ASCII
+    Windows path (a participant may check out under such a username), so the
+    perception dump must not use it — same defect/fix as the overlay writers.
+    """
+    mm = (np.nan_to_num(depth_m) * 1000.0).clip(0, 65535).astype(np.uint16)
+    _write_png(mm, out_path)
+
+
 def save_overlay(depth_m, out_path, belt_depth_m=BELT_DEPTH_M):
     """Draw the measured bbox, dims and K over the depth frame (Karpathy #4)."""
     import cv2
