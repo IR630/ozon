@@ -72,6 +72,18 @@ bash scripts/run_stream.sh                        # поток без перез
 GUI Gazebo пробрасывается через X11 (Linux) или WSLg (Windows); для проверок
 без экрана используется headless-режим (`ign gazebo -s -r <world>`).
 
+Проверка развёртывания одной командой (чистый checkout `HEAD`, сборка
+запиненного образа, headless CPU сквозной прогон — тот же путь, что e2e-smoke
+в CI; непроверенные локальные правки в неё не попадают — сначала коммит):
+
+```bash
+bash scripts/check_clean_deploy.sh
+```
+
+Версии зафиксированы двумя замками: базовый образ — по digest в
+`docker/Dockerfile`, python-зависимости образа — `docker/pip-constraints.txt`
+(контракт — `tests/test_deploy_pins.py`).
+
 ## Запуск Python-части (без ROS 2 / Gazebo)
 
 Классификация, анализ моделей и генерация SDF работают на чистом Python.
