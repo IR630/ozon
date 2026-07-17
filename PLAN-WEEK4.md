@@ -167,18 +167,25 @@ ODE-трения и упрощений rigid-body. Зафиксированы г
 - [x] Расширить `smoke_estop_stream.sh`: ручная очистка → reset → реальный
   угол парковки → свежий B в терминальной полосе без нового `FIRED`; физический
   результат сценария до отдельного gate не заявлять.
-- [ ] Пройти ROS-node CI, физический occupied E-stop recovery и повторный
-  resource/latency gate двух feedback-потоков на тихом Gazebo/Fortress-стенде.
-  До этого кандидат остаётся в
-  `int/estop-engaged-recovery`.
+- [x] Пройти ROS-node CI на чистом ROS 2 Humble-стенде: run
+  `29590418273`, `419 passed / 3 skipped`, все три job зелёные.
+- [ ] Пройти физический occupied E-stop recovery и повторный resource/latency
+  gate двух feedback-потоков на тихом Gazebo/Fortress-стенде. До этого кандидат
+  остаётся в `int/estop-engaged-recovery`.
 - [ ] Перед merge пройти frozen frames, pytest/ruff/SDF, census, stream-suite
   и occupied E-stop. Тег `v0.5-stable-stream` не перемещать.
 
 Статус 17.07: логика, bridge-контракт и различающий сценарий подготовлены.
 Host-проверки зелёные, но файл ROS-node локально пропущен: на текущем хосте нет
-`rclpy`, WSL/Docker/Gazebo также недоступны. Детектируется потеря отдельного
-joint-потока при живых `/clock` и command bridge; полный отказ bridge по
-sim-time программно не наблюдаем. Физический и ресурсный PASS не заявляются.
+`rclpy`, WSL/Docker/Gazebo также недоступны. Первый удалённый run `29588432123`
+нашёл шесть ошибок только в ROS-стенде тестов; после выравнивания штатного
+`retract_cmd=0.0` run `29589126737` оставил одну гонку доставки команды ленты.
+После ожидания следующего ramp/DDS-такта run `29590418273` полностью зелёный:
+lint/test, `colcon-build` (`419 passed / 3 skipped`) и обычный `e2e-smoke`.
+Этот B-smoke не заменяет occupied C/D recovery и resource/latency gate.
+Детектируется потеря отдельного joint-потока при живых `/clock` и command
+bridge; полный отказ bridge по sim-time программно не наблюдаем. Физический и
+ресурсный PASS не заявляются.
 
 ## Этап 27 — непрерывный контур и долговечность (backlog)
 
