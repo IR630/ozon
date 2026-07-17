@@ -1,8 +1,8 @@
 # Архитектура непрерывного контура — v0.5-stable-stream
 
 > Принятая точка — `v0.5-stable-stream`; feedback-gated E-stop recovery ниже
-> является кандидатом `int/estop-engaged-recovery` до физического и ресурсного
-> gate. Источники обоснований —
+> является кандидатом `int/estop-engaged-recovery`: physical occupied gate
+> закрыт run `29591607813`, ресурсный и полный merge-gate открыты. Источники обоснований —
 > `docs/decisions.md`, метрик — `docs/experiments.md`, устройство механизма —
 > `mechanism.md`, размерная компоновка — `layout.md`. Финальный мир —
 > `sim/worlds/cell_diverter.sdf`; старый

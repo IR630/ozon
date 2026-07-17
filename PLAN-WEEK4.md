@@ -169,9 +169,12 @@ ODE-трения и упрощений rigid-body. Зафиксированы г
   результат сценария до отдельного gate не заявлять.
 - [x] Пройти ROS-node CI на чистом ROS 2 Humble-стенде: run
   `29590418273`, `419 passed / 3 skipped`, все три job зелёные.
-- [ ] Пройти физический occupied E-stop recovery и повторный resource/latency
-  gate двух feedback-потоков на тихом Gazebo/Fortress-стенде. До этого кандидат
-  остаётся в `int/estop-engaged-recovery`.
+- [x] Пройти физический occupied E-stop recovery: обязательный headless
+  `e2e-smoke` run `29591607813` остановил два C-короба, подтвердил удержание,
+  feedback-gated парковку и свежий B после reset.
+- [ ] Пройти повторный resource/latency gate двух feedback-потоков на тихом
+  Gazebo/Fortress-стенде. До этого кандидат остаётся в
+  `int/estop-engaged-recovery`.
 - [ ] Перед merge пройти frozen frames, pytest/ruff/SDF, census, stream-suite
   и occupied E-stop. Тег `v0.5-stable-stream` не перемещать.
 
@@ -182,10 +185,15 @@ Host-проверки зелёные, но файл ROS-node локально п
 `retract_cmd=0.0` run `29589126737` оставил одну гонку доставки команды ленты.
 После ожидания следующего ramp/DDS-такта run `29590418273` полностью зелёный:
 lint/test, `colcon-build` (`419 passed / 3 skipped`) и обычный `e2e-smoke`.
-Этот B-smoke не заменяет occupied C/D recovery и resource/latency gate.
+Затем `3201d38` включил occupied C/D recovery в обязательный CI с текстовыми
+fixture-коробами. Run `29591607813` полностью зелёный (`421 passed / 3 skipped`):
+за 2 с settled-перемещение каждого товара <0.00002 м, C-лопасть
+`0.710054→0.708590` рад, `FIRED 2→2`; после reset угол `0.000` рад и свежий B
+прошёл прямо.
 Детектируется потеря отдельного joint-потока при живых `/clock` и command
-bridge; полный отказ bridge по sim-time программно не наблюдаем. Физический и
-ресурсный PASS не заявляются.
+bridge; полный отказ bridge по sim-time программно не наблюдаем. Физический
+feedback-gated PASS подтверждён для цифровой fixture-модели; ресурсный PASS не
+заявляется.
 
 ## Этап 27 — непрерывный контур и долговечность (backlog)
 

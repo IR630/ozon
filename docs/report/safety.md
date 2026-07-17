@@ -69,9 +69,11 @@ E-stop пришёл до первого post-command sample. Во всех сл�
 команда ленте запрещена, а повреждённое значение не эхом отправляется приводу.
 
 На `v0.5-stable-stream` физически подтверждена freeze-половина occupied E-stop.
-Feedback-gated восстановление — кандидат ветки `int/estop-engaged-recovery`;
-до нового Gazebo/Fortress occupied-smoke, ROS CI и повторного resource/latency
-gate физический PASS для него не заявляется.
+Feedback-gated восстановление остаётся кандидатом ветки
+`int/estop-engaged-recovery`, но headless Fortress run `29591607813` уже
+подтвердил полный путь: settled-смещение обоих товаров <0.00002 м за 2 с,
+C-лопасть `0.710054→0.708590` рад, `FIRED 2→2`, после reset парковка `0.000`
+рад и свежий B проходит прямо. Открыты resource/latency и полный merge-gate.
 
 ## Разметка зон
 
