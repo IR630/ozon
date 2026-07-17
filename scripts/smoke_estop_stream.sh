@@ -13,6 +13,9 @@
 #
 # Passes when, after the E-stop: the items stop moving, the blade's ANGLE does not
 # change (measured on the joint, not assumed from the command), and no item fires.
+# Then the operator-clear/reset half removes the stopped goods, proves that the
+# blade physically parks BEFORE belt soft-start and sends a fresh B item straight
+# past both diverters without another actuation.
 # errexit first, and a loud check before sourcing install/setup.bash — same
 # defect/fix as run_skeleton.sh (see that file's header for the full story).
 set -e
@@ -65,11 +68,21 @@ for _ in $(seq 1 60); do
     grep -q "soft-start done" "$LOGDIR/skeleton.log" && break
     sleep 0.5
 done
+grep -q "soft-start done" "$LOGDIR/skeleton.log" \
+    || { echo "FAIL: controller never completed its initial soft-start"; exit 1; }
 
 spawn() {  # slug name
     ign service -s /world/cell/create --reqtype ignition.msgs.EntityFactory \
         --reptype ignition.msgs.Boolean --timeout 5000 \
         --req "sdf_filename: \"$PWD/sim/models/items/$1/model.sdf\", name: \"$2\", pose: {position: {x: -1.5, y: 0, z: 0.405}}" > /dev/null
+}
+remove_model() {  # name
+    local reply
+    reply=$(ign service -s /world/cell/remove --reqtype ignition.msgs.Entity \
+        --reptype ignition.msgs.Boolean --timeout 5000 \
+        --req "name: \"$1\", type: 2")
+    grep -Eq "data:[[:space:]]*true" <<< "$reply" \
+        || { echo "FAIL: Gazebo did not remove $1: $reply"; exit 1; }
 }
 # Two items to the SAME zone: the blade engages for the first and is still a wall
 # when the E-stop lands — exactly the state the single-item smoke cannot reach.
@@ -80,6 +93,10 @@ spawn box_400x400x300 item1
 item_x() {
     ign model -m "$1" --pose 2>/dev/null | grep -A1 "XYZ" | tail -1 \
         | tr -d "[]" | awk '{print $1}'
+}
+item_pose() {
+    ign model -m "$1" --pose 2>/dev/null | grep -A1 "XYZ" | tail -1 \
+        | tr -d "[]" | awk '{print $1, $2, $3}'
 }
 blade_angle() {  # C blade, read from the JOINT — not from the command we sent
     timeout 2 ign topic -e -t /world/cell/model/diverter_c/joint_state 2>/dev/null \
@@ -137,5 +154,76 @@ assert $FIRED_AFTER == $FIRED_BEFORE, "FAIL: an item fired after the E-stop"
 PY
 
 grep -q "E-STOP active" "$LOGDIR/skeleton.log"
-echo "PASS: E-stop froze the belt, both items and the ENGAGED blade; no late fire"
+
+# The operator has inspected/cleared the cell. Removing the stopped test goods
+# models that manual step; reset is never an automatic jam-clear.
+remove_model item0
+remove_model item1
+SOFT_STARTS_BEFORE=$(grep -c "soft-start done" "$LOGDIR/skeleton.log" || true)
+FIRED_AT_RESET=$(grep -c "FIRED" "$LOGDIR/skeleton.log" || true)
+ros2 topic pub --once /emergency_stop std_msgs/msg/Bool "{data: false}" > /dev/null
+
+for _ in $(seq 1 30); do
+    grep -q "parking mechanism C/D before belt soft-start" "$LOGDIR/skeleton.log" && break
+    sleep 0.1
+done
+grep -q "parking mechanism C/D before belt soft-start" "$LOGDIR/skeleton.log" \
+    || { echo "FAIL: reset did not start occupied-mechanism recovery"; exit 1; }
+
+# This log is emitted only after the controller has received a fresh joint-state
+# sample inside its parking tolerance. Re-read the Gazebo joint directly as an
+# independent physical assertion before accepting the subsequent soft-start.
+for _ in $(seq 1 30); do
+    grep -q "E-STOP reset: restarting belt with soft-start" \
+        "$LOGDIR/skeleton.log" && break
+    sleep 0.1
+done
+grep -q "E-STOP reset: restarting belt with soft-start" "$LOGDIR/skeleton.log" \
+    || { echo "FAIL: reset never completed mechanism recovery"; exit 1; }
+A_PARKED=$(blade_angle)
+[ -n "${A_PARKED:-}" ] \
+    || { echo "FAIL: no C joint feedback after occupied recovery"; exit 1; }
+python3 -c "
+angle = abs(float('$A_PARKED'))
+print(f'blade C before belt restart: {angle:.3f} rad')
+assert angle < 0.015, f'FAIL: belt restarted with blade still over the belt ({angle:.3f} rad)'
+"
+
+for _ in $(seq 1 60); do
+    SOFT_STARTS_NOW=$(grep -c "soft-start done" "$LOGDIR/skeleton.log" || true)
+    [ "$SOFT_STARTS_NOW" -gt "$SOFT_STARTS_BEFORE" ] && break
+    sleep 0.5
+done
+[ "${SOFT_STARTS_NOW:-0}" -gt "$SOFT_STARTS_BEFORE" ] \
+    || { echo "FAIL: belt never soft-started after occupied reset"; exit 1; }
+
+# A fresh B item is the distinguishing postcondition: a blade left across the
+# conveyor would divert it into C. Require the real terminal B band, not merely
+# x>3.3 (the D blade still sweeps as far as x=4.15).
+B_DECISIONS_BEFORE=$(grep -c "B — rides to belt end" "$LOGDIR/skeleton.log" || true)
+spawn box_300x200x200 item2
+DELIVERED=0
+for _ in $(seq 1 80); do
+    POSE2=$(item_pose item2)
+    read -r X2 Y2 Z2 <<< "${POSE2:-}"
+    VERDICT=$(python3 scripts/zone_verdict.py B \
+        "${X2:-nan}" "${Y2:-nan}" "${Z2:-nan}")
+    if [ "$VERDICT" = "YES" ]; then
+        DELIVERED=1
+        break
+    fi
+    sleep 0.5
+done
+[ "$DELIVERED" = 1 ] \
+    || { echo "FAIL: post-reset item never reached terminal B (pose=${POSE2:-missing})"; exit 1; }
+B_DECISIONS_AFTER=$(grep -c "B — rides to belt end" "$LOGDIR/skeleton.log" || true)
+[ "$B_DECISIONS_AFTER" -gt "$B_DECISIONS_BEFORE" ] \
+    || { echo "FAIL: fresh post-reset item had no new B controller decision"; exit 1; }
+FIRED_AFTER_RESET=$(grep -c "FIRED" "$LOGDIR/skeleton.log" || true)
+[ "$FIRED_AFTER_RESET" = "$FIRED_AT_RESET" ] \
+    || { echo "FAIL: a mechanism fired after occupied reset"; exit 1; }
+[ "$(grep -c 'E-STOP active' "$LOGDIR/skeleton.log")" = 1 ] \
+    || { echo "FAIL: the cell re-latched during occupied recovery"; exit 1; }
+
+echo "PASS: occupied E-stop froze the cell; reset parked C before soft-start; fresh B crossed straight"
 echo "logs: $LOGDIR"

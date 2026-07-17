@@ -19,19 +19,25 @@ otherwise — Karpathy #6).
 Runs inside the ROS 2 environment (needs rclpy and the built ros_msgs overlay):
     python3 -m src.controller_node --ros-args -p use_sim_time:=true
 """
+import math
+
 import rclpy
 from rclpy.node import Node
+from sensor_msgs.msg import JointState
 from std_msgs.msg import Bool, Empty, Float64
 
 from ros_msgs.msg import ItemClassification
 
-from src.constants import BELT_SPEED_M_S
+from src.constants import BELT_SPEED_M_S, DIVERTER_PARK_TOL_RAD
 from src.tracking import ACTUATION_LATENCY_S, plan_push
 
 _RAMP_STEPS = 8          # soft-start fractions of BELT_SPEED_M_S
 _RAMP_PERIOD_S = 0.3
 _PUSH_SPEED_M_S = 2.5    # ejection speed: item must LAND on the zone patch
 _STROKE_S = 0.6          # 1.5 m stroke at 2.5 m/s
+_RECOVERY_POLL_S = 0.1
+_MAX_MECHANISM_FEEDBACK_AGE_S = 0.5
+_STARTUP_PARK_STABLE_S = 0.2
 _MAX_STAMP_AGE_S = 1.0
 _COMPLETED_TTL_S = 30.0  # late camera frames are irrelevant after leaving the cell
 _MAX_COMPLETED_ITEMS = 256  # safety bound if sim time is paused / malformed
@@ -89,6 +95,20 @@ class ControllerNode(Node):
         self.estop_hold_mechanism = bool(
             self.declare_parameter("estop_hold_mechanism", False).value)
         self.mech_cmd = {"C": 0.0, "D": 0.0}  # last command sent to each mechanism
+        # The positional diverter exposes its real joint angles through the
+        # Gazebo->ROS bridge. A target is not a position: during a return the
+        # target is already 0 while the blade is still crossing the belt.
+        self.mech_position = {}
+        self.mech_feedback_seq = {"C": 0, "D": 0}
+        self.mech_feedback_at = {}
+        self.mech_command_feedback_seq = {"C": 0, "D": 0}
+        # A controller can restart while the Gazebo world keeps an old 1 m/s
+        # belt target. It may start a positional cell only after both blades are
+        # freshly observed parked; an engaged startup requires operator reset.
+        self.startup_interlock_complete = not self.estop_hold_mechanism
+        self.startup_park_commanded = False
+        self.startup_parked_since_s = None
+        self.startup_parked_feedback_seq = {}
         # How long an item may fail to advance before the cell calls it a jam. The
         # soft-start ramp alone takes 2.4 s, but an item only reaches the camera at
         # full belt speed, so the default needs no ramp allowance.
@@ -104,6 +124,10 @@ class ControllerNode(Node):
         self.feed_deadlines = []
         self.max_item_id_seen = 0
         self.belt_pub = self.create_publisher(Float64, "/conveyor/cmd_vel", 10)
+        if self.estop_hold_mechanism:
+            # Best-effort immediate stop for a controller restarted inside a
+            # live Gazebo world. The watchdog repeats it after DDS discovery.
+            self.belt_pub.publish(Float64(data=0.0))
         self.pusher_pubs = {
             "C": self.create_publisher(Float64, "/pusher_c/cmd", 10),
             "D": self.create_publisher(Float64, "/pusher_d/cmd", 10),
@@ -115,18 +139,37 @@ class ControllerNode(Node):
         self.returning = {}             # zone -> pending retract/stop timer of the SHARED mechanism
         self.one_shot_timers = set()    # keep one-shot timers alive (Node.timers is taken)
         self.emergency_stopped = False  # latched until an explicit False command
+        # An E-stop may cancel the return timer while a blade/pusher is physically
+        # engaged. The explicit reset must park those zones BEFORE belt soft-start,
+        # otherwise the first B item drives into a wall left across the conveyor.
+        self.estop_recovery_zones = set()
+        self.estop_recovery_feedback_seq = {}
+        self.estop_resetting = False
+        self.estop_recovery_not_before_s = 0.0
+        self.startup_stop_cycles = 0
         self.ramp_step = 0
         self.ramp_timer = self.create_timer(_RAMP_PERIOD_S, self.on_ramp)
+        self.estop_recovery_timer = self.create_timer(
+            _RECOVERY_POLL_S, self._check_estop_recovery)
+        self.estop_recovery_timer.cancel()
         self.create_subscription(ItemClassification, "/item/classification",
                                  self.on_classification, 10)
         self.create_subscription(Bool, "/emergency_stop",
                                  self.on_emergency_stop, 10)
         self.create_subscription(Empty, "/infeed/fed", self.on_infeed, 10)
+        for zone in self.pusher_pubs:
+            topic = f"/diverter_{zone.lower()}/joint_state"
+            self.create_subscription(
+                JointState, topic,
+                lambda msg, z=zone: self.on_mechanism_state(z, msg), 1)
         self.feed_watchdog = self.create_timer(_FEED_CHECK_PERIOD_S, self.check_infeed)
+        self.feedback_watchdog = self.create_timer(
+            _RECOVERY_POLL_S, self.check_mechanism_feedback)
 
     def on_infeed(self, _msg):
         """The infeed just placed one item on the belt; expect it at the camera."""
-        if self.emergency_stopped:
+        if (self.emergency_stopped or self.estop_resetting
+                or not self.mechanisms_ready()):
             return
         self.feed_deadlines.append(self.now_s() + self.feed_timeout_s)
 
@@ -138,7 +181,8 @@ class ControllerNode(Node):
         item the camera silently MISSED must not ride unmeasured either;
         Karpathy #6 — fail loudly, not quietly).
         """
-        if self.emergency_stopped or not self.feed_deadlines:
+        if (self.emergency_stopped or self.estop_resetting
+                or not self.mechanisms_ready() or not self.feed_deadlines):
             return
         if self.now_s() < self.feed_deadlines[0]:
             return
@@ -148,7 +192,13 @@ class ControllerNode(Node):
         self.latch_emergency_stop()
 
     def on_ramp(self):
-        if self.emergency_stopped:
+        if self.emergency_stopped or self.estop_resetting:
+            return
+        if not self.mechanisms_ready():
+            # An Ignition JointController retains its last target across a ROS
+            # controller restart. Absence of a positive command is therefore
+            # not a stop; repeat an explicit zero until the interlock is proven.
+            self.belt_pub.publish(Float64(data=0.0))
             return
         self.ramp_step += 1
         self.belt_pub.publish(Float64(data=BELT_SPEED_M_S * self.ramp_step / _RAMP_STEPS))
@@ -160,7 +210,8 @@ class ControllerNode(Node):
         return self.get_clock().now().nanoseconds / 1e9
 
     def on_classification(self, msg):
-        if self.emergency_stopped:
+        if (self.emergency_stopped or self.estop_resetting
+                or not self.mechanisms_ready()):
             return
         if msg.item_id > self.max_item_id_seen:
             self.max_item_id_seen = msg.item_id
@@ -227,7 +278,7 @@ class ControllerNode(Node):
 
     def fire(self, zone, item_id):
         self.pending.pop(item_id, None)
-        if self.emergency_stopped:
+        if self.emergency_stopped or not self.mechanisms_ready():
             return
         # Items are independent, but the MECHANISM is shared. A second item
         # routed to the same zone within hold_s used to inherit the first item's
@@ -306,8 +357,114 @@ class ControllerNode(Node):
     def command_mechanism(self, zone, value):
         """Every mechanism command goes through here, so the controller always
         knows what it is currently holding — which is what an E-stop must keep."""
+        target_changed = abs(value - self.mech_cmd[zone]) > 1e-9
         self.mech_cmd[zone] = value
+        # A sample received before this target cannot prove where the moving
+        # blade is now. A redundant re-publish does not invalidate a newer
+        # measurement: the physical target did not change.
+        if target_changed:
+            self.mech_command_feedback_seq[zone] = self.mech_feedback_seq[zone]
         self.pusher_pubs[zone].publish(Float64(data=value))
+
+    def on_mechanism_state(self, zone, msg):
+        """Remember a positional blade's measured angle, never its old target."""
+        if not msg.position:
+            return
+        position = float(msg.position[0])
+        if not math.isfinite(position):
+            self.get_logger().error(
+                f"diverter {zone}: non-finite joint position {position}")
+            return
+        self.mech_position[zone] = position
+        self.mech_feedback_seq[zone] += 1
+        self.mech_feedback_at[zone] = self.now_s()
+        self._check_startup_interlock()
+
+    def _joint_feedback_fresh(self, zone):
+        received_s = self.mech_feedback_at.get(zone)
+        if received_s is None:
+            return False
+        age_s = self.now_s() - received_s
+        return 0.0 <= age_s <= _MAX_MECHANISM_FEEDBACK_AGE_S
+
+    def _check_startup_interlock(self):
+        """Start automatically only when both positional blades are freshly parked."""
+        if (self.startup_interlock_complete or not self.estop_hold_mechanism
+                or self.emergency_stopped or self.estop_resetting):
+            return
+        # Two watchdog publications leave a discovery margin and make zero the
+        # first observable belt command even if C/D feedback arrives instantly.
+        if (self.startup_stop_cycles < 2
+                or not all(self._joint_feedback_fresh(zone)
+                           for zone in self.pusher_pubs)):
+            self.startup_parked_since_s = None
+            self.startup_parked_feedback_seq.clear()
+            return
+        unparked = [
+            zone for zone in sorted(self.pusher_pubs)
+            if abs(self.mech_position[zone] - self.retract_cmd)
+            > DIVERTER_PARK_TOL_RAD
+        ]
+        if unparked:
+            self.startup_parked_since_s = None
+            self.startup_parked_feedback_seq.clear()
+            zones = "/".join(unparked)
+            self.get_logger().error(
+                f"STARTUP INTERLOCK: mechanism {zones} is not parked; "
+                "latching E-stop until operator clear/reset")
+            self.latch_emergency_stop()
+            return
+        if not self.startup_park_commanded:
+            # Take ownership from any position target retained by a still-live
+            # Gazebo controller, then require feedback newer than these commands.
+            for zone in sorted(self.pusher_pubs):
+                self.command_mechanism(zone, self.retract_cmd)
+            self.startup_park_commanded = True
+            self.startup_parked_since_s = self.now_s()
+            self.startup_parked_feedback_seq = dict(self.mech_feedback_seq)
+            return
+        if self.startup_parked_since_s is None:
+            self.startup_parked_since_s = self.now_s()
+            self.startup_parked_feedback_seq = dict(self.mech_feedback_seq)
+            return
+        if (self.now_s() - self.startup_parked_since_s
+                < _STARTUP_PARK_STABLE_S
+                or any(self.mech_feedback_seq[zone]
+                       <= self.startup_parked_feedback_seq[zone]
+                       for zone in self.pusher_pubs)):
+            return
+        self.startup_interlock_complete = True
+        self.get_logger().info(
+            "startup interlock: fresh C/D feedback confirms both blades parked")
+
+    def check_mechanism_feedback(self):
+        """A running positional cell fails stopped if either angle stream disappears."""
+        if not self.estop_hold_mechanism:
+            return
+        if not self.startup_interlock_complete:
+            self.belt_pub.publish(Float64(data=0.0))
+            self.startup_stop_cycles += 1
+            self._check_startup_interlock()
+            return
+        if self.emergency_stopped or self.estop_resetting:
+            return
+        stale = [
+            zone for zone in sorted(self.pusher_pubs)
+            if not self._joint_feedback_fresh(zone)
+        ]
+        if not stale:
+            return
+        zones = "/".join(stale)
+        self.get_logger().error(
+            f"JOINT FEEDBACK LOST: mechanism {zones}; latching emergency stop")
+        self.latch_emergency_stop()
+
+    def mechanisms_ready(self):
+        """Velocity pushers need no angle; positional blades need a live interlock."""
+        return (not self.estop_hold_mechanism
+                or (self.startup_interlock_complete
+                    and all(self._joint_feedback_fresh(zone)
+                            for zone in self.pusher_pubs)))
 
     def _cancel_return(self, zone):
         """Drop a pending retract/stop of `zone` (a fresh item took the mechanism).
@@ -344,11 +501,27 @@ class ControllerNode(Node):
     def on_emergency_stop(self, msg):
         """Latch an immediate safe stop; False explicitly rearms soft-start."""
         requested = bool(msg.data)
-        if requested == self.emergency_stopped:
-            return
-
-        self.emergency_stopped = requested
         if requested:
+            if self.emergency_stopped and not self.estop_resetting:
+                return
+            self.emergency_stopped = True
+            active_zones = set(self.returning) | self.estop_recovery_zones
+            active_zones.update(
+                zone for zone, command in self.mech_cmd.items()
+                if abs(command) > 1e-9
+            )
+            active_zones.update(
+                zone for zone, position in self.mech_position.items()
+                if abs(position - self.retract_cmd) > DIVERTER_PARK_TOL_RAD
+            )
+            if self.estop_hold_mechanism:
+                # A positional reset proves the WHOLE transport path clear, not
+                # only the zone whose last target happened to look active.
+                active_zones.update(self.pusher_pubs)
+            self.estop_recovery_zones = active_zones
+            self.estop_recovery_feedback_seq.clear()
+            self.estop_resetting = False
+            self.estop_recovery_timer.cancel()
             self.ramp_timer.cancel()
             for timer in tuple(self.one_shot_timers):
                 self._retire(timer)
@@ -358,9 +531,23 @@ class ControllerNode(Node):
             for zone in self.pusher_pubs:
                 # freeze, do not re-park: on a positional mechanism 0.0 would SWING
                 # the blade home mid-emergency (see estop_hold_mechanism)
-                halt = self.mech_cmd[zone] if self.estop_hold_mechanism else 0.0
+                can_hold_measured = (
+                    self.estop_hold_mechanism
+                    and self._joint_feedback_fresh(zone)
+                    and self.mech_feedback_seq[zone]
+                    > self.mech_command_feedback_seq[zone]
+                )
+                halt = self.mech_position[zone] if can_hold_measured else (
+                    self.mech_cmd[zone] if self.estop_hold_mechanism else 0.0)
+                if self.estop_hold_mechanism and not can_hold_measured:
+                    self.get_logger().error(
+                        f"E-STOP mechanism {zone}: no fresh feedback after its "
+                        "last command; retaining target, physical hold unverified")
                 self.command_mechanism(zone, halt)
             self.get_logger().error("E-STOP active: belt and mechanisms stopped")
+            return
+
+        if not self.emergency_stopped or self.estop_resetting:
             return
 
         # Drop the stall anchors: they were taken before the stop, so the belt's
@@ -370,6 +557,65 @@ class ControllerNode(Node):
         # stood still, so the first watchdog tick after reset would re-latch.
         self.jam_anchor.clear()
         self.feed_deadlines.clear()
+        unavailable_feedback = [
+            zone for zone in sorted(self.estop_recovery_zones)
+            if self.estop_hold_mechanism and not self._joint_feedback_fresh(zone)
+        ]
+        if unavailable_feedback:
+            zones = "/".join(unavailable_feedback)
+            self.get_logger().error(
+                f"E-STOP reset refused: no fresh joint feedback for mechanism {zones}")
+            return
+
+        self.estop_resetting = True
+        if self.estop_recovery_zones:
+            self.estop_recovery_feedback_seq = {
+                zone: self.mech_feedback_seq[zone]
+                for zone in self.estop_recovery_zones
+            }
+            for zone in sorted(self.estop_recovery_zones):
+                self.command_mechanism(zone, self.retract_cmd)
+            self.estop_recovery_not_before_s = self.now_s() + _STROKE_S
+            self.estop_recovery_timer.reset()
+            zones = "/".join(sorted(self.estop_recovery_zones))
+            self.get_logger().warn(
+                f"E-STOP reset: parking mechanism {zones} before belt soft-start")
+            return
+
+        self._finish_estop_reset()
+
+    def _check_estop_recovery(self):
+        """Release the belt only after fresh feedback proves every blade parked."""
+        if not self.estop_resetting:
+            self.estop_recovery_timer.cancel()
+            return
+        if self.now_s() < self.estop_recovery_not_before_s:
+            return
+        if not self.estop_hold_mechanism:
+            self._finish_estop_reset()
+            return
+        unconfirmed = [
+            zone for zone in sorted(self.estop_recovery_zones)
+            if (self.mech_feedback_seq[zone]
+                <= self.estop_recovery_feedback_seq[zone]
+                or not self._joint_feedback_fresh(zone)
+                or abs(self.mech_position[zone] - self.retract_cmd)
+                > DIVERTER_PARK_TOL_RAD)
+        ]
+        if unconfirmed:
+            return
+        self._finish_estop_reset()
+
+    def _finish_estop_reset(self):
+        """Finish mechanism recovery, then re-arm the belt's soft-start."""
+        self.estop_recovery_timer.cancel()
+        for zone in sorted(self.estop_recovery_zones):
+            self.command_mechanism(zone, 0.0)
+        self.estop_recovery_zones.clear()
+        self.estop_recovery_feedback_seq.clear()
+        self.estop_resetting = False
+        self.emergency_stopped = False
+        self.startup_interlock_complete = True
         self.ramp_step = 0
         self.ramp_timer.reset()
         self.get_logger().warn("E-STOP reset: restarting belt with soft-start")

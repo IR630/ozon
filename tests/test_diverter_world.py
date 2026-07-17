@@ -18,12 +18,48 @@ from pathlib import Path
 
 import pytest
 
+from src.constants import DIVERTER_PARK_TOL_RAD
+
 WORLD = Path(__file__).resolve().parents[1] / "sim" / "worlds" / "cell_diverter.sdf"
+BRIDGE = Path(__file__).resolve().parents[1] / "sim" / "bridge.yaml"
 
 # Camera window: the frame's far edge at belt height (docs/decisions.md).
 CAMERA_WINDOW_FAR_X = 2.4
 BELT_EDGE_Y = 0.25
 BELT_TOP_Z = 0.4
+
+
+@pytest.mark.parametrize("zone", ["c", "d"])
+def test_diverter_joint_feedback_is_bridged_to_the_controller(zone):
+    """E-stop cannot hold a moving position-controlled blade from its old target."""
+    text = BRIDGE.read_text(encoding="utf-8")
+    mapping = (
+        f"- ros_topic_name: /diverter_{zone}/joint_state\n"
+        f"  gz_topic_name: /world/cell/model/diverter_{zone}/joint_state\n"
+        "  ros_type_name: sensor_msgs/msg/JointState\n"
+        "  gz_type_name: ignition.msgs.Model\n"
+        "  subscriber_queue: 1\n"
+        "  publisher_queue: 1\n"
+        "  direction: GZ_TO_ROS"
+    )
+
+    assert mapping in text
+
+
+@pytest.mark.parametrize("blade", ["diverter_c", "diverter_d"])
+def test_controller_parking_tolerance_keeps_the_whole_blade_outside_belt(blade):
+    """The tolerance is geometric: even the collision's inner edge must be clear."""
+    (pose, size) = model_pose_and_size(blade)
+    pivot_y = abs(pose[1])
+    length, thickness, _ = size
+    angle = DIVERTER_PARK_TOL_RAD
+    inner_edge_y = (
+        pivot_y
+        - length * math.sin(angle)
+        - thickness / 2 * math.cos(angle)
+    )
+
+    assert inner_edge_y >= BELT_EDGE_Y
 
 
 def model_pose_and_size(name):

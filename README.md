@@ -156,6 +156,9 @@ WORLD=sim/worlds/cell_diverter.sdf bash scripts/run_matrix.sh 0 3
 # медиана/p95 throughput и задержек по сохранённым потоковым прогонам
 python3 scripts/measure_throughput.py runs/stream_run_1 runs/stream_run_2
 
+# занятый механизм: freeze → ручная очистка → парковка до soft-start → свежий B
+bash scripts/smoke_estop_stream.sh
+
 # запись видео сквозного прогона (камера-«зритель» подсаживается на время записи)
 bash scripts/record_skeleton_video.sh plate D
 ```
@@ -169,8 +172,8 @@ bash scripts/record_skeleton_video.sh plate D
 если товар не доехал до камеры за 8 с, система защёлкивает E-stop вместо тихого
 пропуска. Каждый эпизод также сохраняет `resources.csv` и `resources.json` с
 профилем CPU/RAM деревьев Gazebo, ROS и feeder. Подробная схема состояния и топиков — в
-`docs/report/architecture.md`. Длинные серии, полные знаменатели надёжности,
-ресурсный профиль и признаки загрязнённого Gazebo-стенда сведены в
+`docs/report/architecture.md`. Регрессионные серии, полные знаменатели,
+ограниченный ресурсный прогон и признаки загрязнённого Gazebo-стенда сведены в
 `docs/report/soak.md`.
 
 ### Воспроизведение заявленных результатов (одна команда на заявку)

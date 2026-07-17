@@ -1,15 +1,17 @@
 # Soak и регрессия полного контура
 
-Этот раздел сводит длинные серии после принятия прозрачных ограждений и 3D
-body-OBB. Разные сценарии не складываются в один «процент качества»: census
-измеряет все модели и ориентации, stream — совместную работу товаров, safety-smoke
-— безопасную реакцию. Для каждого набора сохраняется собственный знаменатель.
+Этот раздел сводит регрессионные серии и ограниченный ресурсный прогон после
+принятия прозрачных ограждений и 3D body-OBB. Разные сценарии не складываются
+в один «процент качества»: census измеряет все модели и ориентации, stream —
+совместную работу товаров, safety-smoke — безопасную реакцию. Для каждого
+набора сохраняется собственный знаменатель.
 
 ## Актуальная сводка
 
 | Набор | Эпизоды | Товары / проверки | Результат | Сырые каталоги |
 |---|---:|---:|---|---|
-| Stage 24 stability `main@f4d3540`: seed0 repeat + seed1/oi0 | 6/8 all-pass | **42/44** terminal; roster 44/44/44 | 2 execution FAIL: только Pouf seed0 oi0/oi1; TIMEOUT/JAM/E-stop 0; seed1/oi0 11/11 | `runs/week4_stability_{seed0_repeat,seed1_oi0}_f4d3540` |
+| Финальный Stage 24 после `424a0a2`: два полных stream-suite + census | **12/12** stream-эпизодов + 1 census | **66/66** terminal stream; census **33/33** | roster полные, 0 FAIL/TIMEOUT/JAM; triage 0/0 | `runs/pouf_fix_final_*_cafbbd4`, `runs/pouf_fix_final_census_seed0_helmet_tail` |
+| Диагностическая Stage 24 до фикса `main@f4d3540`: seed0 repeat + seed1/oi0 | 6/8 all-pass | **42/44** terminal; roster 44/44/44 | 2 execution FAIL: только Pouf seed0 oi0/oi1; TIMEOUT/JAM/E-stop 0; seed1/oi0 11/11 | `runs/week4_stability_{seed0_repeat,seed1_oi0}_f4d3540` |
 | Helmet ID gate `main@c91c541`: Pouf→Helmet ×2 + census + occupied E-stop | 2/2 handoff + 1 census + 1 safety | handoff 4/4; census 33/33; E-stop 2 товара + engaged blade | roster 2/2/2 в обоих handoff; triage 0/0; `dx=0`, `FIRED 2→2` | `runs/week4_{pouf_helmet_idfix_replay*,idfix_census,idfix_estop}_c91c541` |
 | Stream-suite `main@3f3a7ed`, 11 моделей × 3 ориентации | 6/6 all-pass | 33/33 terminal PASS; roster 33/33/33 | 0 FAIL/TIMEOUT/JAM; без phantom ID; наблюдаемый темп 3–12 шт/мин | `runs/week4_suite_gate_3f3a7ed_seed0_oi{0,1,2}` |
 | Freeze-census текущего `main@6618ded`, 11 моделей × 3 ориентации | 1/1 all-pass | 33/33 routed; каждая модель 3/3 | classification 0, execution 0, TIMEOUT 0; triage 33/33 | `runs/week3_freeze_main_20260715` |
@@ -26,12 +28,13 @@ soak, поэтому она не включена в routed-знаменател
 
 ## Учёт отказов
 
-В Stage 24 есть два терминальных физических FAIL, и оба оставлены в знаменателе.
-Pouf seed0 oi0/oi1 имел полный roster, верную категорию C и `pusher_c FIRED`, но
-не осел в body-окне зоны; oi2 и новый seed1/oi0 прошли. Поэтому прежний 33/33
-остаётся фактом отдельного запуска, но не гарантией повторяемости. В остальных
-актуальных наборах таблицы терминальных FAIL/INVALID/TIMEOUT нет. Старые неудачные
-попытки также не стираются: исправленный аудит сохранённых потоков дал **6/10
+Диагностическая серия Stage 24 до `424a0a2` содержит два терминальных физических
+FAIL, и оба оставлены в своём знаменателе. Pouf seed0 oi0/oi1 имел полный roster,
+верную категорию C и `pusher_c FIRED`, но не осел в body-окне зоны. Различающий
+разбор нашёл исполнительную причину: первый Box400 блокировал устье склиза, а
+следующий Pouf ложился на него. После изменения пола зоны и парных зазоров два
+полных suite дали 66/66; красная серия не стирается, но не описывает текущий
+gate. Старые неудачные попытки также сохранены: аудит ранних потоков дал **6/10
 all-pass, 27/36 routed**. Плотный Lunchbox B→D не выдан за исправленный без
 различающего trace; каждый безопасный план назван явно.
 
@@ -66,12 +69,13 @@ body-verdict помечается `INVALID`/`INCOMPLETE` и остаётся в 
 - Одновременно допускается только один Gazebo-контур. Docker с
   `network_mode: host`, WSL и host-процесс разделяют Ignition Transport и могут
   отвечать на сервисы чужого эпизода.
-- Численный минимум RAM/CPU как production-требование не заявляется. Каждый новый
-  `run_stream.sh` снимает раз в секунду деревья Gazebo, ROS launch и feeder в
-  `resources.csv`, а в `resources.json` сохраняет peak RSS, среднее/пиковое число
-  занятых CPU-ядер и максимум процессов. На текущем Windows-хосте нет WSL/Docker,
-  поэтому реальный профиль Fortress этим инструментом ещё не снят и Stage 24 не
-  закрыт; репозиторий не подменяет отсутствующее измерение расчётным минимумом.
+- Численный минимум RAM/CPU как production-требование не заявляется. Один
+  Linux/Fortress-прогон из 5 товаров длительностью 48 с дал peak RSS 944 MiB,
+  CPU 2.8 ядра в среднем / 4.4 в пике и максимум 12 процессов; к концу RSS
+  наблюдался на плато 853 MiB. Сырые `resources.csv/json` лежат в
+  `runs/resource_mixed_oi1_424a0a2`. Этого достаточно для фактического профиля
+  Stage 24, но недостаточно для вывода об отсутствии утечки в длительном
+  непрерывном процессе: нужен отдельный same-process soak на 30–50 товарах.
 
 ## Как распознать загрязнённый стенд
 

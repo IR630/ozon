@@ -8,7 +8,8 @@
   ros_type_name: rosgraph_msgs/msg/Clock
   gz_type_name: ignition.msgs.Clock
   direction: GZ_TO_ROS
-# actuator commands: ROS -> Gazebo JointController topics (m/s)
+# Actuator seam: velocity (m/s) in the legacy pusher world, target angle (rad)
+# in the final positional-diverter world.
 - topic_name: /conveyor/cmd_vel
   ros_type_name: std_msgs/msg/Float64
   gz_type_name: ignition.msgs.Double
@@ -21,6 +22,23 @@
   ros_type_name: std_msgs/msg/Float64
   gz_type_name: ignition.msgs.Double
   direction: ROS_TO_GZ
+# Measured blade angles: a position target is not the current position while the
+# blade is moving. The controller uses these to hold the actual angle on E-stop
+# and refuses to restart the belt until fresh feedback proves both blades parked.
+- ros_topic_name: /diverter_c/joint_state
+  gz_topic_name: /world/cell/model/diverter_c/joint_state
+  ros_type_name: sensor_msgs/msg/JointState
+  gz_type_name: ignition.msgs.Model
+  subscriber_queue: 1
+  publisher_queue: 1
+  direction: GZ_TO_ROS
+- ros_topic_name: /diverter_d/joint_state
+  gz_topic_name: /world/cell/model/diverter_d/joint_state
+  ros_type_name: sensor_msgs/msg/JointState
+  gz_type_name: ignition.msgs.Model
+  subscriber_queue: 1
+  publisher_queue: 1
+  direction: GZ_TO_ROS
 - topic_name: /camera/image
   ros_type_name: sensor_msgs/msg/Image
   gz_type_name: ignition.msgs.Image

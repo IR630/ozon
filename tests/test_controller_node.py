@@ -10,13 +10,16 @@ import pytest
 rclpy = pytest.importorskip("rclpy")
 msgs = pytest.importorskip("ros_msgs.msg")
 
+from sensor_msgs.msg import JointState  # noqa: E402
 from std_msgs.msg import Bool, Float64  # noqa: E402
 
 from src.constants import BELT_SPEED_M_S  # noqa: E402
 from src.controller_node import (  # noqa: E402
     _COMPLETED_TTL_S,
     _MAX_COMPLETED_ITEMS,
+    _MAX_MECHANISM_FEEDBACK_AGE_S,
     _PUSH_SPEED_M_S,
+    _STROKE_S,
     ControllerNode,
 )
 from src.tracking import PUSHER_X_M  # noqa: E402
@@ -31,6 +34,28 @@ def _spin_both(a, b, seconds):
     while time.monotonic() < end:
         rclpy.spin_once(a, timeout_sec=0.05)
         rclpy.spin_once(b, timeout_sec=0.05)
+
+
+def _confirm_parked_startup(node, probe, joint_c_pub, joint_d_pub):
+    """Provide two stable, fresh samples per blade for the restart interlock."""
+    joint_c_pub.publish(JointState(position=[0.0]))
+    joint_d_pub.publish(JointState(position=[0.0]))
+    _spin_both(node, probe, 0.25)
+    joint_c_pub.publish(JointState(position=[0.0]))
+    joint_d_pub.publish(JointState(position=[0.0]))
+    _spin_both(node, probe, 0.25)
+    assert node.startup_interlock_complete
+
+
+def _spin_with_parked_feedback(node, probe, joint_c_pub, joint_d_pub, seconds):
+    """Model Gazebo's continuous joint stream while waiting for a reset/ramp."""
+    import time
+
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        joint_c_pub.publish(JointState(position=[0.0]))
+        joint_d_pub.publish(JointState(position=[0.0]))
+        _spin_both(node, probe, min(0.1, end - time.monotonic()))
 
 
 def _classification(node, item_id, category, x_m):
@@ -487,24 +512,420 @@ def test_emergency_stop_freezes_an_engaged_diverter_blade_instead_of_parking_it(
         blade_cmds = []
         probe.create_subscription(Float64, "/pusher_c/cmd",
                                   lambda m: blade_cmds.append(m.data), 10)
+        joint_c_pub = probe.create_publisher(
+            JointState, "/diverter_c/joint_state", 10)
+        joint_d_pub = probe.create_publisher(
+            JointState, "/diverter_d/joint_state", 10)
         classification_pub = probe.create_publisher(
             ItemClassification, "/item/classification", 10)
         estop_pub = probe.create_publisher(Bool, "/emergency_stop", 10)
         _spin_both(node, probe, 0.3)
+        _confirm_parked_startup(node, probe, joint_c_pub, joint_d_pub)
+        blade_cmds.clear()
 
         # Fire the blade: it is now a wall across the belt at 0.90 rad.
         classification_pub.publish(
             _classification(node, 40, "C", PUSHER_X_M["C"] - 0.05))
-        _spin_both(node, probe, 0.6)
+        _spin_both(node, probe, 0.2)
+        joint_c_pub.publish(JointState(position=[0.72]))
+        joint_d_pub.publish(JointState(position=[0.0]))
+        _spin_both(node, probe, 0.2)
         assert blade_cmds == [0.90], blade_cmds
 
+        # The real blade is at 0.72 rad under load, not at its 0.90 target.
+        # Re-publishing the same target (as a same-zone item can do) must not
+        # invalidate this newer measurement.
+        node.command_mechanism("C", 0.90)
         estop_pub.publish(Bool(data=True))
         _spin_both(node, probe, 1.0)
 
         assert node.emergency_stopped
-        # The blade was NOT sent home: its commanded angle never left 0.90.
-        assert blade_cmds[-1] == 0.90, blade_cmds
+        # Hold the measured position, not the stale target.
+        assert blade_cmds[-1] == 0.72, blade_cmds
         assert 0.0 not in blade_cmds, blade_cmds
+
+        probe.destroy_node()
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def test_positional_cell_waits_for_both_joint_feedbacks_before_startup():
+    """A missing angle bridge must explicitly stop, not retain an old belt target."""
+    from rclpy.parameter import Parameter
+
+    rclpy.init()
+    try:
+        node = ControllerNode(parameter_overrides=[
+            Parameter("estop_hold_mechanism", value=True)])
+        probe = rclpy.create_node("probe_joint_feedback_interlock")
+        belt_cmds = []
+        probe.create_subscription(
+            Float64, "/conveyor/cmd_vel", lambda msg: belt_cmds.append(msg.data), 10)
+        joint_c_pub = probe.create_publisher(
+            JointState, "/diverter_c/joint_state", 10)
+        joint_d_pub = probe.create_publisher(
+            JointState, "/diverter_d/joint_state", 10)
+        _spin_both(node, probe, 0.7)
+
+        assert belt_cmds
+        assert set(belt_cmds) == {0.0}
+        joint_c_pub.publish(JointState(position=[0.0]))
+        _spin_both(node, probe, 0.2)
+        assert set(belt_cmds) == {0.0}
+
+        joint_c_pub.publish(JointState(position=[0.0]))
+        joint_d_pub.publish(JointState(position=[0.0]))
+        _spin_both(node, probe, 0.25)
+        assert set(belt_cmds) == {0.0}
+        joint_c_pub.publish(JointState(position=[0.0]))
+        joint_d_pub.publish(JointState(position=[0.0]))
+        _spin_both(node, probe, 0.25)
+        assert any(value > 0.0 for value in belt_cmds)
+        assert not node.emergency_stopped
+
+        probe.destroy_node()
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def test_positional_cell_sends_zero_before_positive_with_immediate_feedback():
+    """Fast C/D feedback cannot skip the explicit restart-stop command."""
+    from rclpy.parameter import Parameter
+
+    rclpy.init()
+    try:
+        node = ControllerNode(parameter_overrides=[
+            Parameter("estop_hold_mechanism", value=True)])
+        probe = rclpy.create_node("probe_immediate_joint_feedback")
+        belt_cmds = []
+        probe.create_subscription(
+            Float64, "/conveyor/cmd_vel", lambda msg: belt_cmds.append(msg.data), 10)
+        joint_c_pub = probe.create_publisher(
+            JointState, "/diverter_c/joint_state", 10)
+        joint_d_pub = probe.create_publisher(
+            JointState, "/diverter_d/joint_state", 10)
+        _spin_both(node, probe, 0.05)
+
+        joint_c_pub.publish(JointState(position=[0.0]))
+        joint_d_pub.publish(JointState(position=[0.0]))
+        _spin_both(node, probe, 0.25)
+        assert belt_cmds
+        assert set(belt_cmds) == {0.0}
+
+        joint_c_pub.publish(JointState(position=[0.0]))
+        joint_d_pub.publish(JointState(position=[0.0]))
+        _spin_both(node, probe, 0.35)
+        assert belt_cmds[0] == 0.0
+        assert any(value > 0.0 for value in belt_cmds)
+
+        probe.destroy_node()
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def test_positional_cell_latches_if_controller_starts_with_a_blade_engaged():
+    """A restarted controller must not auto-start into an occupied transport path."""
+    from rclpy.parameter import Parameter
+
+    rclpy.init()
+    try:
+        node = ControllerNode(parameter_overrides=[
+            Parameter("estop_hold_mechanism", value=True)])
+        probe = rclpy.create_node("probe_unparked_startup")
+        belt_cmds = []
+        blade_cmds = []
+        probe.create_subscription(
+            Float64, "/conveyor/cmd_vel", lambda msg: belt_cmds.append(msg.data), 10)
+        probe.create_subscription(
+            Float64, "/pusher_c/cmd", lambda msg: blade_cmds.append(msg.data), 10)
+        joint_c_pub = probe.create_publisher(
+            JointState, "/diverter_c/joint_state", 10)
+        joint_d_pub = probe.create_publisher(
+            JointState, "/diverter_d/joint_state", 10)
+        _spin_both(node, probe, 0.3)
+
+        joint_c_pub.publish(JointState(position=[0.70]))
+        joint_d_pub.publish(JointState(position=[0.0]))
+        _spin_both(node, probe, 0.5)
+
+        assert node.emergency_stopped
+        assert belt_cmds
+        assert set(belt_cmds) == {0.0}
+        assert blade_cmds[-1] == 0.70
+
+        probe.destroy_node()
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def test_positional_cell_latches_when_joint_feedback_becomes_stale():
+    """Losing the bridge after startup must stop the moving belt as well."""
+    from rclpy.parameter import Parameter
+
+    rclpy.init()
+    try:
+        node = ControllerNode(parameter_overrides=[
+            Parameter("estop_hold_mechanism", value=True)])
+        probe = rclpy.create_node("probe_stale_joint_feedback")
+        belt_cmds = []
+        probe.create_subscription(
+            Float64, "/conveyor/cmd_vel", lambda msg: belt_cmds.append(msg.data), 10)
+        joint_c_pub = probe.create_publisher(
+            JointState, "/diverter_c/joint_state", 10)
+        joint_d_pub = probe.create_publisher(
+            JointState, "/diverter_d/joint_state", 10)
+        _spin_both(node, probe, 0.3)
+        _confirm_parked_startup(node, probe, joint_c_pub, joint_d_pub)
+        assert any(value > 0.0 for value in belt_cmds)
+
+        # Publish nothing else: the Gazebo->ROS feedback path has disappeared.
+        _spin_both(node, probe, _MAX_MECHANISM_FEEDBACK_AGE_S + 0.4)
+
+        assert node.emergency_stopped
+        assert belt_cmds[-1] == 0.0
+        estop_pub = probe.create_publisher(Bool, "/emergency_stop", 10)
+        estop_pub.publish(Bool(data=False))
+        _spin_both(node, probe, 0.2)
+        assert node.emergency_stopped
+        assert not node.estop_resetting
+
+        probe.destroy_node()
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def test_estop_does_not_reuse_feedback_sample_from_before_the_last_blade_command():
+    """A stale parked sample must not reverse a moving blade during E-stop."""
+    from rclpy.parameter import Parameter
+
+    rclpy.init()
+    try:
+        node = ControllerNode(parameter_overrides=[
+            Parameter("engage_cmd", value=0.90),
+            Parameter("retract_cmd", value=0.0),
+            Parameter("estop_hold_mechanism", value=True),
+            Parameter("hold_s", value=10.0),
+        ])
+        probe = rclpy.create_node("probe_estop_precommand_sample")
+        blade_cmds = []
+        probe.create_subscription(
+            Float64, "/pusher_c/cmd", lambda msg: blade_cmds.append(msg.data), 10)
+        joint_c_pub = probe.create_publisher(
+            JointState, "/diverter_c/joint_state", 10)
+        joint_d_pub = probe.create_publisher(
+            JointState, "/diverter_d/joint_state", 10)
+        classification_pub = probe.create_publisher(
+            ItemClassification, "/item/classification", 10)
+        estop_pub = probe.create_publisher(Bool, "/emergency_stop", 10)
+        _spin_both(node, probe, 0.3)
+        _confirm_parked_startup(node, probe, joint_c_pub, joint_d_pub)
+
+        classification_pub.publish(
+            _classification(node, 40, "C", PUSHER_X_M["C"] - 0.05))
+        _spin_both(node, probe, 0.2)
+        assert blade_cmds[-1] == 0.90
+        assert not node.emergency_stopped
+
+        # No sample followed the 0.90 command. Reusing the earlier parked 0.0
+        # would actively swing the blade home during the emergency.
+        estop_pub.publish(Bool(data=True))
+        _spin_both(node, probe, 0.2)
+
+        assert node.emergency_stopped
+        assert blade_cmds[-1] == 0.90
+
+        probe.destroy_node()
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def test_reset_parks_an_engaged_diverter_before_restarting_the_belt():
+    """Reset is not permission to drive into a blade left across the belt.
+
+    E-stop must freeze an occupied positional mechanism, but after the operator
+    clears the item and explicitly resets the cell, that mechanism has to park
+    while the belt is still stopped. Only then may soft-start resume.
+    """
+    import time
+
+    from rclpy.parameter import Parameter
+
+    rclpy.init()
+    try:
+        node = ControllerNode(parameter_overrides=[
+            Parameter("engage_cmd", value=0.90),
+            Parameter("retract_cmd", value=0.0),
+            Parameter("estop_hold_mechanism", value=True),
+            Parameter("hold_s", value=10.0),
+        ])
+        probe = rclpy.create_node("probe_estop_engaged_reset")
+        events = []
+        probe.create_subscription(
+            Float64,
+            "/conveyor/cmd_vel",
+            lambda msg: events.append((time.monotonic(), "belt", msg.data)),
+            10,
+        )
+        probe.create_subscription(
+            Float64,
+            "/pusher_c/cmd",
+            lambda msg: events.append((time.monotonic(), "blade", msg.data)),
+            10,
+        )
+        joint_c_pub = probe.create_publisher(
+            JointState, "/diverter_c/joint_state", 10)
+        joint_d_pub = probe.create_publisher(
+            JointState, "/diverter_d/joint_state", 10)
+        classification_pub = probe.create_publisher(
+            ItemClassification, "/item/classification", 10)
+        estop_pub = probe.create_publisher(Bool, "/emergency_stop", 10)
+        _spin_both(node, probe, 0.3)
+        _confirm_parked_startup(node, probe, joint_c_pub, joint_d_pub)
+
+        classification_pub.publish(
+            _classification(node, 41, "C", PUSHER_X_M["C"] - 0.05))
+        _spin_both(node, probe, 0.2)
+        joint_c_pub.publish(JointState(position=[0.72]))
+        joint_d_pub.publish(JointState(position=[0.0]))
+        _spin_both(node, probe, 0.2)
+        estop_pub.publish(Bool(data=True))
+        _spin_both(node, probe, 0.4)
+        assert node.emergency_stopped
+
+        joint_c_pub.publish(JointState(position=[0.72]))
+        joint_d_pub.publish(JointState(position=[0.0]))
+        _spin_both(node, probe, 0.1)
+        reset_event = len(events)
+        reset_at = time.monotonic()
+        estop_pub.publish(Bool(data=False))
+        _spin_both(node, probe, 0.1)
+        # A stale/new classification arriving during the parking interval must
+        # not schedule another actuation before the cell is operational again.
+        classification_pub.publish(
+            _classification(node, 42, "C", PUSHER_X_M["C"] - 0.05))
+        _spin_both(node, probe, 0.2)
+
+        early = events[reset_event:]
+        assert any(kind == "blade" and value == 0.0 for _, kind, value in early), early
+        assert not any(kind == "blade" and value > 0.0 for _, kind, value in early), early
+        assert not any(kind == "belt" and value > 0.0 for _, kind, value in early), early
+
+        _spin_both(node, probe, _STROKE_S + 0.3)
+        assert node.emergency_stopped
+        assert node.estop_resetting
+        timer_count_while_waiting = len(node.timers)
+        _spin_both(node, probe, 0.5)
+        assert len(node.timers) == timer_count_while_waiting
+        assert not any(
+            kind == "belt" and value > 0.0
+            for _, kind, value in events[reset_event:]
+        )
+
+        # C being parked is insufficient until D also provides a fresh
+        # post-reset sample: both possible transport-path obstructions must be
+        # proven clear.
+        joint_c_pub.publish(JointState(position=[0.0]))
+        _spin_both(node, probe, 0.2)
+        assert node.estop_resetting
+
+        # Both samples are now fresh, but C is physically across the belt.
+        # Passing the old fixed timer is not sufficient to release it.
+        joint_c_pub.publish(JointState(position=[0.40]))
+        joint_d_pub.publish(JointState(position=[0.0]))
+        _spin_both(node, probe, 0.2)
+        assert node.estop_resetting
+
+        parked_at = time.monotonic()
+        _spin_with_parked_feedback(
+            node, probe, joint_c_pub, joint_d_pub, 0.8)
+        recovery = events[reset_event:]
+        restarted_at = next(
+            timestamp
+            for timestamp, kind, value in recovery
+            if kind == "belt" and value > 0.0
+        )
+        assert parked_at < restarted_at
+        assert restarted_at - reset_at >= _STROKE_S
+        assert not node.emergency_stopped
+
+        probe.destroy_node()
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def test_second_estop_during_parking_holds_the_measured_blade_angle():
+    """An emergency during reset must interrupt the return motion itself."""
+    from rclpy.parameter import Parameter
+
+    rclpy.init()
+    try:
+        node = ControllerNode(parameter_overrides=[
+            Parameter("engage_cmd", value=0.90),
+            Parameter("retract_cmd", value=0.0),
+            Parameter("estop_hold_mechanism", value=True),
+            Parameter("hold_s", value=10.0),
+        ])
+        probe = rclpy.create_node("probe_estop_during_parking")
+        blade_cmds = []
+        belt_cmds = []
+        probe.create_subscription(
+            Float64, "/pusher_c/cmd", lambda msg: blade_cmds.append(msg.data), 10)
+        probe.create_subscription(
+            Float64, "/conveyor/cmd_vel", lambda msg: belt_cmds.append(msg.data), 10)
+        joint_c_pub = probe.create_publisher(
+            JointState, "/diverter_c/joint_state", 10)
+        joint_d_pub = probe.create_publisher(
+            JointState, "/diverter_d/joint_state", 10)
+        classification_pub = probe.create_publisher(
+            ItemClassification, "/item/classification", 10)
+        estop_pub = probe.create_publisher(Bool, "/emergency_stop", 10)
+        _spin_both(node, probe, 0.3)
+        _confirm_parked_startup(node, probe, joint_c_pub, joint_d_pub)
+
+        classification_pub.publish(
+            _classification(node, 43, "C", PUSHER_X_M["C"] - 0.05))
+        _spin_both(node, probe, 0.2)
+        joint_c_pub.publish(JointState(position=[0.72]))
+        joint_d_pub.publish(JointState(position=[0.0]))
+        _spin_both(node, probe, 0.2)
+        estop_pub.publish(Bool(data=True))
+        _spin_both(node, probe, 0.3)
+
+        joint_c_pub.publish(JointState(position=[0.72]))
+        joint_d_pub.publish(JointState(position=[0.0]))
+        _spin_both(node, probe, 0.1)
+        estop_pub.publish(Bool(data=False))
+        _spin_both(node, probe, 0.2)
+        assert blade_cmds[-1] == 0.0
+        joint_c_pub.publish(JointState(position=[0.45]))
+        _spin_both(node, probe, 0.2)
+
+        second_stop = len(belt_cmds)
+        estop_pub.publish(Bool(data=True))
+        _spin_both(node, probe, 0.3)
+
+        assert node.emergency_stopped
+        assert not node.estop_resetting
+        assert blade_cmds[-1] == 0.45, blade_cmds
+        assert not any(value > 0.0 for value in belt_cmds[second_stop:])
+
+        # A second explicit reset starts a new measured recovery.
+        joint_c_pub.publish(JointState(position=[0.45]))
+        joint_d_pub.publish(JointState(position=[0.0]))
+        _spin_both(node, probe, 0.1)
+        estop_pub.publish(Bool(data=False))
+        _spin_both(node, probe, _STROKE_S - 0.1)
+        _spin_with_parked_feedback(
+            node, probe, joint_c_pub, joint_d_pub, 0.8)
+        assert not node.emergency_stopped
+        assert any(value > 0.0 for value in belt_cmds[second_stop:])
 
         probe.destroy_node()
         node.destroy_node()
