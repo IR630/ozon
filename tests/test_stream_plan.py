@@ -35,14 +35,24 @@ def test_same_zone_items_may_ride_nose_to_tail():
 
 
 def test_a_fast_follower_cannot_catch_the_slow_pouf_before_the_camera():
-    """Physical trace: Pouf 0.44 m/s vs Pen 1.00; 1.5 m collapsed to 0.17 m."""
-    assert min_transport_gap_m("pouf") == pytest.approx(2.5)
+    """Worst-case mixed oi1: 4.0 m merged; 5.0 m kept five IDs twice."""
+    assert min_transport_gap_m("pouf") == pytest.approx(5.0)
     assert min_transport_gap_m("box_400x400x300") == 0.0
 
-    with pytest.raises(ValueError, match="measured transport needs 2.5 m"):
-        plan_stream(["pouf:C:0", "pen:C:1.5"], WIDE_STROKE_M)
+    with pytest.raises(ValueError, match="measured transport needs 5.0 m"):
+        plan_stream(["pouf:C:0", "pen:C:4.0"], WIDE_STROKE_M)
 
-    plan_stream(["pouf:C:0", "pen:C:2.5"], WIDE_STROKE_M)
+    plan_stream(["pouf:C:0", "pen:C:5.0"], WIDE_STROKE_M)
+
+
+def test_box_then_pouf_keeps_two_ids_and_clears_the_chute_mouth():
+    """Gazebo replay: 1.0 m merged oi2; 1.5 m routed all three orientations."""
+    assert min_transport_gap_m("box_400x400x300", "pouf") == pytest.approx(1.5)
+
+    with pytest.raises(ValueError, match="pair separation needs 1.5 m"):
+        plan_stream(["box_400x400x300:C:0", "pouf:C:1.0"], WIDE_STROKE_M)
+
+    plan_stream(["box_400x400x300:C:0", "pouf:C:1.5"], WIDE_STROKE_M)
 
 
 def test_a_zone_change_behind_a_fired_blade_is_refused():

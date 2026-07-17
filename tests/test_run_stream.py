@@ -77,6 +77,13 @@ def test_verdict_poll_batches_all_model_poses_in_one_world_snapshot():
     assert "ign model -m" not in poll
 
 
+def test_default_poll_budget_covers_the_slow_six_item_b_tail():
+    """Helmet oi1 was still moving at x=3.906 after 150 laps; 200 reached B."""
+    text = SCRIPT.read_text(encoding="utf-8")
+
+    assert "POLL_ITERS=${RUN_STREAM_POLL_ITERS:-200}" in text
+
+
 def test_early_exit_cleans_up_the_stream_processes():
     """Any failure after launch must reap the feeder, ROS nodes and Gazebo."""
     text = SCRIPT.read_text(encoding="utf-8")

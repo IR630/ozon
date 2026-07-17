@@ -69,10 +69,18 @@ ZONES = ("B", "C", "D")
 # at 1.00 m/s. With a 1.0-1.5 m timed feed gap the Pen catches it before the
 # camera (measured centre distance 0.17 m), the two bodies become one depth mask,
 # and the Pen can reach C only accidentally under the Pouf's still-engaged blade.
-# 2.5 m was the first differential replay with a complete 2/2
-# perception/classifier/controller roster. This is an infeed constraint, not a
-# classifier threshold; a future singulator or belt-physics fix may replace it.
-MIN_GAP_AFTER_SLOW_ITEM_M = {"pouf": 2.5}
+# 2.5 m was the first differential replay with a complete 2/2 roster, but the
+# long stability run later merged Pouf/Pen at 2.5 m. A focused pair separated at
+# 4.0 m, but the worst-case five-item oi1 flow still hid Pen behind a Pouf slowed
+# by its predecessor. At 5.0 m that full flow kept five IDs in two repeats.
+# This is an infeed constraint, not a classifier threshold; a future singulator
+# or belt-physics fix may replace it.
+MIN_GAP_AFTER_SLOW_ITEM_M = {"pouf": 5.0}
+# Pair-specific separation measured with the production tracker and mechanism.
+# At 1.0 m Box400/Pouf oi2 became one roster ID; 1.5 m kept two IDs and routed
+# both bodies in all three seeded orientations. The low-friction collection
+# floor separately keeps the first body from blocking the chute mouth.
+MIN_GAP_BETWEEN_ITEMS_M = {("box_400x400x300", "pouf"): 1.5}
 
 
 def min_gap_between_zones_m(front_zone, back_zone,
@@ -90,9 +98,11 @@ def min_gap_between_zones_m(front_zone, back_zone,
     return (hold_s + retract_s) * belt_speed_m_s
 
 
-def min_transport_gap_m(front_slug):
-    """Measured feed gap that prevents a faster follower catching `front_slug`."""
-    return MIN_GAP_AFTER_SLOW_ITEM_M.get(front_slug, 0.0)
+def min_transport_gap_m(front_slug, back_slug=None):
+    """Measured feed gap that keeps a supported item pair physically distinct."""
+    slow_item_gap_m = MIN_GAP_AFTER_SLOW_ITEM_M.get(front_slug, 0.0)
+    pair_gap_m = MIN_GAP_BETWEEN_ITEMS_M.get((front_slug, back_slug), 0.0)
+    return max(slow_item_gap_m, pair_gap_m)
 
 
 def belt_stroke_m(world_path):
@@ -139,10 +149,18 @@ def plan_stream(specs, stroke_m, belt_speed_m_s=BELT_SPEED_M_S):
         if index > 0:
             front_slug, front_zone, _ = items[-1]
             zone_required_m = min_gap_between_zones_m(front_zone, zone)
-            transport_required_m = min_transport_gap_m(front_slug)
+            slow_item_required_m = min_transport_gap_m(front_slug)
+            pair_required_m = MIN_GAP_BETWEEN_ITEMS_M.get((front_slug, slug), 0.0)
+            transport_required_m = max(slow_item_required_m, pair_required_m)
             required_m = max(zone_required_m, transport_required_m)
             if gap_m < required_m:
                 if transport_required_m > zone_required_m:
+                    if pair_required_m > slow_item_required_m:
+                        raise ValueError(
+                            f"item {index} ({slug} -> {zone}) trails {front_slug} "
+                            f"by {gap_m} m, but measured pair separation needs "
+                            f"{pair_required_m:.1f} m: the camera must keep two IDs "
+                            "and the first body must clear the chute mouth")
                     raise ValueError(
                         f"item {index} ({slug} -> {zone}) trails slow {front_slug} "
                         f"by {gap_m} m, but measured transport needs "

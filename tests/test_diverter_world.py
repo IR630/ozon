@@ -212,3 +212,17 @@ def test_camera_guards_splice_infeed_rails_to_the_parked_blade(side, blade, sign
     # same cross-section as the infeed rails: flush with the belt edge, same height
     assert sign * gpose[1] - gsize[1] / 2 == pytest.approx(BELT_EDGE_Y, abs=0.01)
     assert (gpose[2], gsize[2]) == (ipose[2], isize[2])
+
+
+def test_collection_floors_do_not_stop_goods_at_the_chute_mouth():
+    root = ET.parse(WORLD).getroot()
+
+    for zone in ("zone_c", "zone_d"):
+        floor = root.find(
+            f".//model[@name='{zone}']/link/collision[@name='collision']"
+        )
+        assert floor is not None
+        mu = floor.findtext("surface/friction/ode/mu")
+        mu2 = floor.findtext("surface/friction/ode/mu2")
+        assert mu is not None and float(mu) <= 0.1
+        assert mu2 is not None and float(mu2) <= 0.1

@@ -58,8 +58,10 @@ export RETRACT_CMD=${RETRACT_CMD:-0.0}
 # E-stop freezes the blade where it is instead of parking it (see run_skeleton.sh).
 export ESTOP_HOLD_MECHANISM=${ESTOP_HOLD_MECHANISM:-true}
 # Wall-clock poll budget: a stream outlives a single-item episode (the last item
-# is still crossing the belt long after the first has landed).
-POLL_ITERS=${RUN_STREAM_POLL_ITERS:-150}
+# is still crossing the belt long after the first has landed). Under a slow
+# software-rendered sim Helmet oi1 was still moving at x=3.906 after 150 laps;
+# 200 observed the same body reach terminal B without changing physics.
+POLL_ITERS=${RUN_STREAM_POLL_ITERS:-200}
 LOGDIR=${LOGDIR:-runs/stream_$(date +%Y%m%d_%H%M%S)_seed${SEED}}
 
 SPECS=("$@")
