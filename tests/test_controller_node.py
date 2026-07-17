@@ -772,6 +772,8 @@ def test_positional_cell_latches_when_joint_feedback_becomes_stale():
             JointState, "/diverter_d/joint_state", 10)
         _spin_both(node, probe, 0.3)
         _confirm_parked_startup(node, probe, joint_c_pub, joint_d_pub)
+        _spin_with_parked_feedback(
+            node, probe, joint_c_pub, joint_d_pub, 0.4)
         assert any(value > 0.0 for value in belt_cmds)
 
         # Publish nothing else: the Gazebo->ROS feedback path has disappeared.
