@@ -566,7 +566,9 @@ def test_positional_cell_waits_for_both_joint_feedbacks_before_startup():
     rclpy.init()
     try:
         node = ControllerNode(parameter_overrides=[
-            Parameter("estop_hold_mechanism", value=True)])
+            Parameter("retract_cmd", value=0.0),
+            Parameter("estop_hold_mechanism", value=True),
+        ])
         probe = rclpy.create_node("probe_joint_feedback_interlock")
         belt_cmds = []
         probe.create_subscription(
@@ -602,7 +604,9 @@ def test_positional_cell_sends_zero_before_positive_with_immediate_feedback():
     rclpy.init()
     try:
         node = ControllerNode(parameter_overrides=[
-            Parameter("estop_hold_mechanism", value=True)])
+            Parameter("retract_cmd", value=0.0),
+            Parameter("estop_hold_mechanism", value=True),
+        ])
         probe = rclpy.create_node("probe_immediate_joint_feedback")
         belt_cmds = []
         probe.create_subscription(
@@ -632,7 +636,9 @@ def test_startup_requires_two_postcommand_parked_samples_over_the_stable_interva
     rclpy.init()
     try:
         node = ControllerNode(parameter_overrides=[
-            Parameter("estop_hold_mechanism", value=True)])
+            Parameter("retract_cmd", value=0.0),
+            Parameter("estop_hold_mechanism", value=True),
+        ])
         probe = rclpy.create_node("probe_joint_feedback_stability")
         joint_c_pub = probe.create_publisher(
             JointState, "/diverter_c/joint_state", 10)
@@ -675,7 +681,9 @@ def test_positional_cell_latches_if_controller_starts_with_a_blade_engaged():
     rclpy.init()
     try:
         node = ControllerNode(parameter_overrides=[
-            Parameter("estop_hold_mechanism", value=True)])
+            Parameter("retract_cmd", value=0.0),
+            Parameter("estop_hold_mechanism", value=True),
+        ])
         probe = rclpy.create_node("probe_unparked_startup")
         belt_cmds = []
         blade_cmds = []
@@ -711,7 +719,9 @@ def test_out_of_range_joint_feedback_latches_without_echoing_corrupt_angle():
     rclpy.init()
     try:
         node = ControllerNode(parameter_overrides=[
-            Parameter("estop_hold_mechanism", value=True)])
+            Parameter("retract_cmd", value=0.0),
+            Parameter("estop_hold_mechanism", value=True),
+        ])
         probe = rclpy.create_node("probe_joint_feedback_range")
         blade_cmds = []
         probe.create_subscription(
@@ -749,7 +759,9 @@ def test_positional_cell_latches_when_joint_feedback_becomes_stale():
     rclpy.init()
     try:
         node = ControllerNode(parameter_overrides=[
-            Parameter("estop_hold_mechanism", value=True)])
+            Parameter("retract_cmd", value=0.0),
+            Parameter("estop_hold_mechanism", value=True),
+        ])
         probe = rclpy.create_node("probe_stale_joint_feedback")
         belt_cmds = []
         probe.create_subscription(
@@ -993,9 +1005,9 @@ def test_reset_parks_an_engaged_diverter_before_restarting_the_belt():
         _spin_both(node, probe, _STROKE_S + 0.3)
         assert node.emergency_stopped
         assert node.estop_resetting
-        timer_count_while_waiting = len(node.timers)
+        timer_count_while_waiting = len(list(node.timers))
         _spin_both(node, probe, 0.5)
-        assert len(node.timers) == timer_count_while_waiting
+        assert len(list(node.timers)) == timer_count_while_waiting
         assert not any(
             kind == "belt" and value > 0.0
             for _, kind, value in events[reset_event:]
