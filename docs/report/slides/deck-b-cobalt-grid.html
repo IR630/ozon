@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Роботизированная пресортировка товаров — трек 3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,400&family=Hanken+Grotesk:wght@400;500;600;700&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+/* ===========================================
+   THEME TOKENS — Cobalt Grid
+   STRICTLY TWO COLOURS: cream paper + cobalt ink.
+   There is no accent colour. Emphasis comes from size,
+   from switching serif↔sans, or from opacity — never
+   from introducing a third hue. Adding one breaks the
+   risograph identity this system is built on.
+   =========================================== */
+:root {
+  --stage-bg:#d8d2c2;
+  --paper:#F0EBDE;
+  --paper-2:#E6E0CE;
+  --ink:#1F2BE0;
+  --ink-soft:#5560E5;
+  --grid:rgba(31,43,224,.10);
+  --ink-faint:rgba(31,43,224,.18);
+  --slide-bg:var(--paper);
+
+  --font-display:'Newsreader', Georgia, serif;
+  --font-body:'Hanken Grotesk', sans-serif;
+  --font-mono:'DM Mono', ui-monospace, monospace;
+
+  --edge:80px;
+  --ease:cubic-bezier(.2,.8,.2,1);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+
+/* ===========================================
+   FIXED 16:9 STAGE — MANDATORY BASE STYLES
+   =========================================== */
+html, body { width:100%; height:100%; margin:0; overflow:hidden; background:var(--stage-bg,#000); }
+.deck-viewport { position:fixed; inset:0; overflow:hidden; background:var(--stage-bg,#000); }
+.deck-stage { position:absolute; left:0; top:0; width:1920px; height:1080px; overflow:hidden; transform-origin:0 0; background:var(--slide-bg,#fff); }
+.slide { position:absolute; inset:0; width:1920px; height:1080px; overflow:hidden; display:block; visibility:hidden; opacity:0; pointer-events:none; background:var(--slide-bg,#fff); }
+.slide.active, .slide.visible { visibility:visible; opacity:1; pointer-events:auto; z-index:1; }
+img, video, canvas, svg { max-width:100%; max-height:100%; }
+.deck-controls { position:fixed; left:50%; bottom:22px; transform:translateX(-50%); z-index:1000; }
+@media print {
+  html, body { width:1920px; height:auto; overflow:visible; background:#fff; }
+  .deck-viewport { position:static; overflow:visible; background:#fff; }
+  .deck-stage { position:static; width:auto; height:auto; transform:none !important; background:none; }
+  .slide { position:relative; display:block !important; visibility:visible !important; opacity:1 !important; pointer-events:auto !important; width:1920px; height:1080px; break-after:page; page-break-after:always; }
+  .slide:last-child { break-after:auto; page-break-after:auto; }
+  .deck-controls { display:none !important; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration:.01ms !important; transition-duration:.2s !important; } }
+
+.slide { font-family:var(--font-body); color:var(--ink); }
+
+/* ===========================================
+   PERMANENT GRAPH-PAPER GRID
+   Not optional decoration — it is the canvas tone.
+   Never disable this per-slide.
+   =========================================== */
+.slide::before {
+  content:''; position:absolute; inset:0; pointer-events:none; z-index:1;
+  background-image:
+    linear-gradient(to right, var(--grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
+  background-size:44px 44px;
+}
+.slide > * { position:relative; z-index:2; }
+
+/* ===========================================
+   UNIVERSAL CHROME FRAME — hairlines, page num, nav hint
+   Every slide inherits all four pieces.
+   =========================================== */
+.hairline { position:absolute; left:var(--edge); right:var(--edge); height:1.5px; background:var(--ink); transform:scaleX(0); transform-origin:0 50%; transition:transform .9s var(--ease); }
+.slide.visible .hairline { transform:scaleX(1); }
+.hairline.top { top:28px; }
+.hairline.bot { bottom:24px; transition-delay:.12s; }
+.pagenum { position:absolute; right:var(--edge); bottom:66px; font-family:var(--font-mono); font-size:17px; letter-spacing:.06em; color:var(--ink); }
+.nav-hint { position:absolute; left:var(--edge); bottom:66px; font-family:var(--font-mono); font-size:16px; letter-spacing:.08em; color:var(--ink); opacity:.4; }
+.topmeta { position:absolute; left:var(--edge); right:var(--edge); top:58px; display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:17px; letter-spacing:.06em; color:var(--ink); }
+
+/* ===========================================
+   REVEAL SYSTEM
+   =========================================== */
+.reveal { opacity:0; transform:translateY(26px); transition:opacity .7s var(--ease), transform .7s var(--ease); }
+.slide.visible .reveal { opacity:1; transform:none; }
+.d1{transition-delay:.14s}.d2{transition-delay:.22s}.d3{transition-delay:.30s}
+.d4{transition-delay:.38s}.d5{transition-delay:.46s}.d6{transition-delay:.54s}
+.d7{transition-delay:.62s}.d8{transition-delay:.70s}
+
+/* ===========================================
+   TYPE ROLES
+   Newsreader is weight 400 ALWAYS — the system relies on
+   size for hierarchy, never on weight. Bold serif does not
+   exist here. Sizes translated from the source's viewport
+   proportions into 1920x1080 stage coordinates, then lifted
+   for projector legibility (body 24px, not the source's 15px).
+   =========================================== */
+h1 { font-family:var(--font-display); font-weight:400; font-size:132px; line-height:.94; letter-spacing:-.008em; color:var(--ink); }
+h1 em { font-style:italic; font-weight:300; }
+h2 { font-family:var(--font-display); font-weight:400; font-size:88px; line-height:.95; letter-spacing:-.005em; color:var(--ink); }
+h3 { font-family:var(--font-display); font-weight:400; font-size:40px; line-height:1.05; color:var(--ink); }
+.micro { font-family:var(--font-body); font-weight:600; font-size:17px; letter-spacing:.18em; text-transform:uppercase; color:var(--ink); }
+.ed-callout { font-family:var(--font-display); font-weight:400; font-size:46px; line-height:1.16; color:var(--ink); }
+.body-txt { font-size:24px; font-weight:400; line-height:1.5; color:var(--ink); }
+.body-txt b { font-weight:700; }
+.mono-tag { font-family:var(--font-mono); font-size:19px; letter-spacing:.04em; color:var(--ink); }
+
+/* ===========================================
+   TOPBAR — the universal section header
+   Newsreader headline left, mono lab-tag right, 1.5px rule under.
+   =========================================== */
+.topbar { display:flex; justify-content:space-between; align-items:flex-end; border-bottom:1.5px solid var(--ink); padding-bottom:22px; }
+.topbar .kicker { display:block; margin-bottom:16px; }
+
+/* ===========================================
+   FRAME — content container inside the chrome
+   =========================================== */
+.frame { position:absolute; left:var(--edge); right:var(--edge); top:130px; bottom:150px; }
+
+/* --- pixel-glitch column: the signature decoration --- */
+.glitch { position:absolute; pointer-events:none; z-index:3; }
+.glitch div { height:19px; background:var(--ink); margin-bottom:8px; transform:scaleX(0); transform-origin:0 50%; transition:transform .55s var(--ease); }
+.slide.visible .glitch div:nth-child(1){transform:scaleX(1);transition-delay:.60s}
+.slide.visible .glitch div:nth-child(2){transform:scaleX(1);transition-delay:.66s}
+.slide.visible .glitch div:nth-child(3){transform:scaleX(1);transition-delay:.72s}
+.slide.visible .glitch div:nth-child(4){transform:scaleX(1);transition-delay:.78s}
+.slide.visible .glitch div:nth-child(5){transform:scaleX(1);transition-delay:.84s}
+.slide.visible .glitch div:nth-child(6){transform:scaleX(1);transition-delay:.90s}
+.slide.visible .glitch div:nth-child(7){transform:scaleX(1);transition-delay:.96s}
+.glitch div:nth-child(1){width:100%}   .glitch div:nth-child(2){width:75%;opacity:.82}
+.glitch div:nth-child(3){width:92%;opacity:.64} .glitch div:nth-child(4){width:55%;opacity:.5}
+.glitch div:nth-child(5){width:83%;opacity:.36} .glitch div:nth-child(6){width:38%;opacity:.26}
+.glitch div:nth-child(7){width:66%;opacity:.16}
+
+/* --- QR-style 8x8 patch; paper fill keeps it readable over the glitch --- */
+.qr { display:grid; grid-template-columns:repeat(8,15px); grid-auto-rows:15px; gap:2px; background:var(--paper); padding:4px; box-shadow:0 0 0 1.5px var(--paper); z-index:4; }
+.qr i { background:var(--ink); opacity:.14; }
+.qr i.on { opacity:1; }
+
+/* ===========================================
+   SLIDE 1 — COVER
+   =========================================== */
+.cover-h1 { position:absolute; left:var(--edge); top:172px; width:1180px; }
+.cover-sub { position:absolute; left:var(--edge); top:552px; width:1060px; }
+.cover-index { position:absolute; left:var(--edge); bottom:126px; width:1180px; }
+.cover-index .row { display:grid; grid-template-columns:66px 1fr auto; gap:30px; align-items:baseline; padding:15px 0; border-bottom:1px solid var(--ink-faint); font-family:var(--font-mono); font-size:21px; letter-spacing:.04em; }
+.cover-index .row:first-child { border-top:1px solid var(--ink-faint); }
+.cover-index .row .nm { font-family:var(--font-body); font-weight:400; font-size:22px; letter-spacing:0; text-transform:none; }
+.cover-glitch { right:118px; top:190px; width:230px; }
+.cover-qr { position:absolute; right:118px; bottom:148px; }
+.kmark { position:absolute; right:118px; top:546px; width:230px; height:230px; }
+.kmark circle, .kmark rect, .kmark line { fill:none; stroke:var(--ink); }
+
+/* ===========================================
+   COMPONENT: index list (2 columns of rows)
+   =========================================== */
+.index-grid { display:grid; grid-template-columns:1fr 1fr; gap:0 64px; margin-top:38px; }
+.index-grid .irow { display:grid; grid-template-columns:56px 1fr; gap:24px; padding:26px 0; border-bottom:1px solid var(--ink-faint); }
+.index-grid .irow .num { font-family:var(--font-mono); font-size:19px; letter-spacing:.04em; }
+.index-grid .irow .rh { font-family:var(--font-display); font-weight:400; font-size:34px; line-height:1.05; }
+.index-grid .irow .rb { margin-top:10px; font-size:21px; line-height:1.45; }
+
+/* ===========================================
+   COMPONENT: ledger table
+   =========================================== */
+.ledger { margin-top:36px; }
+.ledger .row { display:grid; grid-template-columns:76px 300px 1fr 130px; gap:26px; align-items:baseline; padding:19px 0; border-bottom:1px solid var(--ink-faint); font-size:22px; }
+.ledger .row .nt { font-family:var(--font-mono); font-size:19px; letter-spacing:.04em; }
+.ledger .row .nm { font-family:var(--font-display); font-weight:400; font-size:30px; }
+.ledger .row .dl { text-align:right; font-family:var(--font-mono); font-size:22px; letter-spacing:.04em; }
+.ledger .hdr { border-bottom:1.5px solid var(--ink); font-family:var(--font-body); font-weight:600; font-size:15px; letter-spacing:.18em; text-transform:uppercase; padding-bottom:13px; }
+
+/* ===========================================
+   COMPONENT: pixel-stack bar chart
+   Data rendered as stacks of grid units — cobalt on / 10% off.
+   =========================================== */
+.stacks { display:flex; align-items:flex-end; gap:40px; height:300px; border-bottom:1.5px solid var(--ink); padding-bottom:0; }
+.stacks .stack { flex:1; display:flex; flex-direction:column-reverse; gap:3px; }
+.stacks .stack i { display:block; height:15px; background:var(--grid); }
+.stacks .stack i.on { background:var(--ink); }
+.stack-ticks { display:flex; gap:40px; margin-top:16px; }
+.stack-ticks div { flex:1; font-family:var(--font-mono); font-size:17px; letter-spacing:.04em; }
+.stack-ticks div span { display:block; font-family:var(--font-body); font-size:15px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; opacity:.55; margin-top:7px; }
+
+/* ===========================================
+   COMPONENT: two-column prose
+   =========================================== */
+.cols { display:flex; gap:64px; margin-top:38px; }
+.cols .col { flex:1; }
+.cols .col .ch { border-bottom:1.5px solid var(--ink); padding-bottom:16px; margin-bottom:8px; }
+.bullets li { list-style:none; padding:20px 0; border-bottom:1px solid var(--ink-faint); font-size:23px; line-height:1.45; }
+.bullets li b { font-weight:700; }
+.bullets li .lead { font-family:var(--font-mono); font-size:18px; letter-spacing:.04em; display:block; margin-bottom:8px; opacity:.62; }
+
+/* ===========================================
+   SLIDE 6 — VIDEO
+   =========================================== */
+/* The clip is revealed only once it actually decodes. docs/report/video/ is
+   gitignored and the clips are currently mp4v-encoded, which browsers refuse —
+   so without this the slide would silently render an empty panel. */
+.video-wrap { position:absolute; left:0; top:180px; width:1130px; height:636px; border:1.5px solid var(--ink); background:var(--paper-2); }
+.video-wrap video { width:100%; height:100%; object-fit:cover; display:block; opacity:0; transition:opacity .4s ease; }
+.video-wrap.ready video { opacity:1; }
+.video-wrap.ready .vfallback { opacity:0; }
+.vfallback { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:60px; font-family:var(--font-mono); font-size:19px; line-height:1.8; color:var(--ink); opacity:.62; transition:opacity .3s ease; }
+.vfallback .big { font-size:26px; letter-spacing:.06em; margin-bottom:18px; }
+.video-side { position:absolute; right:0; top:180px; width:560px; }
+.video-side .cue { padding:24px 0; border-bottom:1px solid var(--ink-faint); }
+.video-side .cue:first-child { border-top:1.5px solid var(--ink); }
+.video-side .cue .t { font-family:var(--font-body); font-weight:600; font-size:15px; letter-spacing:.18em; text-transform:uppercase; }
+.video-side .cue .x { margin-top:12px; font-size:23px; line-height:1.42; }
+.video-side .cue .x b { font-weight:700; }
+
+/* --- closing --- */
+.colophon-h { position:absolute; right:0; top:220px; width:1240px; text-align:right; }
+.ugt-line { position:absolute; right:0; bottom:0; text-align:right; }
+.ugt-line .v { font-family:var(--font-display); font-weight:400; font-size:76px; letter-spacing:-.01em; line-height:1; }
+.ugt-line .k { margin-top:14px; font-family:var(--font-body); font-weight:600; font-size:16px; letter-spacing:.18em; text-transform:uppercase; }
+
+/* ===========================================
+   PRESENTER CHROME
+   =========================================== */
+.deck-controls { display:flex; align-items:center; gap:18px; font-family:var(--font-mono); font-size:13px; letter-spacing:.1em; color:rgba(31,43,224,.6); }
+.deck-controls button { background:var(--paper); border:1px solid rgba(31,43,224,.4); color:inherit; font:inherit; padding:7px 14px; cursor:pointer; }
+.deck-controls button:hover { border-color:var(--ink); color:var(--ink); }
+.progress { position:fixed; left:0; top:0; height:2px; background:var(--ink); z-index:1001; transition:width .35s var(--ease); }
+
+.edit-hotzone { position:fixed; top:0; left:0; width:80px; height:80px; z-index:10000; cursor:pointer; }
+.edit-toggle { position:fixed; top:18px; left:18px; z-index:10001; opacity:0; pointer-events:none; transition:opacity .3s ease; background:var(--paper); color:var(--ink); border:1px solid rgba(31,43,224,.4); font-size:18px; padding:8px 12px; cursor:pointer; }
+.edit-toggle.show, .edit-toggle.active { opacity:1; pointer-events:auto; }
+.edit-toggle.active { border-color:var(--ink); }
+[contenteditable="true"] { outline:1px dashed rgba(31,43,224,.6); outline-offset:5px; }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+<div class="edit-hotzone"></div>
+<button class="edit-toggle" id="editToggle" title="Режим правки (E)">✏️</button>
+
+<div class="deck-viewport">
+<main class="deck-stage" id="deckStage">
+
+  <!-- ===== SLIDE 1 — COVER ===== -->
+  <section class="slide title-slide active visible">
+    <div class="hairline top"></div>
+    <div class="topmeta"><span>Хакатон Ozon — трек 3</span><span>ИИ в массы</span><span>2026</span></div>
+
+    <h1 class="cover-h1 reveal d1">Роботизированная <em>пресортировка</em> товаров</h1>
+    <p class="cover-sub ed-callout reveal d3">
+      Depth-камера над конвейером 1 м/с: система видит товар, относит его
+      к одной из трёх категорий и физически раскладывает по зонам — единый контур.
+    </p>
+
+    <div class="glitch cover-glitch"><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+
+    <svg class="kmark reveal d5" viewBox="0 0 230 230" aria-hidden="true">
+      <!-- Square of side 160: inscribed r=80, circumscribed R=80*sqrt(2)=113. -->
+      <rect x="35" y="35" width="160" height="160" stroke-width="1.5" opacity=".3"/>
+      <circle cx="115" cy="115" r="113" stroke-width="1.5" opacity=".4"/>
+      <circle cx="115" cy="115" r="80" stroke-width="2.5"/>
+      <line x1="115" y1="115" x2="195" y2="115" stroke-width="1.5" opacity=".45"/>
+    </svg>
+
+    <div class="cover-index reveal d5">
+      <div class="row"><span>B</span><span class="nm">Подходит для основного сортировщика</span><span>33/33</span></div>
+      <div class="row"><span>C</span><span class="nm">Не проходит по габаритам</span><span>450×320×320 мм</span></div>
+      <div class="row"><span>D</span><span class="nm">Круг в сечении — доупаковка</span><span>K &gt; 0,8</span></div>
+    </div>
+
+    <div class="qr cover-qr" data-qr></div>
+    <div class="nav-hint">← → навигация</div>
+    <div class="pagenum">01</div>
+    <div class="hairline bot"></div>
+  </section>
+
+  <!-- ===== SLIDE 2 — TASK & APPROACH ===== -->
+  <section class="slide">
+    <div class="hairline top"></div>
+    <div class="topmeta"><span>Задача и подход</span><span>ИИ в массы</span></div>
+    <div class="frame">
+      <div class="topbar reveal d1">
+        <div><span class="micro kicker">Что происходит на участке</span><h2>Единый контур</h2></div>
+        <span class="mono-tag">ROS 2 Humble · Gazebo Fortress</span>
+      </div>
+      <div class="index-grid">
+        <div class="irow reveal d2"><span class="num">01</span><div><div class="rh">Подача</div><div class="rb">Лента 1 м/с, остановки не предусмотрены. Поток последовательный.</div></div></div>
+        <div class="irow reveal d3"><span class="num">02</span><div><div class="rh">Depth-камера</div><div class="rb">Читается только геометрия глубины. RGB не используется вовсе.</div></div></div>
+        <div class="irow reveal d4"><span class="num">03</span><div><div class="rh">Перцепция</div><div class="rb">item_id, габариты по 3D body-OBB, коэффициент K по проекциям.</div></div></div>
+        <div class="irow reveal d5"><span class="num">04</span><div><div class="rh">Классификатор</div><div class="rb">Порядок жёсткий: сначала габариты, затем форма. B / C / D.</div></div></div>
+        <div class="irow reveal d6"><span class="num">05</span><div><div class="rh">Контроллер</div><div class="rb">Упреждение 0,5 с: стенка формируется до подхода товара.</div></div></div>
+        <div class="irow reveal d7"><span class="num">06</span><div><div class="rh">Шибер и зона</div><div class="rb">Склиз, приземление, возврат механизма в исходную позицию.</div></div></div>
+      </div>
+      <p class="body-txt reveal d8" style="margin-top:34px; max-width:1500px">
+        Ошибка на любом звене обесценивает всё решение — поэтому контур замкнут целиком.
+        Ядро перцепции при этом тестируется <b>отдельно от ROS</b>, а механизм — это
+        сменный мир, а не ветка кода.
+      </p>
+    </div>
+    <div class="nav-hint">← → навигация</div>
+    <div class="pagenum">02</div>
+    <div class="hairline bot"></div>
+  </section>
+
+  <!-- ===== SLIDE 3 — CLASSIFICATION ===== -->
+  <section class="slide">
+    <div class="hairline top"></div>
+    <div class="topmeta"><span>Логика классификации</span><span>Габариты приоритетнее формы</span></div>
+    <div class="frame">
+      <div class="topbar reveal d1">
+        <div><span class="micro kicker">Три взаимоисключающие категории</span><h2>Сначала габариты, потом форма</h2></div>
+        <span class="mono-tag">census 33/33 ×3</span>
+      </div>
+      <div class="ledger reveal d2">
+        <div class="row hdr"><span>№</span><span>Пограничный случай</span><span>Почему это ловушка</span><span style="text-align:right">Зона</span></div>
+        <div class="row"><span class="nt">001</span><span class="nm">Цилиндр</span><span>K = 0,74 — выглядит круглым, но стяжки ломают сечение</span><span class="dl">→ B</span></div>
+        <div class="row"><span class="nt">002</span><span class="nm">Шлем</span><span>K = 0,78 — округлый силуэт, но строго ниже порога 0,8</span><span class="dl">→ B</span></div>
+        <div class="row"><span class="nt">003</span><span class="nm">Ручка</span><span>9 мм — не дотягивает до минимума 10 мм по габаритам</span><span class="dl">→ C</span></div>
+        <div class="row"><span class="nt">004</span><span class="nm">Пуфик</span><span>489 мм — выходит за 450 мм, габариты бьют форму</span><span class="dl">→ C</span></div>
+        <div class="row"><span class="nt">005</span><span class="nm">Бутылка лёжа</span><span>сверху силуэт не круглый — круг виден в торцевой проекции</span><span class="dl">→ D</span></div>
+      </div>
+      <p class="body-txt reveal d5" style="margin-top:32px; max-width:1500px">
+        Порог читается строго: при <b>K = 0,8</b> объект НЕ относится к круглым.
+        K считается по проекциям — максимум из верхнего силуэта и восстановленной
+        торцевой, что и закрывает формулировку «круг в любом сечении».
+      </p>
+    </div>
+    <div class="nav-hint">← → навигация</div>
+    <div class="pagenum">03</div>
+    <div class="hairline bot"></div>
+  </section>
+
+  <!-- ===== SLIDE 4 — ROUTING ===== -->
+  <section class="slide">
+    <div class="hairline top"></div>
+    <div class="topmeta"><span>Маршрутизация A / B / C / D</span><span>ИИ в массы</span></div>
+    <div class="frame">
+      <div class="topbar reveal d1">
+        <div><span class="micro kicker">Как класс становится движением</span><h2>От точки A в три потока</h2></div>
+        <span class="mono-tag">решение за 0,030 с</span>
+      </div>
+      <div class="index-grid" style="grid-template-columns:1fr 1fr 1fr; gap:0 56px">
+        <div class="irow reveal d2"><span class="num">B</span><div><div class="rh">Основной сортировщик</div><div class="rb">Товар в габаритах и не круглый — идёт дальше как есть, без вмешательства.</div></div></div>
+        <div class="irow reveal d3"><span class="num">C</span><div><div class="rh">Негабарит</div><div class="rb">Вне пределов 10³ … 450×320×320 мм. Габариты имеют приоритет над формой.</div></div></div>
+        <div class="irow reveal d4"><span class="num">D</span><div><div class="rh">Доупаковка</div><div class="rb">Круг в сечении: отдельный поток обработки перед подачей в сортировщик.</div></div></div>
+      </div>
+      <div class="cols" style="margin-top:44px">
+        <div class="col reveal d5">
+          <div class="ch"><span class="micro">Проверка переноса</span></div>
+          <p class="body-txt" style="margin-top:20px">
+            <b>20/20</b> на процедурно сгенерированных формах вокруг порога K = 0,8
+            и пределов 450/320 с обеих сторон. Это не запоминание одиннадцати STL —
+            это работающее правило.
+          </p>
+        </div>
+        <div class="col reveal d6">
+          <div class="ch"><span class="micro">Цветонезависимость</span></div>
+          <p class="body-txt" style="margin-top:20px">
+            Классификация читает только глубину, поэтому окраска товара
+            не влияет на результат <b>по построению</b>. Организаторы на QA 18.07
+            подтвердили: палитра произвольна.
+          </p>
+        </div>
+      </div>
+    </div>
+    <div class="nav-hint">← → навигация</div>
+    <div class="pagenum">04</div>
+    <div class="hairline bot"></div>
+  </section>
+
+  <!-- ===== SLIDE 5 — ACTUATOR ===== -->
+  <section class="slide">
+    <div class="hairline top"></div>
+    <div class="topmeta"><span>Исполнительная часть</span><span>Выбор доказан числом</span></div>
+    <div class="frame">
+      <div class="topbar reveal d1">
+        <div><span class="micro kicker">Механизм маршрутизации</span><h2>Шибер, а не толкатель</h2></div>
+        <span class="mono-tag">≥1,3× бережнее</span>
+      </div>
+      <div class="cols">
+        <div class="col reveal d2">
+          <div class="ch"><span class="micro">Почему шибер</span></div>
+          <ul class="bullets">
+            <li><span class="lead">скорость</span>Товар уходит <b>со скоростью ленты</b> — бокового удара 2,5 м/с не возникает вовсе.</li>
+            <li><span class="lead">бережность</span>На тяжёлом коробе шибер <b>≥1,3× мягче</b> по пиковому ускорению, точечно до <b>3×</b>.</li>
+            <li><span class="lead">геометрия</span>Движущаяся лента <b>сама сводит</b> товар вдоль стенки к кромке.</li>
+          </ul>
+        </div>
+        <div class="col reveal d4">
+          <div class="ch"><span class="micro">Полный цикл</span></div>
+          <ul class="bullets">
+            <li><span class="lead">упреждение</span>Сигнал классификатора → стенка формируется <b>за 0,5 с</b> до входа товара.</li>
+            <li><span class="lead">планирование</span>Смена зоны требует расчётных <b>3,1 м «воздуха»</b>; опасный поток отвергается до старта Gazebo.</li>
+            <li><span class="lead">безопасность</span>Склиз → зона → возврат. <b>E-stop</b> с восстановлением, разделение рабочих и безопасных зон.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="nav-hint">← → навигация</div>
+    <div class="pagenum">05</div>
+    <div class="hairline bot"></div>
+  </section>
+
+  <!-- ===== SLIDE 6 — VIDEO ===== -->
+  <section class="slide">
+    <div class="hairline top"></div>
+    <div class="topmeta"><span>Демонстрация работы</span><span>0 FAIL / 0 JAM</span></div>
+    <div class="frame">
+      <div class="topbar reveal d1" style="border-bottom:none; padding-bottom:0">
+        <div><h2>Как это работает вживую</h2></div>
+        <span class="mono-tag">hero_stream_mixed_cd.mp4</span>
+      </div>
+      <div class="video-wrap reveal d2">
+        <div class="vfallback">
+          <div class="big">▶ hero_stream_mixed_cd.mp4</div>
+          docs/report/video/ — каталог вне репозитория<br>
+          клип подхватится автоматически, если он на месте и в H.264
+        </div>
+        <video src="../video/hero_stream_mixed_cd.mp4" muted loop playsinline preload="metadata"></video>
+      </div>
+      <div class="video-side">
+        <div class="cue reveal d3"><div class="t">Что происходит в кадре</div>
+          <div class="x">Камера увидела → классифицировала → шибер сформировал стенку → товар ушёл в зону. <b>5 из 5</b> непрерывной сортировки.</div></div>
+        <div class="cue reveal d4"><div class="t">Второй клип</div>
+          <div class="x"><b>Цилиндр проходит нетронутым в B.</b> Визуальное доказательство K-правила: округлый на вид товар не круглый по критерию.</div></div>
+        <div class="cue reveal d5"><div class="t">В резерве</div>
+          <div class="x">bottle → D, box400 → C, plate → D, helmet → B — по запросу жюри.</div></div>
+      </div>
+    </div>
+    <div class="nav-hint">пробел — пуск и пауза клипа</div>
+    <div class="pagenum">06</div>
+    <div class="hairline bot"></div>
+  </section>
+
+  <!-- ===== SLIDE 7 — PROOF (pixel-stack chart) ===== -->
+  <section class="slide">
+    <div class="hairline top"></div>
+    <div class="topmeta"><span>Подтверждение работоспособности</span><span>Каждая цифра воспроизводима</span></div>
+    <div class="frame">
+      <div class="topbar reveal d1">
+        <div><span class="micro kicker">Что доказано числом</span><h2>Честные цифры</h2></div>
+        <span class="mono-tag">одна команда + seed</span>
+      </div>
+      <div class="reveal d2" style="margin-top:40px">
+        <div class="stacks" data-stacks>
+          <div class="stack" data-on="12" data-total="12"></div>
+          <div class="stack" data-on="12" data-total="12"></div>
+          <div class="stack" data-on="10" data-total="12"></div>
+          <div class="stack" data-on="9"  data-total="12"></div>
+          <div class="stack" data-on="12" data-total="12"></div>
+          <div class="stack" data-on="12" data-total="12"></div>
+        </div>
+        <div class="stack-ticks">
+          <div>33/33 ×3<span>census</span></div>
+          <div>6/6<span>all-pass поток</span></div>
+          <div>10 шт/мин<span>sustained медиана</span></div>
+          <div>0,030 с<span>камера → решение</span></div>
+          <div>5 из 5<span>расчёт ↔ симуляция</span></div>
+          <div>4 × 4<span>УГТ по двум осям</span></div>
+        </div>
+      </div>
+      <p class="body-txt reveal d5" style="margin-top:44px; max-width:1560px">
+        Заявка по производительности — <b>10 шт/мин sustained</b> на полной матрице,
+        а не 18: восемнадцать было пиковым коротким потоком и за устойчивую цифру
+        не выдаётся. Каждая величина в таблице повторяется одной командой и одним seed.
+      </p>
+    </div>
+    <div class="nav-hint">← → навигация</div>
+    <div class="pagenum">07</div>
+    <div class="hairline bot"></div>
+  </section>
+
+  <!-- ===== SLIDE 8 — TOOLS ===== -->
+  <section class="slide">
+    <div class="hairline top"></div>
+    <div class="topmeta"><span>Инструменты и причины выбора</span><span>ИИ в массы</span></div>
+    <div class="frame">
+      <div class="topbar reveal d1">
+        <div><span class="micro kicker">Стек и воспроизводимость</span><h2>Простое и работающее</h2></div>
+        <span class="mono-tag">check_clean_deploy.sh</span>
+      </div>
+      <div class="cols">
+        <div class="col reveal d2">
+          <div class="ch"><span class="micro">Стек и обоснование</span></div>
+          <ul class="bullets">
+            <li><span class="lead">среда</span><b>Python 3.11 · ROS 2 Humble · Gazebo Fortress</b> — из разрешённого списка, разворачивается на стенде организаторов.</li>
+            <li><span class="lead">решение</span><b>Классический CV, без нейросети.</b> Усложнение обязано побить бейзлайн числом — бить нечего, классификация уже 33/33.</li>
+            <li><span class="lead">математика</span><b>NumPy / SciPy</b> — геометрия сечений и K считаются векторно, без самописных решателей.</li>
+          </ul>
+        </div>
+        <div class="col reveal d4">
+          <div class="ch"><span class="micro">Проверяемость у вас</span></div>
+          <ul class="bullets">
+            <li><span class="lead">развёртывание</span><b>Одна команда:</b> чистый checkout → пиннутый Docker → headless CPU e2e.</li>
+            <li><span class="lead">детерминизм</span><b>Один seed</b> задаёт эпизод однозначно: тройка (seed, item_index, orient_index).</li>
+            <li><span class="lead">эксперимент</span>Эксперт <b>меняет входные параметры</b> и наблюдает поведение — сценарии проверки описаны в README.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="nav-hint">← → навигация</div>
+    <div class="pagenum">08</div>
+    <div class="hairline bot"></div>
+  </section>
+
+  <!-- ===== SLIDE 9 — LIMITS & COLOPHON ===== -->
+  <section class="slide">
+    <div class="hairline top"></div>
+    <div class="topmeta"><span>Ограничения и развитие</span><span>Честный разбор</span></div>
+    <div class="glitch" style="left:80px; top:180px; width:200px"><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+    <div class="frame" style="left:340px">
+      <div class="topbar reveal d1">
+        <div><span class="micro kicker">Где решение упрощает мир</span><h2>Что мы знаем про свои границы</h2></div>
+      </div>
+      <div class="cols">
+        <div class="col reveal d2">
+          <div class="ch"><span class="micro">Названо прямо</span></div>
+          <ul class="bullets">
+            <li><b>10 шт/мин — sustained</b>, 18 — пиковый короткий поток.</li>
+            <li>Плотный <b>same-zone</b> поток деградирует: насыщается ход ленты.</li>
+            <li>Физика — <b>инженерные допущения</b>: массы, ODE-трение, rigid-body.</li>
+            <li>Прототип — <b>осознанный NO-GO</b>, симуляция по условию достаточна.</li>
+          </ul>
+        </div>
+        <div class="col reveal d4">
+          <div class="ch"><span class="micro">Что делаем следующим</span></div>
+          <ul class="bullets">
+            <li><b>DOE по физике</b> перед изготовлением — развести допущения и реальность до металла.</li>
+            <li><b>Склиз и рампа</b> для мягкости приземления в зоне.</li>
+            <li>Поток <b>«не уверен»</b> на низкой confidence вместо тихо неверного ответа.</li>
+          </ul>
+          <div class="ugt-line reveal d6" style="position:relative; margin-top:40px">
+            <div class="v">CV 4 × Исполнение 4</div>
+            <div class="k">Уровень готовности решения</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="nav-hint">Спасибо — готовы к вопросам</div>
+    <div class="pagenum">09</div>
+    <div class="hairline bot"></div>
+  </section>
+
+</main>
+</div>
+
+<nav class="deck-controls" aria-label="Навигация по слайдам">
+  <button id="prevBtn" aria-label="Предыдущий слайд">←</button>
+  <span id="counter">1 / 9</span>
+  <button id="nextBtn" aria-label="Следующий слайд">→</button>
+</nav>
+
+<script>
+/* ===========================================
+   DECORATION BUILDERS
+   QR patches and pixel-stack bars are hand-specified
+   patterns, built once at load — no randomness, so the
+   deck renders identically every time.
+   =========================================== */
+const QR_ON = [0,2,3,5,8,9,12,14,17,18,19,22,25,27,28,30,33,35,36,38,41,43,44,47,49,50,53,55,58,60,61,63];
+document.querySelectorAll('[data-qr]').forEach(el => {
+  for (let i = 0; i < 64; i++) {
+    const cell = document.createElement('i');
+    if (QR_ON.includes(i)) cell.className = 'on';
+    el.appendChild(cell);
+  }
+});
+
+/* Bar values come from data-on / data-total on each stack. */
+document.querySelectorAll('[data-stacks] .stack').forEach(stack => {
+  const on = +stack.dataset.on, total = +stack.dataset.total;
+  for (let i = 0; i < total; i++) {
+    const cell = document.createElement('i');
+    if (i < on) cell.className = 'on';
+    stack.appendChild(cell);
+  }
+});
+
+/* ===========================================
+   SLIDE PRESENTATION CONTROLLER
+   =========================================== */
+class SlidePresentation {
+  constructor() {
+    this.slides   = Array.from(document.querySelectorAll('.slide'));
+    this.stage    = document.getElementById('deckStage');
+    this.counter  = document.getElementById('counter');
+    this.progress = document.getElementById('progress');
+    this.current  = 0;
+    this.setupStageScale();
+    this.setupKeyboardNav();
+    this.setupTouchNav();
+    this.setupWheelNav();
+    document.getElementById('prevBtn').addEventListener('click', () => this.prev());
+    document.getElementById('nextBtn').addEventListener('click', () => this.next());
+    this.showSlide(0);
+  }
+  setupStageScale() {
+    const scale = () => {
+      const f = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+      const x = (window.innerWidth - 1920 * f) / 2, y = (window.innerHeight - 1080 * f) / 2;
+      this.stage.style.transform = `translate(${x}px, ${y}px) scale(${f})`;
+    };
+    scale(); window.addEventListener('resize', scale);
+  }
+  setupKeyboardNav() {
+    document.addEventListener('keydown', (e) => {
+      if (e.target.getAttribute('contenteditable') === 'true') return;
+      switch (e.key) {
+        case 'ArrowRight': case 'PageDown': this.next(); break;
+        case 'ArrowLeft':  case 'PageUp':   this.prev(); break;
+        case ' ': e.preventDefault(); this.toggleVideo(); break;
+        case 'Home': this.showSlide(0); break;
+        case 'End':  this.showSlide(this.slides.length - 1); break;
+      }
+    });
+  }
+  setupTouchNav() {
+    let x0 = null;
+    document.addEventListener('touchstart', e => { x0 = e.changedTouches[0].clientX; }, {passive:true});
+    document.addEventListener('touchend', e => {
+      if (x0 === null) return;
+      const dx = e.changedTouches[0].clientX - x0;
+      if (Math.abs(dx) > 60) { dx < 0 ? this.next() : this.prev(); }
+      x0 = null;
+    }, {passive:true});
+  }
+  setupWheelNav() {
+    let lock = false;
+    document.addEventListener('wheel', e => {
+      if (lock || Math.abs(e.deltaY) < 24) return;
+      lock = true; setTimeout(() => lock = false, 700);
+      e.deltaY > 0 ? this.next() : this.prev();
+    }, {passive:true});
+  }
+  toggleVideo() {
+    const v = this.slides[this.current].querySelector('video');
+    if (!v) return;
+    v.paused ? v.play() : v.pause();
+  }
+  next() { this.showSlide(this.current + 1); }
+  prev() { this.showSlide(this.current - 1); }
+  showSlide(i) {
+    this.current = Math.max(0, Math.min(i, this.slides.length - 1));
+    this.slides.forEach((s, k) => {
+      const on = k === this.current;
+      s.classList.toggle('active', on); s.classList.toggle('visible', on);
+      const v = s.querySelector('video');
+      if (v && !on) v.pause();
+      if (v && on)  v.play().catch(() => {});
+    });
+    this.counter.textContent = `${this.current + 1} / ${this.slides.length}`;
+    this.progress.style.width = `${(this.current + 1) / this.slides.length * 100}%`;
+  }
+}
+const deck = new SlidePresentation();
+
+/* Reveal a clip only once it has really decoded a frame. A missing file or an
+   unsupported codec then leaves the labelled panel standing instead of an
+   empty box the presenter discovers on stage. */
+document.querySelectorAll('.video-wrap video').forEach(v => {
+  v.addEventListener('loadeddata', () => v.closest('.video-wrap').classList.add('ready'));
+});
+
+/* ===========================================
+   INLINE TEXT EDITING — hover top-left or press E
+   =========================================== */
+const editor = {
+  isActive: false,
+  toggleEditMode() {
+    this.isActive = !this.isActive;
+    const btn = document.getElementById('editToggle');
+    btn.classList.toggle('active', this.isActive);
+    if (this.isActive) btn.classList.add('show');
+    document.querySelectorAll('.deck-stage h1, .deck-stage h2, .deck-stage h3, .deck-stage p, .deck-stage li, .deck-stage .rh, .deck-stage .rb, .deck-stage .x, .deck-stage .v, .deck-stage .k')
+      .forEach(el => { if (!el.children.length || el.tagName === 'H1' || el.tagName === 'H2') el.contentEditable = this.isActive; });
+    if (!this.isActive) this.save();
+  },
+  save() { localStorage.setItem('deck-b-content', document.getElementById('deckStage').innerHTML); }
+};
+document.getElementById('editToggle').addEventListener('click', () => editor.toggleEditMode());
+const hotzone = document.querySelector('.edit-hotzone');
+const editToggle = document.getElementById('editToggle');
+let hideTimeout = null;
+hotzone.addEventListener('mouseenter', () => { clearTimeout(hideTimeout); editToggle.classList.add('show'); });
+hotzone.addEventListener('mouseleave', () => { hideTimeout = setTimeout(() => { if (!editor.isActive) editToggle.classList.remove('show'); }, 400); });
+editToggle.addEventListener('mouseenter', () => clearTimeout(hideTimeout));
+editToggle.addEventListener('mouseleave', () => { hideTimeout = setTimeout(() => { if (!editor.isActive) editToggle.classList.remove('show'); }, 400); });
+hotzone.addEventListener('click', () => editor.toggleEditMode());
+document.addEventListener('keydown', (e) => {
+  if ((e.key === 'e' || e.key === 'E' || e.key === 'у' || e.key === 'У') && !e.target.getAttribute('contenteditable')) editor.toggleEditMode();
+  if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); editor.save(); }
+});
+</script>
+</body>
+</html>
