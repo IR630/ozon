@@ -24,14 +24,28 @@ Gazebo и воспроизводится одной командой.
 
 ## Навигация
 
+**Начать отсюда:** `docs/report/one_pager.md` — всё решение за 3 минуты
+(задача, контур, что доказано числом, ограничения, УГТ).
+
+**Видеодемонстрация:** `<ссылка на облако организаторов>` — *заполнить перед
+сдачей* (крупные mp4 не в репозитории, `GIT.md`); постеры-кадры — в
+`docs/report/video/`. **Презентация защиты:** структура — `docs/report/presentation_outline.md`.
+
 | Документ | Что внутри |
 |---|---|
+| `docs/report/one_pager.md` | ★ Резюме «прочти за 3 минуты» — точка входа для жюри |
+| `docs/report/criteria_coverage.md` | Карта: каждый пункт `criteries.md` → артефакт репо |
 | `docs/md/task.md` | Условия задачи трека |
 | `docs/md/criteries.md` | Критерии оценки жюри |
 | `docs/md/models.md` | Анализ 11 тестовых моделей |
 | `docs/md/organizer_faq_2026-07-16.md` | Официальные уточнения о приватном наборе, Docker и физических допущениях |
-| `docs/report/` | Разделы итогового отчёта (архитектура, классификация, методология и ограничения) |
-| `docs/report/layout.md` | Размерная компоновка шиберов, склизов, зон и сервисного доступа |
+| `docs/report/classification.md` | Правила классификации, K по проекциям, пограничные случаи, 33/33 |
+| `docs/report/mechanism.md` | Выбор и обоснование исполнительного механизма (шибер), бережность |
+| `docs/report/architecture.md` | Единый контур: перцепция → классификация → контроллер → шибер |
+| `docs/report/calc_vs_sim.md` | Сведение расчёт ↔ симуляция (обоснование УГТ «исполнение 4») |
+| `docs/report/layout.md` | Компоновка + сверка с официальной схемой участка |
+| `docs/report/soak.md` | Длинные серии, надёжность, throughput, ресурсный профиль |
+| `docs/report/safety.md` | E-stop, разделение зон, граница программного прототипа |
 | `docs/report/physics_assumptions.md` | Что задано организаторами, а что принято по массе, трению и физике |
 | `docs/report/validation.md` | Frozen real-Gazebo срезы: recall, ошибки габаритов/K и ограничения |
 | `docs/report/failure_scenarios.md` | Нештатные ситуации: сигнал, безопасная реакция, восстановление и команды проверки |
@@ -218,3 +232,15 @@ docker/       воспроизводимое окружение сборки и 
 tests/        unit-тесты ядра и узлов
 docs/         условия, решения, эксперименты, разделы отчёта
 ```
+
+### Структура решения по частям
+
+Разбиение по требованию сдачи (`task.md` §4): что относится к классификации, к
+исполнительной части, к связке и к сценариям проверки.
+
+| Часть | Код / артефакты | Раздел отчёта |
+|---|---|---|
+| **Определение и классификация** | `src/perception.py` (габариты, K по проекциям из depth), `src/aggregation.py` (стабилизация по кадрам), `src/classification.py` (правила B/C/D), `src/constants.py` (пороги), узлы `perception_node`/`classifier_node` | `classification.md`, `validation.md` |
+| **Исполнительная часть** | `sim/worlds/cell_diverter.sdf` (шиберы, склизы, зоны), `src/controller_node.py` (тайминг, возврат, E-stop, jam/feed-watchdog), `src/tracking.py` (dead-reckoning выстрела) | `mechanism.md`, `layout.md`, `safety.md` |
+| **Связка (классификация → воздействие)** | контроллер подписан на `ItemClassification` → `plan_push` (зона→шибер, упреждение по скорости ленты) → команда механизму; контракты в `ros_msgs/` | `architecture.md`, `calc_vs_sim.md` |
+| **Сценарии проверки** | `run_matrix.sh` (census), `run_stream_suite.sh` (поток), `check_clean_deploy.sh` (деплой), `smoke_estop*.sh` (безопасность), `measure_*.py` (метрики) | `soak.md`, `failure_scenarios.md`, `criteria_coverage.md` |
