@@ -9,11 +9,13 @@ body-OBB. Разные сценарии не складываются в оди�
 
 | Набор | Эпизоды | Товары / проверки | Результат | Сырые каталоги |
 |---|---:|---:|---|---|
+| Финальный gate ядра `v0.5-stable-stream` (`main@cafbbd4` + хвост): два полных stream-suite подряд + census | 2×6/6 all-pass + census | **33/33 + 33/33** terminal PASS; census 32/32 + helmet-хвост 3/3 после обрыва сессии | roster 5/5/5 mixed и 6/6/6 B во всех эпизодах; 0 FAIL/TIMEOUT/JAM; triage classification 0, execution 0 | `runs/pouf_fix_final_*_cafbbd4`, `runs/b_oi1_poll200_cafbbd4` |
+| Ресурсный профиль худшего mixed oi1 + восстановление после E-stop (`main@424a0a2`) | 1 поток + 2 смока | 5/5 PASS; recovery 2/2 | peak RSS 944 MiB; CPU 2.8 ср. / 4.4 пик ядра; ≤12 процессов за 48 с; после сброса E-stop повторный soft-start и доезд в B без повторной защёлки | `runs/resource_mixed_oi1_424a0a2`, `runs/estop_recover_r{2,3}` |
 | Stage 24 stability `main@f4d3540`: seed0 repeat + seed1/oi0 | 6/8 all-pass | **42/44** terminal; roster 44/44/44 | 2 execution FAIL: только Pouf seed0 oi0/oi1; TIMEOUT/JAM/E-stop 0; seed1/oi0 11/11 | `runs/week4_stability_{seed0_repeat,seed1_oi0}_f4d3540` |
 | Helmet ID gate `main@c91c541`: Pouf→Helmet ×2 + census + occupied E-stop | 2/2 handoff + 1 census + 1 safety | handoff 4/4; census 33/33; E-stop 2 товара + engaged blade | roster 2/2/2 в обоих handoff; triage 0/0; `dx=0`, `FIRED 2→2` | `runs/week4_{pouf_helmet_idfix_replay*,idfix_census,idfix_estop}_c91c541` |
 | Stream-suite `main@3f3a7ed`, 11 моделей × 3 ориентации | 6/6 all-pass | 33/33 terminal PASS; roster 33/33/33 | 0 FAIL/TIMEOUT/JAM; без phantom ID; поэпизодный темп 3–12 шт/мин | `runs/week4_suite_gate_3f3a7ed_seed0_oi{0,1,2}` |
 | Stream-suite перемер `main@8a728f9` (throughput), 11 моделей × 3 ориентации | 6/6 all-pass | 33/33 terminal PASS; 27 интервалов | 0 FAIL; **sustained-медиана 10 шт/мин** (p95-медл. такт 4, поэпизодно 4–15); камера→решение медиана 0.030 с | `runs/stream_suite_20260717_123705_seed0` |
-| Freeze-census текущего `main@6618ded`, 11 моделей × 3 ориентации | 1/1 all-pass | 33/33 routed; каждая модель 3/3 | classification 0, execution 0, TIMEOUT 0; triage 33/33 | `runs/week3_freeze_main_20260715` |
+| Freeze-census `main@6618ded` (15.07), 11 моделей × 3 ориентации | 1/1 all-pass | 33/33 routed; каждая модель 3/3 | classification 0, execution 0, TIMEOUT 0; triage 33/33 | `runs/week3_freeze_main_20260715` |
 | Два census слитого main, 11 моделей × 3 ориентации | 2/2 all-pass | 66/66 routed; каждая модель 6/6; B 36/36, C 18/18, D 12/12 | 33/33 + 33/33; classification 0, execution 0, ни одна ячейка не разошлась | `runs/census_merged_1`, `runs/census_merged_2` |
 | Пограничный replay Pouf/Pen/Plate/Cylinder/Helmet × 3 | 1/1 all-pass | 15/15 routed; каждая модель 3/3 | classification 0, execution 0, TIMEOUT 0 | `runs/week3_boundary_main_20260715` |
 | Штатный поток, seeds 0/2/3/4 | 4/4 all-pass | 12/12 routed | камера→решение median 0.094 с, p95 0.186 с | `runs/stream_lat_seed*` |
@@ -70,9 +72,9 @@ body-verdict помечается `INVALID`/`INCOMPLETE` и остаётся в 
 - Численный минимум RAM/CPU как production-требование не заявляется. Каждый новый
   `run_stream.sh` снимает раз в секунду деревья Gazebo, ROS launch и feeder в
   `resources.csv`, а в `resources.json` сохраняет peak RSS, среднее/пиковое число
-  занятых CPU-ядер и максимум процессов. На текущем Windows-хосте нет WSL/Docker,
-  поэтому реальный профиль Fortress этим инструментом ещё не снят и Stage 24 не
-  закрыт; репозиторий не подменяет отсутствующее измерение расчётным минимумом.
+  занятых CPU-ядер и максимум процессов. Реальный профиль Fortress снят 17.07 на
+  худшем mixed oi1 (см. таблицу выше: peak RSS 944 MiB, CPU 2.8 ср. / 4.4 пик
+  ядра); измеренный факт не превращается в заявленный минимум.
 
 ## Как распознать загрязнённый стенд
 

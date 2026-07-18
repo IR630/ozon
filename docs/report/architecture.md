@@ -1,6 +1,7 @@
-# Архитектура непрерывного контура — v0.3-pipeline
+# Архитектура непрерывного контура — v0.5-stable-stream
 
-> Актуальное состояние freeze-кандидата `main` на 15.07.2026. Источники обоснований —
+> Актуальное состояние ядра, замороженного тегом `v0.5-stable-stream`
+> (17.07.2026, этапы 21–25 закрыты). Источники обоснований —
 > `docs/decisions.md`, метрик — `docs/experiments.md`, устройство механизма —
 > `mechanism.md`, размерная компоновка — `layout.md`. Финальный мир —
 > `sim/worlds/cell_diverter.sdf`; старый
@@ -130,15 +131,19 @@ STREAM_DRY_RUN=1 bash scripts/run_stream.sh box_400x400x300:C:0 pen:C:1.0 bottle
 # Полная матрица 11 товаров × 3 ориентации
 WORLD=sim/worlds/cell_diverter.sdf bash scripts/run_matrix.sh 0 3
 
+# Потоковая suite всех 11 моделей (источник sustained-заявки 10 шт/мин)
+bash scripts/run_stream_suite.sh 0 0 2
+
 # Нештатные и multi-item сценарии
 bash scripts/smoke_multi_item.sh
 bash scripts/smoke_estop_stream.sh
 ```
 
 Два census первого слитого состояния после сведения прозрачных бортиков, 3D
-body-OBB и touching-perception дали `33/33 + 33/33`. Свежий freeze-census
-текущего `main@6618ded`, включающего последующие fixes/оптимизацию perception,
-также дал `33/33` с classification=0 и execution=0. Ограничение честности: seed
+body-OBB и touching-perception дали `33/33 + 33/33`. Финальный gate замороженного
+ядра `v0.5-stable-stream`: два полных потоковых suite подряд `33/33 + 33/33` и
+body-scored census `33/33` с classification=0 и execution=0
+(`experiments.md` 2026-07-17). Ограничение честности: seed
 фиксирует сцену и ориентации, но контактная физика Gazebo имеет небольшой шум;
 поэтому ревизии не смешиваются в один знаменатель, а каждый результат хранит
 собственный каталог и triage.
