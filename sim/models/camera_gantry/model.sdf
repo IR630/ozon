@@ -1,0 +1,43 @@
+<?xml version="1.0"?>
+<!-- Visual-only prop for run videos (week 5, P1): makes the production RGBD
+     camera VISIBLE in footage — a portal gantry with a housing at the real
+     sensor pose (1.5, 0, 1.9) from cell_diverter.sdf. NOT part of the world on
+     purpose: spawned into the running world only by record_*_video.sh, exactly
+     like the spectator, so the frozen production world and the gate never see
+     it. No <collision> anywhere — physics is untouched by construction.
+     Invisible to the depth sensor by geometry: legs at y=±1.2 are outside the
+     camera's widest half-view (±0.82 m at the floor, narrower higher up:
+     vfov half-tangent 0.433 × height-below-1.9), and the beam/housing/lens sit
+     within 0.1 m of the sensor origin — behind its near clip plane. -->
+<sdf version="1.8">
+  <model name="camera_gantry">
+    <static>true</static>
+    <link name="link">
+      <visual name="leg_left">
+        <pose>1.5 1.2 1.0 0 0 0</pose>
+        <geometry><box><size>0.08 0.08 2.0</size></box></geometry>
+        <material><ambient>0.25 0.27 0.30 1</ambient><diffuse>0.25 0.27 0.30 1</diffuse></material>
+      </visual>
+      <visual name="leg_right">
+        <pose>1.5 -1.2 1.0 0 0 0</pose>
+        <geometry><box><size>0.08 0.08 2.0</size></box></geometry>
+        <material><ambient>0.25 0.27 0.30 1</ambient><diffuse>0.25 0.27 0.30 1</diffuse></material>
+      </visual>
+      <visual name="crossbeam">
+        <pose>1.5 0 2.04 0 0 0</pose>
+        <geometry><box><size>0.08 2.48 0.08</size></box></geometry>
+        <material><ambient>0.25 0.27 0.30 1</ambient><diffuse>0.25 0.27 0.30 1</diffuse></material>
+      </visual>
+      <visual name="camera_housing">
+        <pose>1.5 0 1.96 0 0 0</pose>
+        <geometry><box><size>0.16 0.16 0.14</size></box></geometry>
+        <material><ambient>0.85 0.33 0.10 1</ambient><diffuse>0.85 0.33 0.10 1</diffuse></material>
+      </visual>
+      <visual name="camera_lens">
+        <pose>1.5 0 1.87 0 0 0</pose>
+        <geometry><cylinder><radius>0.035</radius><length>0.05</length></cylinder></geometry>
+        <material><ambient>0.05 0.05 0.05 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material>
+      </visual>
+    </link>
+  </model>
+</sdf>

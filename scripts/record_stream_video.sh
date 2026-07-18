@@ -40,6 +40,10 @@ sleep 1
 ign service -s /world/cell/create --reqtype ignition.msgs.EntityFactory \
     --reptype ignition.msgs.Boolean --timeout 5000 \
     --req "sdf_filename: \"$PWD/sim/models/spectator/model.sdf\", name: \"spectator\"" > /dev/null
+# visual-only prop: make the production camera visible in footage (see model.sdf)
+ign service -s /world/cell/create --reqtype ignition.msgs.EntityFactory \
+    --reptype ignition.msgs.Boolean --timeout 5000 \
+    --req "sdf_filename: \"$PWD/sim/models/camera_gantry/model.sdf\", name: \"camera_gantry\"" > /dev/null
 ros2 run ros_gz_bridge parameter_bridge \
     "/spectator/image@sensor_msgs/msg/Image[ignition.msgs.Image" > /tmp/spectator_stream_bridge.log 2>&1 &
 BRIDGE=$!
