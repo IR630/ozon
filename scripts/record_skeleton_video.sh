@@ -30,8 +30,10 @@ OUT=${3:-docs/report/video/skeleton_${SLUG}_${EXPECT}.mp4}
 mkdir -p "$(dirname "$OUT")"
 
 # the spectator render drops RTF ~10x under llvmpipe — widen the wall-clock
-# verdict window accordingly (the contour itself runs on sim time, unaffected)
-export RUN_SKELETON_POLL_ITERS=300
+# verdict window accordingly (the contour itself runs on sim time, unaffected).
+# Overridable: helmet→B creeps to x=4.2 and needs a wider window than 300
+# under recording (18.07: FAIL at 300 with body x=3.954 — budget, not physics).
+export RUN_SKELETON_POLL_ITERS=${RUN_SKELETON_POLL_ITERS:-300}
 bash scripts/run_skeleton.sh "$SLUG" "$EXPECT" > /tmp/record_run.log 2>&1 &
 RUN=$!
 
