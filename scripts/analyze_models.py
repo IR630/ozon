@@ -3,9 +3,17 @@
 
 Classification per task rules (docs/md/task.md, section 2):
   1. Gabarits: fits if sorted-desc dims are within (10x10x10, 450x320x320) mm.
-  2. Circle-in-section: K = r_inscribed / R_circumscribed of a cross-section > 0.8 -> round.
-     Approximated via the max over principal-axis cross-sections (convex hull of section,
-     R = max distance from centroid, r = min distance from centroid to hull edges).
+  2. Roundness: K = r_inscribed / R_circumscribed > 0.8 -> round. K is taken over the
+     three OBB-axis PROJECTIONS (XY/XZ/YZ) — the rule as the experts stated it
+     (docs/md/expert_session_qa.md [20:34], [52:36], [58:02]) — using the SAME
+     estimator as the production depth pipeline (src.perception._roundness_k, both
+     radii from one common centre). Reference and production must not measure
+     differently; they did until 2026-07-19, see docs/decisions.md.
+
+The cross-section K is still reported as a diagnostic, because task.md's WRITTEN
+wording says "круг в любом из сечений" while the experts answered "по проекции",
+and the two disagree on Шлем (0.78 by projection -> B, 0.84 by section -> D). That
+contradiction is an open question for the organizers, not something to bury.
 """
 import sys
 from pathlib import Path
@@ -81,10 +89,17 @@ def max_circle_ratio(mesh):
 
 
 def analyze_file(path):
-    """Full geometric analysis of one STL file."""
+    """Full geometric analysis of one STL file.
+
+    `k` decides the category (projections, the experts' rule); `k_section` rides
+    along as the diagnostic for the written-wording reading — see module docstring.
+    """
+    from scripts.compare_k_rules import k_by_projection, k_by_section
+
     m = trimesh.load(str(path), force="mesh")
     dims = np.sort(m.bounding_box_oriented.primitive.extents)[::-1]
-    k = max_circle_ratio(m)
+    m.apply_transform(np.linalg.inv(m.bounding_box_oriented.primitive.transform))
+    k, _ = k_by_projection(m)
     return {
         "name": Path(path).stem,
         "file": Path(path).name,
@@ -93,6 +108,7 @@ def analyze_file(path):
         "watertight": m.is_watertight,
         "faces": len(m.faces),
         "k": k,
+        "k_section": k_by_section(m),
         "cat": classify(dims, k),
     }
 
@@ -133,31 +149,46 @@ def main(argv=None):
         "",
         "> Автоматический анализ STL из `docs/Stl/` (trimesh). Габариты — по ориентированному",
         "> ограничивающему боксу (OBB), мм, по убыванию. K — максимальный коэффициент",
-        "> r_впис/R_опис по сечениям вдоль главных осей (порог круга: K > 0,8).",
+        "> r_впис/R_опис по трём проекциям OBB (XY/XZ/YZ) — правило в формулировке",
+        "> экспертов; обе окружности из ОДНОГО центра, тем же оценщиком, что и прод",
+        "> (`src.perception._roundness_k`). Порог круга: K > 0,8.",
+        "> Колонка «K сечен» — диагностика: письменная формулировка task.md говорит",
+        "> «круг в любом из сечений», и на Шлеме два чтения расходятся (B против D).",
         "> Категория — предварительная оценка по правилам классификации из task.md;",
         "> пограничные случаи требуют ручной проверки.",
         "",
-        "| Модель | Габариты OBB, мм | Объём, л | Watertight | Треуг. | K (круг) | Категория (оценка) |",
-        "|---|---|---|---|---|---|---|",
+        "| Модель | Габариты OBB, мм | Объём, л | Watertight | Треуг. | K (проекции) | K сечен | Категория (оценка) |",
+        "|---|---|---|---|---|---|---|---|",
     ]
     for r in rows:
         d = " × ".join(f"{x:.0f}" for x in r["dims"])
         vol = f"{r['volume'] / 1e6:.2f}" if r["volume"] else "—"
         wt = "да" if r["watertight"] else "нет"
-        lines.append(f"| {r['name']} | {d} | {vol} | {wt} | {r['faces']} | {r['k']:.2f} | {r['cat']} |")
+        lines.append(f"| {r['name']} | {d} | {vol} | {wt} | {r['faces']} | {r['k']:.2f} | "
+                     f"{r['k_section']:.2f} | {r['cat']} |")
     lines += [
         "",
         "## Пограничные и особые случаи",
         "",
-        "- **Цилиндр (K=0.74)** — это не гладкий цилиндр, а корпус с четырьмя продольными",
-        "  стяжками и квадратными торцами (~50×43 мм). Выпуклая оболочка сечения — скруглённый",
+        "- **Цилиндр (K=0.75)** — это не гладкий цилиндр, а корпус с четырьмя продольными",
+        "  стяжками и квадратными торцами (~50×43 мм). Выпуклая оболочка проекции — скруглённый",
         "  квадрат, поэтому по формальному критерию K < 0,8 объект **не** круглый → B.",
         "  Явно заложенный организаторами пограничный кейс: «называется цилиндром, но по критерию не круг».",
-        "- **Шлем (K=0.78)** — купол почти круглый в горизонтальном сечении, K вплотную к порогу 0,8.",
-        "  Результат чувствителен к способу вычисления сечения; требует аккуратной проверки",
-        "  и обоснования в отчёте.",
-        "- **Ручка (K=0.99, 148 × 13 × 9 мм)** — круглая в сечении, **но** минимальный габарит",
-        "  9 мм < 10 мм → по приоритету правил уходит в C (габариты важнее формы).",
+        "  Устойчив к способу счёта: по сечениям 0,74 — тот же вердикт.",
+        "- **Шлем (K=0.78 по проекциям → B, но 0.84 по сечениям → D)** — САМЫЙ РИСКОВАННЫЙ",
+        "  объект набора. Купол почти круглый, и вердикт зависит от того, читать ли критерий",
+        "  по проекции (так ответили эксперты) или по сечению (так написано в task.md).",
+        "  Вопрос вынесен организаторам, см. `docs/md/expert_session_qa.md`.",
+        "- **Мешок (K=0.8004)** — на волосок ВЫШЕ порога, то есть по чистой геометрии формально D.",
+        "  Запас 0,0004 лежит внутри любой погрешности измерения, так что этот вердикт —",
+        "  подбрасывание монеты. Прод сознательно удерживает Мешок в **B**: мягкий ком не катится,",
+        "  а его выпуклая оболочка круглая лишь потому, что сглаживает мятый контур, — поэтому",
+        "  силуэтная K ограничивается порогом для НЕплоских тел (`src/perception.py`,",
+        "  провенанс в `docs/decisions.md`). Таблица показывает геометрию, прод — политику;",
+        "  расхождение намеренное и задокументированное, а не рассинхрон.",
+        "- **Ручка (K=0.59 по проекциям, 0.99 по сечениям, 148 × 13 × 9 мм)** — ствол 13×9 мм",
+        "  сплющен, поэтому в проекции это не круг; круглым он выглядит только в отдельных",
+        "  сечениях. В любом случае минимальный габарит 9 мм < 10 мм → C: габариты важнее формы.",
         "- **Пуфик (K=1.00, 489 мм)** — круглый, но 489 > 450 мм → по приоритету правил C, не D.",
         "- **Короб 400х400х300 (401 × 400 × 300)** — превышает 450 × 320 × 320 по второму",
         "  и третьему габариту (400 > 320) → C.",
