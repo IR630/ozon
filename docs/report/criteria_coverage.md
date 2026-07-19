@@ -19,13 +19,13 @@
 
 | Критерий | Балл | Артефакт | Статус |
 |---|---|---|---|
-| Матрица 4×4 (классификация × исполнение) | 0–20 | `docs/report/calc_vs_sim.md` (5 величин расчёт↔сим → «исполнение 4»), `methodology_and_limitations.md` §1.7, census 33/33 ×3, `mechanism.md` | ✅ CV 4 × исполнение 4 обосновано (балл — сверка командой) |
+| Матрица 4×4 (классификация × исполнение) | 0–20 | `docs/report/calc_vs_sim.md` (5 величин расчёт↔сим → «исполнение 4»), `methodology_and_limitations.md` §1.7, мульти-seed census **165/165** (seeds 0–4, `census_seed_sweep.py`, `soak.md`), `mechanism.md` | ✅ CV 4 × исполнение 4 обосновано; воспроизводимость по 5 seed усиливает «валидированную модель» (балл — сверка командой) |
 
 ## Раздел 3. Корректность определения категории (до 20)
 
 | Критерий | Балл | Артефакт | Статус |
 |---|---|---|---|
-| Корректность на тестовом наборе | 0–10 | `src/classification.py`, `src/perception.py`, census 33/33 ×3, `scripts/census_ruler_diff.py`, `tests/` | ✅ 33/33 body-scored |
+| Корректность на тестовом наборе | 0–10 | `src/classification.py`, `src/perception.py`, мульти-seed census **165/165** (seeds 0–4, `soak.md`), `scripts/census_ruler_diff.py`, `tests/` | ✅ 165/165 body-scored по 5 seed |
 | Полнота правил классификации | 0–5 | `docs/report/classification.md`, `src/constants.py` (пороги 10³/450×320×320, K=0.8), тесты пограничных случаев из `docs/md/models.md` | ✅ |
 | Устойчивость в пограничных случаях | 0–5 | Тесты Цилиндр K=0.74, Шлем K=0.78, Ручка 9 мм, Пуфик 489 мм; `scripts/measure_private_shapes.py` (20/20 на процедурных формах, порог K=0.8 и пределы 450/320 мм с обеих сторон), `scripts/measure_hard_scenes.py` | ✅ |
 
