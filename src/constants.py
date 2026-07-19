@@ -17,6 +17,15 @@ ROUND_K_THRESHOLD = 0.8
 
 BELT_SPEED_M_S = 1.0
 
+# Measurement accuracy the organizers allow, from the expert session
+# (docs/md/expert_session_qa.md [08:45], [26:56]): 5 mm on a side OR 10 % by
+# volume, whichever of the two is the more permissive. Stated by example: an item
+# measured 451x321x321 against a true 450x320x320 is explicitly NOT an error.
+# This is the yardstick applied to OUR measurement — it does NOT widen the
+# classification thresholds above, which stay exactly where the task puts them.
+MEASUREMENT_TOL_MM = 5.0
+MEASUREMENT_TOL_VOLUME_FRAC = 0.10
+
 # Sanity bounds for measured dims (Karpathy principle 6: no physical dim
 # is ever 0 or 5 meters in this task; input items are <= 500 mm).
 SANE_DIM_MM_MIN = 1.0
