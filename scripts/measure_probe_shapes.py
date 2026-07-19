@@ -44,10 +44,17 @@ _CONTACT_TOL_MM = 1.0
 # Presence here downgrades FAIL to GAP, so the gate still fails loudly on anything
 # NEW while the known holes stay visible in the output instead of being deleted.
 # A gap may only be added together with its analysis in docs/probe-models.md.
+# Keyed by (slug, pose): after the section rewrite a probe can be right in one
+# resting pose and wrong in another, and a per-slug excuse would hide that.
 KNOWN_GAPS = {
-    "squat_can": ("B", "compact round body: both routes to D are gated off"),
-    "ball": ("B", "compact round body: both routes to D are gated off"),
-    "hex_bar": ("B", "hexagon is round by the K>0.8 formula, not by circle fit"),
+    ("squat_can", "upright"): (
+        "B", "circle is in the HORIZONTAL section here; the silhouette carries it "
+             "and FLATNESS_MAX drops it as a thick round lump (same signature as Мешок)",
+    ),
+    ("hex_bar", "yaw90"): (
+        "B", "K=0.796 against the 0.8 threshold — section binning resolution, "
+             "true value 0.866; the same bar reads 0.853 in its other two poses",
+    ),
 }
 
 
@@ -128,7 +135,7 @@ def verdict_of(result):
         return "SKIP"  # pose the belt cannot present; nothing to conclude
     if result.actual == result.expected:
         return "PASS"
-    known = KNOWN_GAPS.get(result.slug)
+    known = KNOWN_GAPS.get((result.slug, result.pose))
     return "GAP" if known and known[0] == result.actual else "FAIL"
 
 
@@ -143,8 +150,8 @@ def main():
         print(f"{result.slug:16s} {result.pose:13s} expected={result.expected} "
               f"actual={result.actual:12s} dims={dims:>14s}mm "
               f"K={result.k:.3f} {verdict}")
-    for slug, (verdict, why) in KNOWN_GAPS.items():
-        print(f"known gap: {slug} -> {verdict} ({why})")
+    for (slug, pose), (verdict, why) in KNOWN_GAPS.items():
+        print(f"known gap: {slug}/{pose} -> {verdict} ({why})")
     print(f"\nprobe gate: {counts['PASS']} pass, {counts['GAP']} known gaps, "
           f"{counts['FAIL']} FAIL, {counts['SKIP']} skipped, of {len(results)}")
     return 1 if counts["FAIL"] else 0

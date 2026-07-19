@@ -89,45 +89,39 @@ _TOUCH_MIN_COMPACTNESS = 0.20
 # inventing commands for one real product.
 _TOUCH_MAX_SPLIT_ASPECT = 4.0
 
-# Vertical cross-section roundness (day 4, P2). A body of revolution lying on
-# its side (Бутылка) shows a rectangular top-view silhouette, so silhouette K
-# alone reads it as B — but its hidden end section is a circle (K=1 -> D). The
-# top surface across the SHORT axis traces that section's upper arc; a circle
-# fit to it recovers the section.
+# Vertical cross-section roundness. A body of revolution lying on its side
+# (Бутылка) shows a rectangular top-view silhouette, so silhouette K alone reads
+# it as B — but its hidden end section is a circle (K=1 -> D).
 #
-# A round section RESTING ON THE BELT is a circle tangent to it: centre height
-# equals the radius, so tau = peak/R_fit ~ 2. That single fact separates it from
-# a dome (Шлем), whose top-arc fits a circle that either floats high above the
-# belt (tau >> 2) or is a shallow wide cap (tau << 2). A tie-rod Цилиндр end is
-# tau ~ 2 too, but a rounded SQUARE, not a circle -> caught by the fit residual.
-# So "round" = tau in a BAND around 2 AND low residual. Thresholds from top-down
-# depth frames of the real settled STLs, 3 seeded poses each (docs/experiments.md
-# 2026-07-11):
-#   item       tau (poses)          rms/R        -> section verdict
-#   bottle     2.13 2.19 2.26       <=0.009         circle on belt   -> D  (the fix)
-#   cylinder   1.88 2.20 11.17      0.087..0.206    rounded square   -> B  (rms / tau)
-#   helmet     1.11 1.38 2.98       0.01..0.02      dome             -> B  (tau band)
-#   bag        2.13                 0.086           soft blob        -> B  (rms; also D via silhouette)
-#   box/deterg/pouf/plate 0.44..0.98  --            flat/shallow     -> B  (tau band)
-SECTION_TAU_LO = 1.85     # circle tangent to belt has tau ~ 2 (centre = radius);
-SECTION_TAU_HI = 2.6      # below = shallow arc, above = dome cap floating high
-SECTION_TAU_RAMP = 0.15   # trapezoid edge width -> full-strength plateau ~[2.0, 2.45]
-SECTION_RMS_HI = 0.05     # rms/R above this is not a circle (rounded square / soft blob)
-SECTION_RMS_SPAN = 0.03   # saturates to "circle" at rms/R <= HI - SPAN (0.02)
-# Elongation gate on the cross-section->D route (day 11, P3). The section route
-# recovers the hidden end-circle of a body of revolution LYING on its side, which
-# is by definition elongated: its footprint long side (the body) far exceeds its
-# short side (the circle diameter) — Бутылка measures 296x90 px-equiv, long/short
-# ~3.3. A soft Мешок slumped into a near-cuboidal footprint (long/short ~1.2) has
-# no such hidden long axis, yet in the seeded oi=1 belt-ride pose its top ridge
-# fits a belt-tangent circle almost as tightly as the bottle (rms/R 0.015 vs
-# 0.009, tau ~2.05) and the section route false-positived it to D (bag oi=1 K=1.0,
-# census #3 misroute). Require the footprint to be elongated for the section
-# circle to count. The bottle clears this with 1.6x margin in every pose; a blob
-# never does; the tie-rod Цилиндр (also elongated) is still rejected by the rms
-# gate, so this only removes a false D, never adds one — no B item can regress.
-# Threshold ~ geometric mean of bag 1.27 and bottle 3.29 (real frames, decisions.md).
-SECTION_MIN_ELONGATION = 2.0
+# WHAT CHANGED (2026-07-19) AND WHY. This used to fit a CIRCLE to the visible top
+# arc and accept it when the fit sat tangent to the belt (tau ~ 2) with a low
+# residual — five hand-tuned thresholds answering "is this a circle?". But the
+# task does not ask that. It asks for a NUMBER: K = r_inscribed / R_circumscribed
+# of the section, round iff K > 0.8. The two agree on circles and part company
+# elsewhere: a hexagonal bar has K = cos(30 deg) = 0.866 — round by the task's
+# formula — while a circle fit rejects it on residual. Rather than add a sixth
+# threshold, we now RECONSTRUCT the section and compute the task's own quantity.
+#
+# RECONSTRUCTION. A body resting on the belt shows the camera the UPPER half of
+# its section: per bin across the cut, the ridge height h(w). Mirroring that ridge
+# about mid-height closes the hidden half. This is exact for a circle
+# (h = R + sqrt(R^2 - w^2) mirrors back to the full circle), for a rectangle, and
+# for a regular polygon resting on a face — i.e. for the extruded and revolved
+# bodies the criterion is about. It is an APPROXIMATION for a section that is not
+# up-down symmetric (a triangular profile reads as its own hexagonal double), and
+# it is meaningless for a soft slumped item, which has no constant section at all —
+# Мешок stays B because the resulting K lands at 0.49..0.80, not because a gate
+# rejects it.
+#
+# BOTH principal directions are cut, and the max is taken: docs/md/models.md
+# defines K as the max over principal-axis sections, but the old code only ever
+# cut perpendicular to the LONG footprint axis. That is the cylinder axis for a
+# bottle and the WRONG axis for a squat can lying down, whose circular section is
+# perpendicular to the SHORT side — it returned the axial rectangle and read D as B.
+#
+# Measured effect over 11 official models x 3 poses + 7 probes (docs/probe-models.md):
+# 7 cells changed, all 7 toward the truth, none away — including official Бутылка
+# oi0 (B->D), Тарелка oi1 (B->D) and Шлем oi2 (C->B).
 
 # Flatness gate on the silhouette->D route (day 4, P3). A round top-view
 # silhouette means D (round in a section) only for a genuinely FLAT disc
@@ -440,20 +434,21 @@ def _silhouette_solidity(pts, hull):
 
 
 def _section_roundness_k(xs, ys, heights_m, long_dir, scale_m_per_px):
-    """K of the item's cross-section perpendicular to its long axis, recovered
-    from the top-view height map (heights_m: pixel heights above the belt, m).
+    """K of the item's vertical cross-section, recovered from the top-view heights.
 
-    Reconstructs the section's upper arc by taking, per bin across the SHORT
-    axis, the highest surface point (the ridge), then fits a circle (algebraic
-    Kåsa fit) to that arc. Returns ~1 only when the arc is a genuine circle
-    RESTING ON THE BELT — tau = peak/R in a band around 2 (tangent to the belt)
-    AND low residual — else ~0, leaving the top-view silhouette K to decide. See
-    the SECTION_* constants for why both gates are needed (Цилиндр lands in the
-    tau band but its square section fails the residual; every Шлем dome pose
-    falls outside the tau band — a dome is never tangent-circle-on-belt).
+    Returns the max over BOTH principal cut directions, matching the definition of
+    K in docs/md/models.md. See the SECTION comment block above for the
+    reconstruction and its limits.
     """
     ux, uy = long_dir
-    sx, sy = -uy, ux                          # short axis, perpendicular to long
+    return max(_one_section_k(xs, ys, heights_m, (ux, uy), scale_m_per_px),
+               _one_section_k(xs, ys, heights_m, (-uy, ux), scale_m_per_px))
+
+
+def _one_section_k(xs, ys, heights_m, cut_dir, scale_m_per_px):
+    """K of the section perpendicular to `cut_dir`, or 0.0 if it cannot be read."""
+    ux, uy = cut_dir
+    sx, sy = -uy, ux                          # the axis we bin across
     w_m = ((xs - xs.mean()) * sx + (ys - ys.mean()) * sy) * scale_m_per_px
     lo, hi = float(w_m.min()), float(w_m.max())
     if hi - lo <= 0.0:
@@ -468,26 +463,45 @@ def _section_roundness_k(xs, ys, heights_m, long_dir, scale_m_per_px):
             continue
         wc.append(0.5 * (edges[b] + edges[b + 1]))
         hc.append(float(heights_m[sel].max()))
-    if len(wc) < 6:                           # too few bins to fit a circle
+    if len(wc) < 6:                           # too few bins to describe a section
         return 0.0
     wc, hc = np.asarray(wc), np.asarray(hc)
-    # Kåsa fit: solve w^2+h^2 + D*w + E*h + F = 0 in least squares
-    a_mat = np.column_stack([wc, hc, np.ones_like(wc)])
-    sol, *_ = np.linalg.lstsq(a_mat, -(wc ** 2 + hc ** 2), rcond=None)
-    a_c, b_c = -sol[0] / 2.0, -sol[1] / 2.0
-    disc = a_c ** 2 + b_c ** 2 - sol[2]
-    if disc <= 0.0:
+    h_max = float(hc.max())
+    if h_max <= 0.0:
         return 0.0
-    r_fit = float(np.sqrt(disc))
-    if r_fit <= 0.0 or not np.isfinite(r_fit):
+    # close the hidden lower half by mirroring the visible ridge about mid-height
+    poly = np.vstack([np.column_stack([wc, hc]),
+                      np.column_stack([wc, h_max - hc])])
+    return _polygon_roundness_k(poly)
+
+
+def _polygon_roundness_k(points):
+    """K = r_inscribed / R_circumscribed of the convex hull of `points`.
+
+    Same convention as scripts/analyze_models.py measures on the STL sections, so
+    the depth pipeline and the mesh-level reference answer the same question:
+    both radii are taken about the hull's centroid.
+    """
+    from scipy.spatial import ConvexHull
+
+    try:
+        hull = ConvexHull(points)
+    except Exception:
         return 0.0
-    tau = float(hc.max()) / r_fit             # ~2 tangent circle, else dome/flat
-    rms_rel = float(np.sqrt(np.mean((np.hypot(wc - a_c, hc - b_c) - r_fit) ** 2))) / r_fit
-    # trapezoid on tau (0 outside [LO, HI], plateau in the middle) x circle-fit gate
-    c_shape = np.clip(min((tau - SECTION_TAU_LO) / SECTION_TAU_RAMP,
-                          (SECTION_TAU_HI - tau) / SECTION_TAU_RAMP), 0.0, 1.0)
-    c_fit = np.clip((SECTION_RMS_HI - rms_rel) / SECTION_RMS_SPAN, 0.0, 1.0)
-    return float(c_shape * c_fit)
+    hp = points[hull.vertices]
+    centre = hp.mean(axis=0)
+    r_circ = float(np.linalg.norm(hp - centre, axis=1).max())
+    if r_circ <= 0.0:
+        return 0.0
+    r_in = np.inf
+    for i in range(len(hp)):
+        a, b = hp[i], hp[(i + 1) % len(hp)]
+        edge = b - a
+        t = np.clip(np.dot(centre - a, edge) / np.dot(edge, edge), 0.0, 1.0)
+        r_in = min(r_in, float(np.linalg.norm(centre - (a + t * edge))))
+    if not np.isfinite(r_in):
+        return 0.0
+    return float(np.clip(r_in / r_circ, 0.0, 1.0))
 
 
 def _min_area_rect_dims(poly):
@@ -707,14 +721,12 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK
     # docs/decisions.md 2026-07-12 (solidity refuted on the real bag frame).
     if k_silhouette > ROUND_K_THRESHOLD and dz_mm > FLATNESS_MAX * max(dx_mm, dy_mm):
         k_silhouette = 0.0
-    # The section circle is only the hidden end of a LYING body of revolution,
-    # which is elongated (long footprint >> short). A near-cuboidal blob (Мешок)
-    # whose ridge merely happens to fit a belt-tangent circle is not one, so drop
-    # the section K unless the footprint is elongated (bag oi=1 K=1.0->B, census #3;
-    # bottle 3.3x clears it, Цилиндр stays B on the rms gate). Ratio is scale-free,
-    # so the raw px extents suffice (no depth term).
-    if long_px < SECTION_MIN_ELONGATION * short_px:
-        k_section = 0.0
+    # No elongation gate any more. It existed because the circle FIT would latch
+    # onto a near-cuboidal blob (Мешок) whose ridge happened to sit tangent to the
+    # belt, so the route had to be closed to anything not obviously a lying body of
+    # revolution — which also closed it to every compact round body (a ball, a squat
+    # can), leaving them no route to D at all. The geometric K needs no such shield:
+    # it reports the blob's actual section, which is not round.
 
     return Measurement(
         dims_mm=dims,
