@@ -404,18 +404,41 @@ def _roundness_k(pts, hull):
     Same definition as the task criterion and the docs/md/models.md analysis:
     the hull (not the raw outline), so a cylinder with tie-wraps reads as a
     rounded square, not a circle. Dimensionless: pixel scale cancels out.
-    """
-    from scipy.optimize import linprog
 
-    # Chebyshev center: maximize r s.t. A@c + r <= -b (hull normals are unit)
+    BOTH RADII COME FROM ONE COMMON CENTRE. The organizers' figure
+    (docs/md/images/circle_criterion.png) draws the two circles concentric in all
+    three examples: one centre, r out to the nearest edge, R out to the farthest
+    vertex. Taking r from the Chebyshev centre but R from an INDEPENDENT minimal
+    enclosing circle mixes two centres and inflates K -- it lifted Шлем
+    0.783 -> 0.820 and Мешок 0.800 -> 0.827, carrying both across the 0.8
+    threshold into D against their reference B (docs/decisions.md 2026-07-19).
+    The centre is optimised, not assumed: fixing it at the Chebyshev point
+    under-reports elongated outlines (Цилиндр 0.749 -> 0.695) and would drift
+    from the published models.md table.
+    """
+    from scipy.optimize import linprog, minimize
+
     a_ub = np.hstack([hull.equations[:, :2], np.ones((len(hull.equations), 1))])
     b_ub = -hull.equations[:, 2]
     res = linprog(c=[0.0, 0.0, -1.0], A_ub=a_ub, b_ub=b_ub,
                   bounds=[(None, None), (None, None), (0.0, None)], method="highs")
-    r_in = float(res.x[2])
-    r_circ = _min_enclosing_radius(pts[hull.vertices])
-    assert r_circ > 0.0, "degenerate hull"
-    return float(min(r_in / r_circ, 1.0))
+    c0 = res.x[:2]  # Chebyshev centre: inside the hull, a good starting point
+
+    normals, offsets = hull.equations[:, :2], hull.equations[:, 2]
+    verts = pts[hull.vertices]
+
+    def neg_ratio(c):
+        r = float(-(normals @ c + offsets).max())  # distance to the nearest edge
+        if r <= 0.0:                               # centre escaped the hull
+            return 1.0
+        big_r = float(np.linalg.norm(verts - c, axis=1).max())
+        return -r / big_r
+
+    best = minimize(neg_ratio, c0, method="Nelder-Mead",
+                    options={"xatol": 1e-3, "fatol": 1e-6, "maxiter": 400})
+    k = -float(best.fun)
+    assert k > 0.0, "degenerate hull"
+    return float(min(k, 1.0))
 
 
 def _silhouette_solidity(pts, hull):
@@ -705,8 +728,15 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK
     # the silhouette K and let the cross-section K decide (0 for a lump -> B). The
     # flat disc (dz/diam ~0.14) is untouched. See FLATNESS_MAX; provenance
     # docs/decisions.md 2026-07-12 (solidity refuted on the real bag frame).
+    # CLAMP, not zero. Zeroing made a 0.003 difference in silhouette K explode into
+    # 0.8 of reported K: the real Мешок frame reads 0.8015 and its render 0.799, so
+    # one collapsed to 0.0 while the other kept its value, though BOTH route to B
+    # (test_render_depth::bag_2). Clamping to the threshold expresses the same policy
+    # — a thick round lump must not reach D through its silhouette — while keeping the
+    # signal continuous: k > threshold is strict, so exactly-threshold is still B, and
+    # max(k_silhouette, k_section) is unchanged for every verdict either way.
     if k_silhouette > ROUND_K_THRESHOLD and dz_mm > FLATNESS_MAX * max(dx_mm, dy_mm):
-        k_silhouette = 0.0
+        k_silhouette = ROUND_K_THRESHOLD
     # The section circle is only the hidden end of a LYING body of revolution,
     # which is elongated (long footprint >> short). A near-cuboidal blob (Мешок)
     # whose ridge merely happens to fit a belt-tangent circle is not one, so drop

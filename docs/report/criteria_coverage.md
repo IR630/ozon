@@ -27,7 +27,7 @@
 |---|---|---|---|
 | Корректность на тестовом наборе | 0–10 | `src/classification.py`, `src/perception.py`, мульти-seed census **165/165** (seeds 0–4, `soak.md`), `scripts/census_ruler_diff.py`, `tests/` | ✅ 165/165 body-scored по 5 seed |
 | Полнота правил классификации | 0–5 | `docs/report/classification.md`, `src/constants.py` (пороги 10³/450×320×320, K=0.8), тесты пограничных случаев из `docs/md/models.md` | ✅ |
-| Устойчивость в пограничных случаях | 0–5 | Тесты Цилиндр K=0.74, Шлем K=0.78, Ручка 9 мм, Пуфик 489 мм; `scripts/measure_private_shapes.py` (20/20 на процедурных формах, порог K=0.8 и пределы 450/320 мм с обеих сторон), `scripts/measure_hard_scenes.py` | ✅ |
+| Устойчивость в пограничных случаях | 0–5 | Тесты Цилиндр K=0.75, Шлем K=0.78, Ручка 9 мм, Пуфик 489 мм; `scripts/measure_private_shapes.py` (20/20 на процедурных формах, порог K=0.8 и пределы 450/320 мм с обеих сторон), `scripts/measure_hard_scenes.py` | ✅ |
 
 ## Раздел 4. Исполнительная часть и манипуляция (до 30)
 
