@@ -97,14 +97,36 @@ def analyze_file(path):
     }
 
 
-def main():
+def main(argv=None):
+    """No args: analyze docs/Stl and regenerate models.md (the reference run).
+
+    With STL paths: analyze just those and print the verdict — this is the
+    "expert loads their own model" entry point the organizers asked for
+    (docs/md/expert_session_qa.md, [35:29]). models.md is NOT touched then,
+    so an ad-hoc check can never overwrite the reference table.
+    """
+    import argparse
+
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("paths", nargs="*", type=Path,
+                        help="STL files to classify (default: the docs/Stl reference set)")
+    args = parser.parse_args(argv)
+
+    for p in args.paths:
+        if not p.is_file():
+            parser.error(f"not a file: {p}")
+
+    files = args.paths or sorted(Path("docs/Stl").iterdir())
     rows = []
-    for f in sorted(Path("docs/Stl").iterdir()):
+    for f in files:
         r = analyze_file(f)
         rows.append(r)
         print(f"{r['name']}: OBB {r['dims'].round(1)} K={r['k']:.3f} "
               f"watertight={r['watertight']} faces={r['faces']} -> {r['cat']}")
+
+    if args.paths:  # ad-hoc run: report only, keep the reference table intact
+        return 0
 
     lines = [
         "# Тестовый набор 3D-моделей: геометрический анализ",
@@ -153,7 +175,8 @@ def main():
     ]
     Path("docs/md/models.md").write_text("\n".join(lines), encoding="utf-8")
     print("\ndocs/md/models.md written")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
