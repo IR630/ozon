@@ -44,10 +44,16 @@ _CONTACT_TOL_MM = 1.0
 # Presence here downgrades FAIL to GAP, so the gate still fails loudly on anything
 # NEW while the known holes stay visible in the output instead of being deleted.
 # A gap may only be added together with its analysis in docs/probe-models.md.
+# Keyed by (slug, pose): the axial-symmetry route closed the gap for the ball and
+# for the UPRIGHT can while the lying can stayed open, and a slug-wide key cannot
+# say that. Per-pose is also the honest granularity — a gap is a statement about a
+# shape in a pose, not about a shape.
 KNOWN_GAPS = {
-    "squat_can": ("B", "compact round body: both routes to D are gated off"),
-    "ball": ("B", "compact round body: both routes to D are gated off"),
-    "hex_bar": ("B", "hexagon is round by the K>0.8 formula, not by circle fit"),
+    ("squat_can", "on_side"): ("B", "lying can: silhouette K=0.69 is under the threshold, "
+                                    "so the symmetry route is never reached"),
+    ("hex_bar", "lying"): ("B", "hexagon is round by the K>0.8 formula, not by circle fit"),
+    ("hex_bar", "yaw90"): ("B", "hexagon is round by the K>0.8 formula, not by circle fit"),
+    ("hex_bar", "rolled60"): ("B", "hexagon is round by the K>0.8 formula, not by circle fit"),
 }
 
 
@@ -128,7 +134,7 @@ def verdict_of(result):
         return "SKIP"  # pose the belt cannot present; nothing to conclude
     if result.actual == result.expected:
         return "PASS"
-    known = KNOWN_GAPS.get(result.slug)
+    known = KNOWN_GAPS.get((result.slug, result.pose))
     return "GAP" if known and known[0] == result.actual else "FAIL"
 
 
@@ -143,8 +149,8 @@ def main():
         print(f"{result.slug:16s} {result.pose:13s} expected={result.expected} "
               f"actual={result.actual:12s} dims={dims:>14s}mm "
               f"K={result.k:.3f} {verdict}")
-    for slug, (verdict, why) in KNOWN_GAPS.items():
-        print(f"known gap: {slug} -> {verdict} ({why})")
+    for (slug, pose), (verdict, why) in KNOWN_GAPS.items():
+        print(f"known gap: {slug}/{pose} -> {verdict} ({why})")
     print(f"\nprobe gate: {counts['PASS']} pass, {counts['GAP']} known gaps, "
           f"{counts['FAIL']} FAIL, {counts['SKIP']} skipped, of {len(results)}")
     return 1 if counts["FAIL"] else 0

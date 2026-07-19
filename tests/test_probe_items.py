@@ -87,7 +87,7 @@ def test_no_unexplained_misclassification(results):
         (r.slug, r.pose, f"expected {r.expected}, got {r.actual}")
         for r in results
         if r.stable and r.actual != r.expected
-        and KNOWN_GAPS.get(r.slug, (None,))[0] != r.actual
+        and KNOWN_GAPS.get((r.slug, r.pose), (None,))[0] != r.actual
     ]
     assert not failures, f"new misclassifications: {failures}"
 
@@ -99,10 +99,11 @@ def test_known_gaps_still_have_the_shape_we_documented(results):
     from docs/probe-models.md), not to leave a stale excuse in the code.
     """
     for result in results:
-        if result.stable and result.slug in KNOWN_GAPS:
-            assert result.actual == KNOWN_GAPS[result.slug][0], (
+        key = (result.slug, result.pose)
+        if result.stable and key in KNOWN_GAPS:
+            assert result.actual == KNOWN_GAPS[key][0], (
                 f"{result.slug}/{result.pose} changed: documented "
-                f"{KNOWN_GAPS[result.slug][0]}, now {result.actual}"
+                f"{KNOWN_GAPS[key][0]}, now {result.actual}"
             )
 
 
