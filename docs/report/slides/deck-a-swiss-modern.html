@@ -580,7 +580,11 @@ const deck = new SlidePresentation();
    unsupported codec then leaves the labelled panel standing instead of a
    black box the presenter discovers on stage. */
 document.querySelectorAll('.video-wrap video').forEach(v => {
-  v.addEventListener('loadeddata', () => v.closest('.video-wrap').classList.add('ready'));
+  const reveal = () => v.closest('.video-wrap').classList.add('ready');
+  // A local file decodes before this script runs, so loadeddata has already
+  // fired and would never be heard: check the state first, then subscribe.
+  if (v.readyState >= 2) reveal();
+  v.addEventListener('loadeddata', reveal);
 });
 
 /* ===========================================
