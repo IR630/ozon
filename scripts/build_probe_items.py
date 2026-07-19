@@ -168,13 +168,13 @@ PROBES = {
     # Both resting poses matter: upright hides the circle from the section route,
     # on its side hides it from the silhouette.
     "squat_can": Probe(_squat_can, 0.40, "D", (110, 110, 95), 1.000,
-                       "FLATNESS_MAX + SECTION_MIN_ELONGATION",
+                       "round but neither flat nor elongated: no route to D",
                        (("upright", _Z, 0), ("on_side", _X, 90))),
     # A regular hexagon has K = cos(30 deg) = 0.866 > 0.8, so the jury's own
     # formula calls this bar round — the mirror image of Цилиндр (K=0.74 -> B).
     # rolled60 maps a hex face onto the next one: a different contact, same shape.
     "hex_bar": Probe(_hex_bar, 0.60, "D", (240, 53, 46), 0.866,
-                     "SECTION_RMS_HI: polygon that is formally round",
+                     "polygon that is round by the K>0.8 formula but is not a circle",
                      (("lying", _Z, 0), ("yaw90", _Z, 90), ("rolled60", _X, 60))),
     # Concave outline: the touching-items splitter may cut one product into two.
     "u_bracket": Probe(_u_bracket, 0.90, "B", (300, 180, 60), 0.514,

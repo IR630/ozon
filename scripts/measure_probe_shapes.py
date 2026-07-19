@@ -44,10 +44,26 @@ _CONTACT_TOL_MM = 1.0
 # Presence here downgrades FAIL to GAP, so the gate still fails loudly on anything
 # NEW while the known holes stay visible in the output instead of being deleted.
 # A gap may only be added together with its analysis in docs/probe-models.md.
+# Keyed by (slug, pose): after the section rewrite a probe can be right in one
+# resting pose and wrong in another, and a per-slug excuse would hide that.
 KNOWN_GAPS = {
-    "squat_can": ("B", "compact round body: both routes to D are gated off"),
-    "ball": ("B", "compact round body: both routes to D are gated off"),
-    "hex_bar": ("B", "hexagon is round by the K>0.8 formula, not by circle fit"),
+    # Compact round bodies have NO route to D: the silhouette route needs the item
+    # flat (FLATNESS_MAX, there to reject a slumped Мешок) and the section route
+    # needs it elongated (SECTION_MIN_ELONGATION, there to stop the same sack).
+    # A ball and an upright can satisfy neither. Attempting to close this with a
+    # reconstructed-section K made things measurably worse on real frames
+    # (docs/probe-models.md, "Отменённая попытка") — the fix has to be narrower.
+    ("squat_can", "upright"): ("B", "compact round body: both routes to D are gated off"),
+    ("squat_can", "on_side"): ("B", "cut runs along the wrong principal axis for a squat body"),
+    ("ball", "any"): ("B", "compact round body: both routes to D are gated off"),
+    # A regular hexagon is round by the task's formula (K = cos 30 deg = 0.866) but
+    # is not a circle, so the circle-fit residual rejects it. Reading the formula
+    # literally instead would send the organizers' Цилиндр (K=0.74) to D — the two
+    # readings cannot both be satisfied. Pending a wording question to the jury
+    # (docs/defense/council_cameras.md).
+    ("hex_bar", "lying"): ("B", "hexagon is round by the K>0.8 formula, not by circle fit"),
+    ("hex_bar", "yaw90"): ("B", "hexagon is round by the K>0.8 formula, not by circle fit"),
+    ("hex_bar", "rolled60"): ("B", "hexagon is round by the K>0.8 formula, not by circle fit"),
 }
 
 
@@ -128,7 +144,7 @@ def verdict_of(result):
         return "SKIP"  # pose the belt cannot present; nothing to conclude
     if result.actual == result.expected:
         return "PASS"
-    known = KNOWN_GAPS.get(result.slug)
+    known = KNOWN_GAPS.get((result.slug, result.pose))
     return "GAP" if known and known[0] == result.actual else "FAIL"
 
 
@@ -143,8 +159,8 @@ def main():
         print(f"{result.slug:16s} {result.pose:13s} expected={result.expected} "
               f"actual={result.actual:12s} dims={dims:>14s}mm "
               f"K={result.k:.3f} {verdict}")
-    for slug, (verdict, why) in KNOWN_GAPS.items():
-        print(f"known gap: {slug} -> {verdict} ({why})")
+    for (slug, pose), (verdict, why) in KNOWN_GAPS.items():
+        print(f"known gap: {slug}/{pose} -> {verdict} ({why})")
     print(f"\nprobe gate: {counts['PASS']} pass, {counts['GAP']} known gaps, "
           f"{counts['FAIL']} FAIL, {counts['SKIP']} skipped, of {len(results)}")
     return 1 if counts["FAIL"] else 0
