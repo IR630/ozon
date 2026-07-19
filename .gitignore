@@ -45,6 +45,8 @@ Thumbs.db
 
 # Генерируется скриптом scripts/build_item_models.py — не в гит
 sim/models/items/
+# То же для зондового набора (scripts/build_probe_items.py)
+sim/models/probe_items/
 
 # Крупные артефакты — в облако организаторов, не в гит
 *.onnx
