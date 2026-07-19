@@ -23,7 +23,7 @@
      Ozon magenta near field, the primary accent, zone D
      Aqua blue    mid field, the camera and its measurements
      Wreath green zone B — the item that goes as it is
-     Yellow star  zone C — out of spec, and the headline accent
+     Yellow star  zone C — out of spec
    =========================================== */
 :root {
   --stage-bg:#04155E;
@@ -31,7 +31,6 @@
   --surface:#0A2299;
   --brand:#005BFF;           /* Ozon blue         — core identity  */
   --near:#F91155;            /* Ozon magenta      — near / primary */
-  --near-hi:#FBE671;         /* Yellow star       — gradient tip   */
   --mid:#27D1EB;             /* Aqua blue         — mid / secondary*/
   --morning:#00A2FF;         /* Morning blue      — cool support   */
   --far:#270097;             /* Night sky         — far / structure*/
@@ -157,13 +156,15 @@ img, video, canvas, svg { max-width:100%; max-height:100%; }
 h1 { font-weight:800; font-size:104px; line-height:.94; letter-spacing:-.038em; }
 h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; }
 /* Yellow star → magenta, the campaign pairing. Both ends stay legible on
-   the blue field; a blue-ended ramp would dissolve into the ground and an
-   aqua one goes minty. Yellow still owns zone C — the chip and the headline
-   never share a slide region, so the two uses do not compete. */
-.accent {
-  background:linear-gradient(96deg,var(--near-hi) 0%,#FF7AA8 52%,var(--near) 100%);
-  -webkit-background-clip:text; background-clip:text; color:transparent;
-}
+/* Solid magenta — deliberately NOT a gradient.
+   Any ramp between two hues has to travel through everything between them,
+   and those in-between stops are what break the corporate picture: yellow
+   into magenta passes through orange and lime, and no amount of tuning the
+   stops removes them. The obvious brand ramp, blue→magenta, is worse still
+   here — its blue end sits on the blue field and the letters dissolve.
+   So the accent is one flat brand colour on white type, which is exactly
+   how the campaign layouts use it. */
+.accent { color:var(--near); }
 .lede { font-size:32px; font-weight:400; line-height:1.48; color:var(--dim); }
 .lede b { color:var(--bone); font-weight:600; }
 .note { font-family:var(--font-mono); font-size:19px; font-weight:300; line-height:1.6; color:var(--faint); }
@@ -231,7 +232,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
 
 /* --- rule cards (slide 3) --- */
 .rules { display:flex; gap:28px; }
-.rule-card { flex:1; padding:26px 30px; border:1px solid var(--hairline); border-top:3px solid var(--near-hi); background:var(--panel); }
+.rule-card { flex:1; padding:26px 30px; border:1px solid var(--hairline); border-top:3px solid var(--brand); background:var(--panel); }
 .rule-card .z { font-family:var(--font-mono); font-size:52px; font-weight:600; line-height:1; letter-spacing:-.02em; }
 .rule-card .cond { margin-top:16px; font-size:23px; font-weight:600; line-height:1.28; }
 .rule-card .meta { margin-top:12px; font-family:var(--font-mono); font-size:15px; font-weight:300; color:var(--faint); line-height:1.45; }
