@@ -10,21 +10,25 @@
 <style>
 /* ===========================================
    THEME TOKENS — change these to change everything
-   Palette: Ozon brand deck, on Dark space ground.
-   The depth thesis is unchanged — this is still the machine's own
-   depth view, warm = near to the camera, cool = far — but every hue
-   is now a brand colour carrying that meaning. Colour is never
-   decoration here: the three zones own three swatches for life.
-     Ozon blue    structure, chrome, the far field
+   Palette: Ozon brand deck. The two primaries CARRY THE SURFACE —
+   this follows the brand's own campaign layouts, where a saturated
+   blue→magenta field is the design and type sits white on top of it.
+   An almost-black ground with thin coloured accents is the opposite
+   of that, so the ground here is Ozon blue and the accents are what
+   the blue cannot say by itself.
+
+   Depth thesis survives inside that field: warm = near to the camera,
+   cool = far. Colour is never decoration — the zones own swatches:
+     Ozon blue    the ground itself, structure, chrome
      Ozon magenta near field, the primary accent, zone D
      Aqua blue    mid field, the camera and its measurements
      Wreath green zone B — the item that goes as it is
-     Yellow star  zone C — out of spec
+     Yellow star  zone C — out of spec, and the headline accent
    =========================================== */
 :root {
-  --stage-bg:#000D1A;
-  --void:#001A33;            /* Dark space        — slide ground   */
-  --surface:#002B52;
+  --stage-bg:#04155E;
+  --void:#0B2CC9;            /* Ozon blue ground  — slides sit here*/
+  --surface:#0A2299;
   --brand:#005BFF;           /* Ozon blue         — core identity  */
   --near:#F91155;            /* Ozon magenta      — near / primary */
   --near-hi:#FBE671;         /* Yellow star       — gradient tip   */
@@ -33,10 +37,17 @@
   --far:#270097;             /* Night sky         — far / structure*/
   --zone-b:#06CA9A;          /* Wreath green      — goes as-is     */
   --zone-c:#FBE671;          /* Yellow star       — out of spec    */
-  --bone:#EAF2FF;
-  --dim:#AFC4DB;
-  --faint:#6E8BA8;
-  --hairline:rgba(234,242,255,.14);
+  /* Type on a saturated ground is tinted white, never grey: grey goes
+     muddy on blue and the hierarchy collapses. Alpha keeps the field
+     glowing through the quiet text instead of dirtying it. */
+  --bone:#FFFFFF;
+  --dim:rgba(255,255,255,.82);
+  --faint:rgba(255,255,255,.60);
+  --hairline:rgba(255,255,255,.22);
+  /* Glass panel: dense tables and tiles need their own calm ground,
+     or the field competes with 15px mono text and wins. */
+  --panel:rgba(4,14,80,.34);
+  --panel-solid:rgba(4,14,80,.62);
   --slide-bg:var(--void);
 
   --font-display:'Bricolage Grotesque', sans-serif;
@@ -73,17 +84,27 @@ img, video, canvas, svg { max-width:100%; max-height:100%; }
    =========================================== */
 .slide { font-family:var(--font-display); color:var(--bone); }
 .field { position:absolute; inset:0; pointer-events:none; }
+/* The brand field: Ozon blue through violet into magenta, the way the
+   campaign layouts run it. The magenta mass is parked in the bottom-right
+   corner on purpose — that is the emptiest region on every content slide,
+   so the colour gets to be loud without ever sitting under a table. */
 .field::before {
   content:''; position:absolute; inset:0;
   background:
-    radial-gradient(120% 80% at 78% 46%, rgba(39,209,235,.13), transparent 58%),
-    radial-gradient(70% 60% at 88% 62%, rgba(249,17,85,.12), transparent 62%),
-    radial-gradient(95% 75% at 6% 6%, rgba(0,91,255,.20), transparent 62%),
-    linear-gradient(160deg,#001A33 0%,#002247 55%,#000E1E 100%);
+    radial-gradient(58% 62% at 96% 92%, rgba(249,17,85,.92), transparent 62%),
+    radial-gradient(46% 52% at 86% 30%, rgba(126,20,190,.62), transparent 64%),
+    radial-gradient(66% 62% at 4% 8%, rgba(0,140,255,.55), transparent 66%),
+    radial-gradient(40% 40% at 34% 104%, rgba(39,209,235,.22), transparent 62%),
+    linear-gradient(122deg,#0044F7 0%,#0B2CC9 42%,#2415AE 70%,#5C0F9C 100%);
 }
-.field::after {  /* the camera's scan raster */
-  content:''; position:absolute; inset:0; opacity:.45;
-  background:repeating-linear-gradient(to bottom, rgba(255,255,255,.03) 0 1px, transparent 1px 4px);
+/* Scrim + scan raster. The scrim is what buys the field its saturation:
+   it drops the whole surface a stop so white type keeps its contrast,
+   while the colour underneath still reads as colour. */
+.field::after {
+  content:''; position:absolute; inset:0;
+  background:
+    linear-gradient(180deg, rgba(2,8,48,.30) 0%, rgba(2,8,48,.16) 45%, rgba(2,8,48,.34) 100%),
+    repeating-linear-gradient(to bottom, rgba(255,255,255,.035) 0 1px, transparent 1px 4px);
 }
 
 /* ===========================================
@@ -96,7 +117,7 @@ img, video, canvas, svg { max-width:100%; max-height:100%; }
   letter-spacing:.2em; text-transform:uppercase; color:var(--faint);
 }
 .chrome { top:66px; }
-.foot   { bottom:64px; color:#4E6B87; }
+.foot   { bottom:64px; color:rgba(255,255,255,.66); }
 .chrome::after, .foot::before {
   content:''; position:absolute; left:0; right:0; height:1px; background:var(--hairline);
 }
@@ -135,11 +156,12 @@ img, video, canvas, svg { max-width:100%; max-height:100%; }
 .tag::before { content:''; display:inline-block; width:52px; height:1px; background:var(--mid); vertical-align:middle; margin-right:20px; }
 h1 { font-weight:800; font-size:104px; line-height:.94; letter-spacing:-.038em; }
 h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; }
-/* Magenta → Morning blue → Aqua. Yellow star is deliberately NOT in this
-   ramp: as a mid-stop it drags the word through orange and green and the
-   headline stops reading as brand. Yellow stays reserved for zone C. */
+/* Yellow star → magenta, the campaign pairing. Both ends stay legible on
+   the blue field; a blue-ended ramp would dissolve into the ground and an
+   aqua one goes minty. Yellow still owns zone C — the chip and the headline
+   never share a slide region, so the two uses do not compete. */
 .accent {
-  background:linear-gradient(96deg,var(--near) 0%,var(--morning) 58%,var(--mid) 100%);
+  background:linear-gradient(96deg,var(--near-hi) 0%,#FF7AA8 52%,var(--near) 100%);
   -webkit-background-clip:text; background-clip:text; color:transparent;
 }
 .lede { font-size:32px; font-weight:400; line-height:1.48; color:var(--dim); }
@@ -195,7 +217,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
 .chain { display:flex; align-items:stretch; gap:0; margin-top:18px; }
 .chain .node {
   flex:1; padding:34px 26px; border:1px solid var(--hairline); border-right:none;
-  background:linear-gradient(180deg, rgba(255,255,255,.028), transparent);
+  background:var(--panel);
 }
 .chain .node:last-child { border-right:1px solid var(--hairline); }
 .chain .node .n { font-family:var(--font-mono); font-size:15px; letter-spacing:.2em; color:var(--morning); }
@@ -209,7 +231,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
 
 /* --- rule cards (slide 3) --- */
 .rules { display:flex; gap:28px; }
-.rule-card { flex:1; padding:26px 30px; border:1px solid var(--hairline); border-top:3px solid var(--brand); }
+.rule-card { flex:1; padding:26px 30px; border:1px solid var(--hairline); border-top:3px solid var(--near-hi); background:var(--panel); }
 .rule-card .z { font-family:var(--font-mono); font-size:52px; font-weight:600; line-height:1; letter-spacing:-.02em; }
 .rule-card .cond { margin-top:16px; font-size:23px; font-weight:600; line-height:1.28; }
 .rule-card .meta { margin-top:12px; font-family:var(--font-mono); font-size:15px; font-weight:300; color:var(--faint); line-height:1.45; }
@@ -217,8 +239,11 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
 .rule-card.c { border-top-color:var(--zone-c); } .rule-card.c .z { color:var(--zone-c); }
 .rule-card.d { border-top-color:var(--near); } .rule-card.d .z { color:var(--near); }
 
-/* --- edge-case ledger --- */
-.ledger { margin-top:26px; border-top:1px solid var(--hairline); }
+/* --- edge-case ledger ---
+   The ledger runs the full width, so its right-hand verdict column lands
+   exactly on the magenta corner of the field — and a magenta "D" on magenta
+   is no verdict at all. The panel is what lets the field stay loud there. */
+.ledger { margin-top:26px; padding:4px 28px 8px; background:var(--panel-solid); border-top:1px solid var(--hairline); }
 .ledger .row {
   display:grid; grid-template-columns:300px 220px 1fr 130px; gap:32px; align-items:baseline;
   padding:13px 0; border-bottom:1px solid var(--hairline);
@@ -227,7 +252,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
 .ledger .row .name { font-family:var(--font-display); font-size:23px; font-weight:600; color:var(--bone); }
 .ledger .row .verdict { text-align:right; font-weight:600; }
 .ledger .row .verdict.b { color:var(--zone-b); } .ledger .row .verdict.c { color:var(--zone-c); } .ledger .row .verdict.d { color:var(--near); }
-.ledger .hdr { font-size:15px; letter-spacing:.2em; text-transform:uppercase; color:var(--faint); padding-bottom:14px; border-bottom:1px solid rgba(234,242,255,.22); }
+.ledger .hdr { font-size:15px; letter-spacing:.2em; text-transform:uppercase; color:var(--faint); padding-bottom:14px; border-bottom:1px solid rgba(255,255,255,.38); }
 
 /* --- routing schematic (slide 4) --- */
 .route { position:relative; height:400px; }
@@ -235,7 +260,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
 .route .pt {
   position:absolute; top:38px; width:78px; height:78px; border:2px solid var(--brand);
   display:flex; align-items:center; justify-content:center;
-  font-family:var(--font-mono); font-size:34px; font-weight:600; background:var(--void);
+  font-family:var(--font-mono); font-size:34px; font-weight:600; background:var(--panel-solid);
 }
 .route .pt.a { left:0; border-color:var(--bone); color:var(--bone); }
 .route .pt.b { left:560px;  border-color:var(--zone-b); color:var(--zone-b); top:252px; }
@@ -260,7 +285,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
 
 /* --- stat tiles (slide 7) --- */
 .tiles { display:grid; grid-template-columns:repeat(3,1fr); gap:2px; background:var(--hairline); border:1px solid var(--hairline); }
-.tiles .tile { background:var(--void); padding:30px 30px; }
+.tiles .tile { background:var(--panel-solid); padding:30px 30px; }
 .tiles .tile .v { font-family:var(--font-mono); font-size:52px; font-weight:600; line-height:1; letter-spacing:-.025em; color:var(--near); }
 .tiles .tile .v.teal { color:var(--mid); }
 .tiles .tile .v.bone { color:var(--bone); }
@@ -271,7 +296,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
 /* The clip is revealed only once it actually decodes. docs/report/video/ is
    gitignored and the clips are currently mp4v-encoded, which browsers refuse —
    so without this the slide would silently render a black rectangle. */
-.video-wrap { position:absolute; left:var(--edge); top:300px; width:1136px; height:640px; border:1px solid rgba(249,17,85,.34); background:#000D1A; }
+.video-wrap { position:absolute; left:var(--edge); top:300px; width:1136px; height:640px; border:1px solid rgba(255,255,255,.34); background:var(--panel-solid); }
 .video-wrap video { width:100%; height:100%; object-fit:cover; display:block; opacity:0; transition:opacity .4s ease; }
 .video-wrap.ready video { opacity:1; }
 .video-wrap.ready .vfallback { opacity:0; }
