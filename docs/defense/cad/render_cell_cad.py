@@ -79,37 +79,30 @@ def draw_dims():
                                  facecolor=p["color"], edgecolor="#1f2937",
                                  lw=1.2, alpha=0.9, zorder=2))
     d = geom.DIMS
-    # belt height 0.40 m (left, clear of everything)
-    _dim(axA, (-880, 0), (-880, d["belt_top_z"]), "0,40 м\nвысота ленты",
-         off=0, fs=10)
-    # belt width, between the parked blades above the belt
-    _dim(axA, (-250, 445), (250, 445), "0,50 м", off=20, fs=9)
-    axA.text(0, 735, "лопасти-дивёртеры (парковка)", ha="center", fontsize=9,
-             color="#374151")
-    # --- descent comparison at the +Y belt edge: 60 mm step vs 0.40 m fall ---
-    # solid red bracket: the 60 mm step the item now takes onto the chute
+    # belt height 0.40 m (near the belt, left)
+    _dim(axA, (-620, 0), (-620, d["belt_top_z"]), "0,40 м", off=0, fs=11)
+    # 60 mm step bracket at the +Y belt edge; faded ghost of the 0.40 m free fall
     _dim(axA, (255, d["chute_top_z"]), (255, d["belt_top_z"]), "", color="#b91c1c")
-    # faded dashed: the 0.40 m free fall it replaces
     axA.annotate("", xy=(300, 0), xytext=(300, d["belt_top_z"]),
-                 arrowprops=dict(arrowstyle="->", color="#dc2626", lw=1.3,
-                                 linestyle="--", alpha=0.6))
-    axA.annotate("Съезд: шаг 60 мм (<10 см)\nвместо своб. падения 0,40 м → 2,80 м/с",
-                 xy=(280, 360), xytext=(470, 640), fontsize=9.5, color="#b91c1c",
+                 arrowprops=dict(arrowstyle="->", color="#dc2626", lw=1.2,
+                                 linestyle="--", alpha=0.5))
+    # step label -> upper-LEFT corner (clear of chute label at upper-right)
+    axA.annotate("шаг 60 мм (<10 см)\nвместо падения 0,40 м",
+                 xy=(278, 360), xytext=(-1150, 600), fontsize=10.5, color="#b91c1c",
                  ha="center", va="center",
                  bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="#b91c1c",
-                           alpha=0.9),
+                           alpha=0.95),
                  arrowprops=dict(arrowstyle="->", color="#b91c1c", lw=1.1))
-    # --- chute label block, in the open area above zone C ---
-    axA.annotate(f"Склиз {geom.CHUTE_ANGLE_DEG:.1f}° (проект 35–40°)\n"
-                 "mu=0,2 · сход 605 мм",
-                 xy=(500, 170), xytext=(1180, 560), fontsize=9.5, color="#0e7490",
+    # chute label -> upper-RIGHT corner
+    axA.annotate(f"склиз {geom.CHUTE_ANGLE_DEG:.1f}°\n(проект 35–40°)",
+                 xy=(560, 130), xytext=(1230, 600), fontsize=10.5, color="#0e7490",
                  ha="center", va="center",
                  bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="#0e7490",
-                           alpha=0.9),
+                           alpha=0.95),
                  arrowprops=dict(arrowstyle="->", color="#0e7490", lw=1.1))
     axA.text(1150, -55, "зона C", fontsize=11, color="#1d4ed8", ha="center")
     axA.text(-1150, -55, "зона D", fontsize=11, color="#c2410c", ha="center")
-    axA.set_title("Вид сбоку · поперечное сечение станции дивёрта (Y–Z)",
+    axA.set_title("Поперечное сечение станции дивёрта (Y–Z)",
                   fontsize=12, weight="bold")
     axA.set_xlim(-1650, 1650)
     axA.set_ylim(-90, 760)
@@ -127,14 +120,13 @@ def draw_dims():
     axB.annotate("", xy=(620, 300), xytext=(360, 400),
                  arrowprops=dict(arrowstyle="->", color="#6d28d9", lw=1.6,
                                  linestyle="--", connectionstyle="arc3,rad=-0.3"))
-    axB.text(560, 430, "штатная аномалия\n(низкая уверенность)", fontsize=9,
-             color="#6d28d9", ha="center")
+    axB.text(555, 470, "аномалия → reject", fontsize=10, color="#6d28d9",
+             ha="center")
     _dim(axB, (900, 250), (900, 400), "150 мм", off=0, color="#6d28d9", fs=9)
-    axB.text(640, 150, "Reject-лоток (H4): рутинная аномалия → reject,\n"
-                       "аппаратный E-stop — только настоящая авария",
-             fontsize=9, color="#4c1d95", ha="center")
-    axB.text(0, 440, "лента →", fontsize=10, color="#374151")
-    axB.set_title("Вид сбоку · вдоль ленты у схода (X–Z): reject-лоток",
+    axB.text(640, 170, "Reject-лоток (H4)", fontsize=10.5, color="#4c1d95",
+             ha="center")
+    axB.text(-100, 440, "лента →", fontsize=10, color="#374151")
+    axB.set_title("Вдоль ленты у схода (X–Z): reject-лоток",
                   fontsize=12, weight="bold")
     axB.set_xlim(-450, 1000)
     axB.set_ylim(100, 620)
@@ -142,13 +134,11 @@ def draw_dims():
     axB.set_xlabel("X, мм (вдоль ленты)")
     axB.set_ylabel("Z, мм")
 
-    fig.suptitle("H4 · проектный эскиз ячейки: съезд <10 см и reject-лоток "
-                 "(из cell_diverter.sdf + chute_angle.md)", fontsize=13,
-                 weight="bold")
+    fig.suptitle("H4 · эскиз ячейки: съезд <10 см и reject-лоток (вид сбоку)",
+                 fontsize=13, weight="bold")
     fig.text(0.5, 0.005,
-             "Сплошная геометрия — из симуляции (SDF); красный пунктир — "
-             "заменяемое свободное падение; фиолет — reject-лоток, проектное "
-             "дополнение H4 (в текущем SDF отсутствует).",
+             "Сплошная геометрия — из симуляции (SDF); фиолетовое — reject-лоток, "
+             "проектное дополнение H4.",
              ha="center", fontsize=9, color="#475569")
     fig.tight_layout(rect=[0, 0.03, 1, 0.96])
     path = os.path.join(OUT, "cell_sideview_dims.png")
