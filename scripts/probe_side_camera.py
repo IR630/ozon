@@ -32,6 +32,7 @@ accuracy. Its numbers may only be read as "does the information exist at all".
 
     python scripts/probe_side_camera.py
 """
+import re
 import sys
 from pathlib import Path
 
@@ -155,6 +156,31 @@ def truth_dims_mm(mesh):
     return sorted(float(e) for e in mesh.bounding_box_oriented.primitive.extents)[::-1]
 
 
+def census_resting_quats(logdir):
+    """{slug: [(orient_index, quat), ...]} of the poses the CELL actually settled into.
+
+    The seeded tumbles below are deliberately harsh and include physically
+    impossible rests (a 400 mm box balanced on a corner), so their pass rate is
+    NOT comparable with the census. Every census cell log records the orientation
+    the item came to rest in as `resting rpy:`; reading those makes the probe
+    measure the same poses the routing matrix scored.
+    """
+    from body_pose import quat_from_rpy
+
+    out = {}
+    for log in sorted(Path(logdir).glob("matrix_*.log")):
+        stem = log.stem[len("matrix_"):]
+        slug, _, oi = stem.rpartition("_")
+        if slug not in ITEMS:
+            continue
+        m = re.search(r"resting rpy: r=(\S+) p=(\S+) y=(\S+)",
+                      log.read_text(encoding="utf-8", errors="replace"))
+        if m:
+            rpy = [float(v) for v in m.groups()]
+            out.setdefault(slug, []).append((int(oi), quat_from_rpy(*rpy)))
+    return out
+
+
 def seeded_quats(n, seed=0):
     """Identity plus n-1 reproducible tumbles (Karpathy #5: seed, never wall clock)."""
     rng = np.random.default_rng(seed)
@@ -166,11 +192,24 @@ def seeded_quats(n, seed=0):
 
 
 def main():
+    census_dir = None
+    if len(sys.argv) == 3 and sys.argv[1] == "--from-census":
+        census_dir = sys.argv[2]
+    elif len(sys.argv) != 1:
+        sys.exit("usage: probe_side_camera.py [--from-census <census logdir>]")
+
+    poses_by_slug = census_resting_quats(census_dir) if census_dir else None
+    if poses_by_slug is not None and not poses_by_slug:
+        sys.exit(f"no `resting rpy:` found in {census_dir} — wrong log directory?")
+    print("позы:", "покоя из переписи" if census_dir else "сеяные кувырки")
+
     rows = []
     for slug in ITEMS:
         mesh = load_mesh(slug)
         truth = truth_dims_mm(mesh)
-        for pose_i, quat in enumerate(seeded_quats(N_POSES)):
+        poses = (poses_by_slug.get(slug, []) if poses_by_slug is not None
+                 else list(enumerate(seeded_quats(N_POSES))))
+        for pose_i, quat in poses:
             pts = place_on_belt(mesh, quat)
             top = visible_points(pts, TOP_CAM_POS_M, TOP_CAM_TARGET_M)
             side = visible_points(pts, SIDE_CAM_POS_M, SIDE_CAM_TARGET_M)
