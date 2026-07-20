@@ -23,7 +23,13 @@ import trimesh
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.classification import classify as classify_category  # noqa: E402
-from src.constants import CATEGORY_B, CATEGORY_C, CATEGORY_D  # noqa: E402
+from src.constants import (  # noqa: E402
+    CATEGORY_B,
+    CATEGORY_C,
+    CATEGORY_D,
+    SANE_DIM_MM_MAX,
+    SANE_DIM_MM_MIN,
+)
 
 CAT_B = f"{CATEGORY_B}: подходит для сортировки"
 CAT_C = f"{CATEGORY_C}: не подходит по габаритам"
@@ -34,6 +40,23 @@ _LABELS = {CATEGORY_B: CAT_B, CATEGORY_C: CAT_C, CATEGORY_D: CAT_D}
 def classify(dims, k):
     """Human-readable label for the report; rules live in src/classification.py."""
     return _LABELS[classify_category(dims, k)]
+
+
+def check_scale(dims_mm, name=""):
+    """Fail LOUD on an implausibly-scaled mesh (Karpathy #6: no silent wrong answer).
+
+    STL carries no units. A metre-scale export (300 mm -> 0.3) or a 10x-inflated one
+    would pass silently through every mm threshold and misroute the item. Real items
+    span 9-489 mm, well inside the sane per-dim band [SANE_DIM_MM_MIN, SANE_DIM_MM_MAX];
+    anything outside it is almost certainly a unit error, not a real product.
+    """
+    lo, hi = float(min(dims_mm)), float(max(dims_mm))
+    if lo < SANE_DIM_MM_MIN or hi > SANE_DIM_MM_MAX:
+        shown = tuple(round(float(d), 1) for d in dims_mm)
+        raise ValueError(
+            f"{name or 'mesh'} dims {shown} mm are outside the sane range "
+            f"[{SANE_DIM_MM_MIN}, {SANE_DIM_MM_MAX}] mm — looks like a unit/scale error "
+            f"(metres? inches?). STL has no units; rescale the model to millimetres.")
 
 
 def section_circle_ratio(mesh, origin, normal):
@@ -98,6 +121,7 @@ def analyze_file(path):
 
     m = trimesh.load(str(path), force="mesh")
     dims = np.sort(m.bounding_box_oriented.primitive.extents)[::-1]
+    check_scale(dims, Path(path).stem)
     m.apply_transform(np.linalg.inv(m.bounding_box_oriented.primitive.transform))
     k, _ = k_by_projection(m)
     return {
