@@ -9,7 +9,8 @@ body-OBB. Разные сценарии не складываются в оди�
 
 | Набор | Эпизоды | Товары / проверки | Результат | Сырые каталоги |
 |---|---:|---:|---|---|
-| Мульти-seed census (19.07), seeds 0–4, 11 моделей × 3 ориентации каждый (`census_seed_sweep.py`) | 5/5 census all-pass | **165/165** routed | classification 0, execution 0; seed-чувствительности нет (каждая ячейка PASS на всех прогонах, где шла); **Pouf 15/15**, включая исторически капризные oi0/oi1 | `runs/sweep_seed{0,1,2,3,4}` |
+| Мульти-seed census (**20.07, текущий main** `c12ba2b`), seeds 0–4, 11 моделей × 3 ориентации (`census_seed_sweep.py`) | 5/5 census run | **164/165** routed | **1 классификационный промах**: Мешок oi=2 на seed 4 (K=0.80 → D вместо B, порог 0.8004); execution 0; **Pouf 15/15** | `runs/baseline_main_seed0`, `runs/sweep_main_seed{1,2,3,4}` |
+| Мульти-seed census (19.07), seeds 0–4 — на ядре ДО фикса K (`fa4d30e`, ветка-не-потомок) | 5/5 census all-pass | 165/165 routed (историческое, не текущее ядро) | classification 0, execution 0; **Pouf 15/15** | `runs/sweep_seed{0,1,2,3,4}` |
 | Финальный gate ядра `v0.5-stable-stream` (`main@cafbbd4` + хвост): два полных stream-suite подряд + census | 2×6/6 all-pass + census | **33/33 + 33/33** terminal PASS; census 32/32 + helmet-хвост 3/3 после обрыва сессии | roster 5/5/5 mixed и 6/6/6 B во всех эпизодах; 0 FAIL/TIMEOUT/JAM; triage classification 0, execution 0 | `runs/pouf_fix_final_*_cafbbd4`, `runs/b_oi1_poll200_cafbbd4` |
 | Ресурсный профиль худшего mixed oi1 + восстановление после E-stop (`main@424a0a2`) | 1 поток + 2 смока | 5/5 PASS; recovery 2/2 | peak RSS 944 MiB; CPU 2.8 ср. / 4.4 пик ядра; ≤12 процессов за 48 с; после сброса E-stop повторный soft-start и доезд в B без повторной защёлки | `runs/resource_mixed_oi1_424a0a2`, `runs/estop_recover_r{2,3}` |
 | Stage 24 stability `main@f4d3540`: seed0 repeat + seed1/oi0 | 6/8 all-pass | **42/44** terminal; roster 44/44/44 | 2 execution FAIL: только Pouf seed0 oi0/oi1; TIMEOUT/JAM/E-stop 0; seed1/oi0 11/11 | `runs/week4_stability_{seed0_repeat,seed1_oi0}_f4d3540` |
@@ -35,9 +36,13 @@ Pouf seed0 oi0/oi1 имел полный roster, верную категорию
 не осел в body-окне зоны; oi2 и новый seed1/oi0 прошли. Поэтому прежний 33/33
 остаётся фактом отдельного запуска, но не гарантией повторяемости.
 
-Мульти-seed census 19.07 (165/165, каждая ячейка PASS на всех прогонах) снимает
-именно **seed-чувствительность**: пять разных seed’ов дали корректную
-маршрутизацию всех 11 моделей, Pouf 15/15. Это НЕ то же самое, что детерминизм при
+Мульти-seed census на **текущем main** (20.07, `c12ba2b`) даёт **164/165**: пять
+seed’ов, единственный промах — Мешок oi=2 на seed 4 (силуэтная K=0.80 перешла
+порог 0.8004 и ушла в D вместо B; **классификация, не исполнение**). Pouf 15/15 —
+**seed-чувствительность исполнения снята**. Прежний прогон 19.07 давал 165/165, но
+на ядре ДО фикса K (`fa4d30e`, ветка-не-потомок), поэтому актуальное число —
+164/165, а одиночный промах это by-design coin-flip Мешка у порога, не отказ
+механизма. Это НЕ то же самое, что детерминизм при
 фиксированном seed — каждый seed прогонялся один раз, а Stage-24-отказ был
 непостоянством одного и того же seed 0 между прогонами Gazebo. Две оси вместе
 читаются так: routing Pouf корректен в подавляющем большинстве прогонов, с редким
