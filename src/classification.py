@@ -12,6 +12,8 @@ from src.constants import (
     CATEGORY_C,
     CATEGORY_D,
     MAX_DIMS_MM,
+    MEASUREMENT_TOL_MM,
+    MEASUREMENT_TOL_VOLUME_FRAC,
     MIN_DIMS_MM,
     ROUND_K_THRESHOLD,
     SANE_DIM_MM_MAX,
@@ -25,6 +27,39 @@ from src.constants import (
 # and must stay B — docs/decisions.md). This is not a domain threshold, so it
 # lives here, not in constants.py.
 CONSERVATIVE_DIM_MARGIN_MM = 5.0
+
+
+def measurement_error(measured_dims_mm, truth_dims_mm):
+    """(worst per-side error in mm, relative volume error) against ground truth.
+
+    Both dimension triples are compared sorted descending, because neither the
+    task nor the organizers assign meaning to the ORDER of an item's extents —
+    only to the multiset of them.
+    """
+    got = np.sort(np.asarray(measured_dims_mm, dtype=float))[::-1]
+    truth = np.sort(np.asarray(truth_dims_mm, dtype=float))[::-1]
+    if got.shape != (3,) or truth.shape != (3,):
+        raise ValueError(f"expected 3 dimensions each, got {measured_dims_mm!r} / {truth_dims_mm!r}")
+    if np.any(truth <= 0.0):
+        raise ValueError(f"truth dimensions must be positive: {truth}")
+    side_err = float(np.max(np.abs(got - truth)))
+    vol_err = float(abs(np.prod(got) - np.prod(truth)) / np.prod(truth))
+    return side_err, vol_err
+
+
+def within_measurement_tolerance(measured_dims_mm, truth_dims_mm,
+                                 tol_mm=MEASUREMENT_TOL_MM,
+                                 tol_volume=MEASUREMENT_TOL_VOLUME_FRAC):
+    """Is a measurement inside the accuracy the organizers allow?
+
+    Either criterion passing is enough — the experts said "5 mm on a side and
+    10 % by volume, the MAXIMUM of these two parameters" ([08:45]), i.e. the more
+    permissive one governs. Which one that is depends on size: 10 % by volume is
+    ~3.2 % per side, so it is the looser rule on a 300 mm box (~9.7 mm) and the
+    tighter one on a 20 mm part (~0.6 mm), where the flat 5 mm takes over.
+    """
+    side_err, vol_err = measurement_error(measured_dims_mm, truth_dims_mm)
+    return side_err <= tol_mm or vol_err <= tol_volume
 
 
 def classify(dims_mm, k):

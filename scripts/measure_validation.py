@@ -15,7 +15,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.classification import classify_conservative  # noqa: E402
+from src.classification import (  # noqa: E402
+    classify_conservative,
+    within_measurement_tolerance,
+)
 from src.perception import load_depth_png, measure_item  # noqa: E402
 
 
@@ -43,6 +46,11 @@ class Evaluation:
     k_error: float | None
     category: str | None
     passed: bool
+    # Organizer-allowed accuracy (5 mm on a side OR 10 % by volume, the more
+    # permissive), reported ALONGSIDE `passed` — not folded into it. `passed`
+    # keeps the frozen per-slice regression budget; this is the real accuracy
+    # yardstick and is what the camera experiment compares between rig configs.
+    within_organizer_tol: bool | None = None
 
 
 IMG = ROOT / "docs" / "report" / "img"
@@ -184,6 +192,10 @@ def evaluate(case: ValidationCase, measurement) -> Evaluation:
         case.dim_tolerance_mm is None
         or (dim_error is not None and dim_error <= case.dim_tolerance_mm)
     )
+    within_tol = (
+        None if case.truth_dims_mm is None
+        else within_measurement_tolerance(dims, case.truth_dims_mm)
+    )
     passed = case.expected_detected and category == case.expected_category and dims_accurate
     return Evaluation(
         True,
@@ -193,6 +205,7 @@ def evaluate(case: ValidationCase, measurement) -> Evaluation:
         k_error,
         category,
         passed,
+        within_organizer_tol=within_tol,
     )
 
 
@@ -211,18 +224,20 @@ def main() -> int:
 
     print(
         "| Slice | Detection | Measured dims, mm | max abs(dim error) / limit, mm | "
-        "K | abs(K error) | Route | Result |"
+        "Org tol | K | abs(K error) | Route | Result |"
     )
-    print("|---|---:|---|---:|---:|---:|---:|---:|")
+    print("|---|---:|---|---:|---:|---:|---:|---:|---:|")
     for case, result in results:
         dims = "—" if result.dims_mm is None else "x".join(
             f"{value:.0f}" for value in result.dims_mm)
         detection = "detected" if result.detected else "rejected"
         route = result.category or "—"
+        org_tol = "—" if result.within_organizer_tol is None else (
+            "in" if result.within_organizer_tol else "OUT")
         print(
             f"| {case.name} | {detection} | {dims} | "
             f"{_fmt(result.max_dim_error_mm, 1)} / {_fmt(case.dim_tolerance_mm, 1)} | "
-            f"{_fmt(result.k)} | "
+            f"{org_tol} | {_fmt(result.k)} | "
             f"{_fmt(result.k_error)} | {route} | {'PASS' if result.passed else 'FAIL'} |"
         )
 
@@ -235,10 +250,14 @@ def main() -> int:
     contract_passed = sum(result.passed for _, result in visible)
     partial = [(case, result) for case, result in results if not case.expected_detected]
     rejected = sum(result.passed for _, result in partial)
+    measured = [(case, result) for case, result in visible
+                if result.within_organizer_tol is not None]
+    in_tol = sum(result.within_organizer_tol for _, result in measured)
     print(
         f"\nvisible recall {detected}/{len(visible)}; "
         f"category {category_correct}/{len(visible)}; "
         f"visible contract {contract_passed}/{len(visible)}; "
+        f"organizer tolerance {in_tol}/{len(measured)}; "
         f"expected reject {rejected}/{len(partial)}"
     )
     return 0 if all(result.passed for _, result in results) else 1

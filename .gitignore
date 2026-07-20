@@ -45,6 +45,8 @@ Thumbs.db
 
 # Генерируется скриптом scripts/build_item_models.py — не в гит
 sim/models/items/
+# То же для зондового набора (scripts/build_probe_items.py)
+sim/models/probe_items/
 
 # Крупные артефакты — в облако организаторов, не в гит
 *.onnx
@@ -54,5 +56,9 @@ weights/
 datasets/
 *.mp4
 
-# Видео прогонов — крупные бинарники в облако организаторов (GIT.md)
-docs/report/video/
+# Видео прогонов — крупные бинарники в облако организаторов (GIT.md).
+# Исключение: hero-клип слайда 6 (721 КБ) лежит в репо, иначе презентация
+# после клона показывает заглушку вместо демо. Правило "*" + отрицание:
+# re-include не работает, если исключён сам каталог.
+docs/report/video/*
+!docs/report/video/hero_stream_mixed_cd.mp4

@@ -57,7 +57,13 @@ def _shape_depth(kind: str, long_px: float, short_px: float, yaw_deg: float, top
 
 
 def build_cases() -> list[PrivateCase]:
-    """Unknown B/C/D objects plus rotations and both size-priority traps."""
+    """Unknown B/C/D objects: rotations, size-priority traps, and a boundary
+    block that brackets the K=0.8 threshold and the 450/320 mm size limits on
+    BOTH sides. Every expected verdict is the geometric truth of the shape, not
+    the pipeline's current output; the measured dims/K that place each case were
+    read off the production path first (Karpathy #1), so a FAIL here is a real
+    rule/measurement regression, not a tuned assertion.
+    """
     cases = []
     for yaw in (0.0, 27.0, 61.0):
         cases.append(
@@ -99,6 +105,36 @@ def build_cases() -> list[PrivateCase]:
                 "C",
                 _shape_depth("ellipse", 200, 200, 0, 1.45),
             ),
+        )
+    )
+
+    # --- Boundary block: threshold and size limits stressed on both sides. ---
+    # K=0.8 roundness threshold neighborhood (the Шлем 0.78 / Цилиндр 0.74 zone).
+    # An ellipse's silhouette K = short/long; these bracket 0.8 tightly and wide.
+    cases.extend(
+        (
+            # measured K~0.798, dims 387x310x80 -> just under threshold, stays B
+            PrivateCase("k_just_below_threshold_B", "B", _shape_depth("ellipse", 150, 120, 0, 1.42)),
+            # measured K~0.830, dims 316x264x50 -> just over threshold, D
+            PrivateCase("k_just_above_threshold_D", "D", _shape_depth("ellipse", 120, 100, 0, 1.45)),
+            # measured K~0.941, dims 281x281x50 -> comfortably round, D
+            PrivateCase("k_deep_round_D", "D", _shape_depth("ellipse", 110, 104, 0, 1.45)),
+            # measured K~0.863 rotated 45 deg, dims 314x274x50 -> D regardless of yaw
+            PrivateCase("k_above_threshold_D_yaw45", "D", _shape_depth("ellipse", 120, 104, 45, 1.45)),
+            # measured K~0.864 (round) BUT dims 387x336x80: the 336 mm second dim
+            # exceeds the 320 mm limit, so size priority sends it to C, not D.
+            PrivateCase("round_but_oversized_priority_C", "C", _shape_depth("ellipse", 150, 130, 0, 1.42)),
+        )
+    )
+    # Size limits stressed on both sides (rectangular prisms, K well below 0.8).
+    cases.extend(
+        (
+            # measured 462x207x120 -> first dim over the 450 mm limit -> C
+            PrivateCase("over_max_first_dim_C", "C", _shape_depth("rectangle", 185, 82, 0, 1.38)),
+            # measured 377x302x120 -> second dim under the 320 mm limit -> B
+            PrivateCase("fits_under_second_dim_B", "B", _shape_depth("rectangle", 150, 120, 0, 1.38)),
+            # measured 377x337x120 -> second dim over the 320 mm limit -> C
+            PrivateCase("over_second_dim_C", "C", _shape_depth("rectangle", 150, 135, 0, 1.38)),
         )
     )
     return cases

@@ -10,12 +10,15 @@
 
 | Набор | Эпизоды | Товары / проверки | Результат | Сырые каталоги |
 |---|---:|---:|---|---|
-| Sustained all-model suite, seed 0, oi0–2 | **6/6** all-pass | **33/33** terminal; n=27 межтоварных интервалов | медиана **10 шт/мин**, по эпизодам 4–15; 0 FAIL | `runs/stream_suite_20260717_123705_seed0` |
-| Финальный Stage 24 после `424a0a2`: два полных stream-suite + возобновлённый census | **12/12** stream-эпизодов + прерванная census-цепочка | **66/66** terminal stream; census-префикс **32/32** + Helmet-хвост **3/3**, все 33 уникальные ячейки покрыты | roster полные, 0 FAIL/TIMEOUT/JAM; triage 0/0; это не один непрерывный census | `runs/pouf_fix_final_*_cafbbd4`, `runs/pouf_fix_final_census_seed0_helmet_tail` |
-| Диагностическая Stage 24 до фикса `main@f4d3540`: seed0 repeat + seed1/oi0 | 6/8 all-pass | **42/44** terminal; roster 44/44/44 | 2 execution FAIL: только Pouf seed0 oi0/oi1; TIMEOUT/JAM/E-stop 0; seed1/oi0 11/11 | `runs/week4_stability_{seed0_repeat,seed1_oi0}_f4d3540` |
+| Мульти-seed census (**20.07, текущий main** `c12ba2b`), seeds 0–4, 11 моделей × 3 ориентации (`census_seed_sweep.py`) | 5/5 census run | **164/165** routed | **1 классификационный промах**: Мешок oi=2 на seed 4 (K=0.80 → D вместо B, порог 0.8004); execution 0; **Pouf 15/15** | `runs/baseline_main_seed0`, `runs/sweep_main_seed{1,2,3,4}` |
+| Мульти-seed census (19.07), seeds 0–4 — на ядре ДО фикса K (`fa4d30e`, ветка-не-потомок) | 5/5 census all-pass | 165/165 routed (историческое, не текущее ядро) | classification 0, execution 0; **Pouf 15/15** | `runs/sweep_seed{0,1,2,3,4}` |
+| Финальный gate ядра `v0.5-stable-stream` (`main@cafbbd4` + хвост): два полных stream-suite подряд + census | 2×6/6 all-pass + census | **33/33 + 33/33** terminal PASS; census 32/32 + helmet-хвост 3/3 после обрыва сессии | roster 5/5/5 mixed и 6/6/6 B во всех эпизодах; 0 FAIL/TIMEOUT/JAM; triage classification 0, execution 0 | `runs/pouf_fix_final_*_cafbbd4`, `runs/b_oi1_poll200_cafbbd4` |
+| Ресурсный профиль худшего mixed oi1 + восстановление после E-stop (`main@424a0a2`) | 1 поток + 2 смока | 5/5 PASS; recovery 2/2 | peak RSS 944 MiB; CPU 2.8 ср. / 4.4 пик ядра; ≤12 процессов за 48 с; после сброса E-stop повторный soft-start и доезд в B без повторной защёлки | `runs/resource_mixed_oi1_424a0a2`, `runs/estop_recover_r{2,3}` |
+| Stage 24 stability `main@f4d3540`: seed0 repeat + seed1/oi0 | 6/8 all-pass | **42/44** terminal; roster 44/44/44 | 2 execution FAIL: только Pouf seed0 oi0/oi1; TIMEOUT/JAM/E-stop 0; seed1/oi0 11/11 | `runs/week4_stability_{seed0_repeat,seed1_oi0}_f4d3540` |
 | Helmet ID gate `main@c91c541`: Pouf→Helmet ×2 + census + occupied E-stop | 2/2 handoff + 1 census + 1 safety | handoff 4/4; census 33/33; E-stop 2 товара + engaged blade | roster 2/2/2 в обоих handoff; triage 0/0; `dx=0`, `FIRED 2→2` | `runs/week4_{pouf_helmet_idfix_replay*,idfix_census,idfix_estop}_c91c541` |
-| Stream-suite `main@3f3a7ed`, 11 моделей × 3 ориентации | 6/6 all-pass | 33/33 terminal PASS; roster 33/33/33 | 0 FAIL/TIMEOUT/JAM; без phantom ID; наблюдаемый темп 3–12 шт/мин | `runs/week4_suite_gate_3f3a7ed_seed0_oi{0,1,2}` |
-| Исторический freeze-census `main@6618ded`, 11 моделей × 3 ориентации | 1/1 all-pass | 33/33 routed; каждая модель 3/3 | classification 0, execution 0, TIMEOUT 0; triage 33/33 | `runs/week3_freeze_main_20260715` |
+| Stream-suite `main@3f3a7ed`, 11 моделей × 3 ориентации | 6/6 all-pass | 33/33 terminal PASS; roster 33/33/33 | 0 FAIL/TIMEOUT/JAM; без phantom ID; поэпизодный темп 3–12 шт/мин | `runs/week4_suite_gate_3f3a7ed_seed0_oi{0,1,2}` |
+| Stream-suite перемер `main@8a728f9` (throughput), 11 моделей × 3 ориентации | 6/6 all-pass | 33/33 terminal PASS; 27 интервалов | 0 FAIL; **sustained-медиана 10 шт/мин** (p95-медл. такт 4, поэпизодно 4–15); камера→решение медиана 0.030 с | `runs/stream_suite_20260717_123705_seed0` |
+| Freeze-census `main@6618ded` (15.07), 11 моделей × 3 ориентации | 1/1 all-pass | 33/33 routed; каждая модель 3/3 | classification 0, execution 0, TIMEOUT 0; triage 33/33 | `runs/week3_freeze_main_20260715` |
 | Два census слитого main, 11 моделей × 3 ориентации | 2/2 all-pass | 66/66 routed; каждая модель 6/6; B 36/36, C 18/18, D 12/12 | 33/33 + 33/33; classification 0, execution 0, ни одна ячейка не разошлась | `runs/census_merged_1`, `runs/census_merged_2` |
 | Пограничный replay Pouf/Pen/Plate/Cylinder/Helmet × 3 | 1/1 all-pass | 15/15 routed; каждая модель 3/3 | classification 0, execution 0, TIMEOUT 0 | `runs/week3_boundary_main_20260715` |
 | Штатный поток, seeds 0/2/3/4 | 4/4 all-pass | 12/12 routed | камера→решение median 0.094 с, p95 0.186 с | `runs/stream_lat_seed*` |
@@ -36,13 +39,31 @@ census Stage 24 также не выдаётся за непрерывный: п
 
 ## Учёт отказов
 
-Диагностическая серия Stage 24 до `424a0a2` содержит два терминальных физических
-FAIL, и оба оставлены в своём знаменателе. Pouf seed0 oi0/oi1 имел полный roster,
-верную категорию C и `pusher_c FIRED`, но не осел в body-окне зоны. Различающий
-разбор нашёл исполнительную причину: первый Box400 блокировал устье склиза, а
-следующий Pouf ложился на него. После изменения пола зоны и парных зазоров два
-полных suite дали 66/66; красная серия не стирается, но не описывает текущий
-gate. Старые неудачные попытки также сохранены: аудит ранних потоков дал **6/10
+В Stage 24 есть два терминальных физических FAIL, и оба оставлены в знаменателе.
+Pouf seed0 oi0/oi1 имел полный roster, верную категорию C и `pusher_c FIRED`, но
+не осел в body-окне зоны; oi2 и новый seed1/oi0 прошли. Поэтому прежний 33/33
+остаётся фактом отдельного запуска, но не гарантией повторяемости.
+
+Мульти-seed census на **текущем main** (20.07, `c12ba2b`) даёт **164/165**: пять
+seed’ов, единственный промах — Мешок oi=2 на seed 4 (силуэтная K=0.80 перешла
+порог 0.8004 и ушла в D вместо B; **классификация, не исполнение**). Pouf 15/15 —
+**seed-чувствительность исполнения снята**. Прежний прогон 19.07 давал 165/165, но
+на ядре ДО фикса K (`fa4d30e`, ветка-не-потомок), поэтому актуальное число —
+164/165, а одиночный промах это by-design coin-flip Мешка у порога, не отказ
+механизма. **Перепрогон именно этой ориентации (seed 4 oi=2) через полный контур
+дал B 8/8** (K=0.80, габариты осели чуть иначе — `197×174×166` против `195×183×159`
+в переписи): census-D был run-to-run оседанием физики на пороге, а не свойством
+позы. То есть классификатор устойчив (Мешок → B в 22 из 23 наблюдённых прогонов),
+недетерминирована игра оседания Gazebo — та же «±2–3 ячейки шума», что и всегда.
+Это НЕ то же самое, что детерминизм при
+фиксированном seed — каждый seed прогонялся один раз, а Stage-24-отказ был
+непостоянством одного и того же seed 0 между прогонами Gazebo. Две оси вместе
+читаются так: routing Pouf корректен в подавляющем большинстве прогонов, с редким
+недетерминированным промахом исполнения при конкретных ориентациях, который
+консервативный зазор смены зон (3.1 м) и body-scored вердикт и призваны
+поглощать. Чтобы закрыть и вторую ось, нужен повтор одного seed ×N, не сделан. В остальных
+актуальных наборах таблицы терминальных FAIL/INVALID/TIMEOUT нет. Старые неудачные
+попытки также не стираются: исправленный аудит сохранённых потоков дал **6/10
 all-pass, 27/36 routed**. Плотный Lunchbox B→D не выдан за исправленный без
 различающего trace; каждый безопасный план назван явно.
 
@@ -78,13 +99,15 @@ body-verdict помечается `INVALID`/`INCOMPLETE` и остаётся в 
 - Одновременно допускается только один Gazebo-контур. Docker с
   `network_mode: host`, WSL и host-процесс разделяют Ignition Transport и могут
   отвечать на сервисы чужого эпизода.
-- Численный минимум RAM/CPU как production-требование не заявляется. Один
-  Linux/Fortress-прогон из 5 товаров длительностью 48 с дал peak RSS 944 MiB,
-  CPU 2.8 ядра в среднем / 4.4 в пике и максимум 12 процессов; к концу RSS
-  наблюдался на плато 853 MiB. Сырые `resources.csv/json` лежат в
-  `runs/resource_mixed_oi1_424a0a2`. Этого достаточно для фактического профиля
-  Stage 24, но недостаточно для вывода об отсутствии утечки в длительном
-  непрерывном процессе: нужен отдельный same-process soak на 30–50 товарах.
+- Численный минимум RAM/CPU как production-требование не заявляется. Каждый новый
+  `run_stream.sh` снимает раз в секунду деревья Gazebo, ROS launch и feeder в
+  `resources.csv`, а в `resources.json` сохраняет peak RSS, среднее/пиковое число
+  занятых CPU-ядер и максимум процессов. Реальный профиль Fortress снят 17.07 на
+  худшем mixed oi1 (см. таблицу выше: peak RSS 944 MiB, CPU 2.8 ср. / 4.4 пик
+  ядра; к концу прогона RSS наблюдался на плато 853 MiB); измеренный факт не
+  превращается в заявленный минимум. Этого профиля достаточно для факта, но
+  **недостаточно для вывода об отсутствии утечки** в длительном непрерывном
+  процессе: нужен отдельный same-process soak на 30–50 товарах, он не сделан.
 
 ## Как распознать загрязнённый стенд
 
