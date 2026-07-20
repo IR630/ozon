@@ -10,7 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from scripts.analyze_models import check_scale, main
+from scripts.analyze_models import check_scale, executive_handoff, main
+from src.constants import CATEGORY_B, CATEGORY_C, CATEGORY_D
 
 ROOT = Path(__file__).resolve().parents[1]
 CYLINDER = ROOT / "docs" / "Stl" / "Цилиндр.stl"
@@ -58,3 +59,19 @@ class TestScaleGuard:
         m.export(str(p))
         with pytest.raises(ValueError, match="unit/scale"):
             main([str(p)])
+
+
+class TestExecutiveHandoff:
+    """The STL contour must not end at a printed category — the expert asked for the
+    verdict to reach the executive part ([35:29]). A simulated hand-off, mirroring the
+    live controller's category->actuator contract, closes it."""
+
+    def test_each_category_maps_to_its_actuator(self):
+        assert "/pusher_c/cmd" in executive_handoff(CATEGORY_C)
+        assert "/pusher_d/cmd" in executive_handoff(CATEGORY_D)
+        assert "дивёрт" in executive_handoff(CATEGORY_B)  # B rides through, no divert
+
+    def test_cli_prints_the_handoff(self, capsys):
+        main([str(CYLINDER)])  # Цилиндр -> B
+        out = capsys.readouterr().out
+        assert "исполнительная часть" in out

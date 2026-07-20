@@ -42,6 +42,23 @@ def classify(dims, k):
     return _LABELS[classify_category(dims, k)]
 
 
+# The category->executive contract the live controller acts on
+# (src/controller_node.py: C -> /pusher_c/cmd, D -> /pusher_d/cmd, B rides to the
+# belt end). Mirrored here so the STL entry point closes the contour end to end —
+# load -> params -> classify -> HAND OFF to execution — which the expert asked for
+# (docs/md/expert_session_qa.md [35:29]-[36:12]); a simulated hand-off is allowed.
+_EXEC_HANDOFF = {
+    CATEGORY_B: "категория B — едет до конца ленты, без дивёрта",
+    CATEGORY_C: "категория C — дивёртер зоны C (/pusher_c/cmd)",
+    CATEGORY_D: "категория D — доупаковка, дивёртер зоны D (/pusher_d/cmd)",
+}
+
+
+def executive_handoff(category):
+    """Routing command the executive part would receive for a raw B/C/D category."""
+    return _EXEC_HANDOFF[category]
+
+
 def check_scale(dims_mm, name=""):
     """Fail LOUD on an implausibly-scaled mesh (Karpathy #6: no silent wrong answer).
 
@@ -133,6 +150,7 @@ def analyze_file(path):
         "faces": len(m.faces),
         "k": k,
         "k_section": k_by_section(m),
+        "category": classify_category(dims, k),
         "cat": classify(dims, k),
     }
 
@@ -164,6 +182,7 @@ def main(argv=None):
         rows.append(r)
         print(f"{r['name']}: OBB {r['dims'].round(1)} K={r['k']:.3f} "
               f"watertight={r['watertight']} faces={r['faces']} -> {r['cat']}")
+        print(f"    -> исполнительная часть: {executive_handoff(r['category'])}")
 
     if args.paths:  # ad-hoc run: report only, keep the reference table intact
         return 0
