@@ -51,3 +51,18 @@
   ros_type_name: sensor_msgs/msg/CameraInfo
   gz_type_name: ignition.msgs.CameraInfo
   direction: GZ_TO_ROS
+# Side depth camera (feat/two-cameras): the second head across the belt from -Y.
+# Feeds the DIMENSION path only; the perception node buffers its last frame and
+# fuses it, motion-compensated, into the top measurement (K stays top-only).
+- topic_name: /camera_side/image
+  ros_type_name: sensor_msgs/msg/Image
+  gz_type_name: ignition.msgs.Image
+  direction: GZ_TO_ROS
+- topic_name: /camera_side/depth_image
+  ros_type_name: sensor_msgs/msg/Image
+  gz_type_name: ignition.msgs.Image
+  direction: GZ_TO_ROS
+- topic_name: /camera_side/camera_info
+  ros_type_name: sensor_msgs/msg/CameraInfo
+  gz_type_name: ignition.msgs.CameraInfo
+  direction: GZ_TO_ROS

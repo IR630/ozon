@@ -206,6 +206,36 @@
       </link>
     </model>
 
+    <!-- SIDE RGBD camera (feat/two-cameras): across the belt from -Y, looking toward
+         +Y and 9.5 deg down, at item height. Feeds the DIMENSION path only (K stays
+         top-only). Pose 1.5 -0.90 0.75: |y|=0.90 clears the diverter pivots (|y|=0.28)
+         and belt guides (y=±0.272), and sits ~3 cm outside the TOP camera's belt-level
+         Y window (|y|<0.869 m), so its compact housing casts no blob into the top mask
+         (the day-5 _find_item=None blocker) — verified by rendering the top frustum,
+         docs/decisions.md. RPY 0 0.165 1.5708: yaw +90 deg points optical +X toward +Y,
+         pitch 0.165 rad tilts it onto the target (1.5, 0, 0.60). Constants mirror
+         src.perception.SIDE_CAMERA_POS_M / SIDE_CAMERA_TARGET_M. Housing is a small box
+         at mount height only; no structure descends to low z inside |y|<0.87. -->
+    <model name="camera_side">
+      <static>true</static>
+      <pose>1.5 -0.90 0.75 0 0.165 1.5708</pose>
+      <link name="link">
+        <visual name="housing">
+          <geometry><box><size>0.06 0.06 0.06</size></box></geometry>
+          <material><ambient>0.1 0.1 0.1 1</ambient><diffuse>0.15 0.15 0.15 1</diffuse></material>
+        </visual>
+        <sensor name="rgbd" type="rgbd_camera">
+          <update_rate>15</update_rate>
+          <topic>camera_side</topic>
+          <camera>
+            <horizontal_fov>1.05</horizontal_fov>
+            <image><width>640</width><height>480</height></image>
+            <clip><near>0.1</near><far>5.0</far></clip>
+          </camera>
+        </sensor>
+      </link>
+    </model>
+
     <!-- DIVERTERS (day 5): steerable deflector blades on revolute joints, the
          gentle alternative to the ballistic pushers. Each blade parks along its
          belt edge (joint angle 0, out of the item path) and, on a +v command,
