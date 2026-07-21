@@ -31,7 +31,11 @@ def generate_launch_description():
         package="ros_gz_bridge",
         executable="parameter_bridge",
         name="camera_bridge",
-        parameters=[{"config_file": os.path.join(REPO_ROOT, "sim", "bridge.yaml"),
+        # BRIDGE_CONFIG lets the three-head world bridge its extra depth streams
+        # without the shipped single-camera census bridging topics it does not have.
+        parameters=[{"config_file": os.path.join(
+                         REPO_ROOT, "sim",
+                         os.environ.get("BRIDGE_CONFIG", "bridge.yaml")),
                      "use_sim_time": True}],
         output="screen",
     )
