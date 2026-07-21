@@ -49,12 +49,19 @@ ign service -s /world/cell/create --reqtype ignition.msgs.EntityFactory \
     --req "sdf_filename: \"$PWD/sim/models/items/$SLUG/model.sdf\", name: \"item\", pose: {position: {x: $SPAWN_X, y: $SPAWN_Y, z: $SPAWN_Z}, orientation: {x: $OX, y: $OY, z: $OZ, w: $OW}}" > /dev/null
 sleep 5
 
+# Bridge and dumper must agree with the WORLD seam above. A three-head world
+# bridged by the one-head config publishes nothing on the side topics, and the
+# dump would then show "the side heads see nothing" — which is exactly the
+# conclusion such a dump is usually opened to test.
+#   WORLD=sim/worlds/cell_diverter_3cam_miscal.sdf BRIDGE_CONFIG=sim/bridge_3cam.yaml \
+#   SIDE=1 bash scripts/dump_item_frame.sh bottle /tmp/frames_miscal
+BRIDGE_CONFIG=${BRIDGE_CONFIG:-sim/bridge.yaml}
 ros2 run ros_gz_bridge parameter_bridge --ros-args \
-    -p config_file:="$PWD/sim/bridge.yaml" > /tmp/bridge_dump.log 2>&1 &
+    -p config_file:="$PWD/$BRIDGE_CONFIG" > /tmp/bridge_dump.log 2>&1 &
 BR=$!
 sleep 5
 
-python3 scripts/dump_camera.py --out "$OUT" --frames "$FRAMES"
+python3 scripts/dump_camera.py --out "$OUT" --frames "$FRAMES" ${SIDE:+--side}
 
 # The RESTING pose the frame actually shows — not the spawn pose it was asked for.
 # The item settles under gravity before the shot (a plate spawned on edge lies flat by
