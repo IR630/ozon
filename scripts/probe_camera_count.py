@@ -45,6 +45,7 @@ from probe_side_camera import census_resting_quats, cloud_dims_mm, visible_point
 
 from src.classification import classify, within_measurement_tolerance  # noqa: E402
 from src.constants import MAX_DIMS_MM, MIN_DIMS_MM  # noqa: E402
+from src.perception import BODY_OBB_MIN_RELIEF, _obb_dims_px  # noqa: E402
 from src.perception import BELT_TOP_Z_M, CAMERA_X_M, CAMERA_Y_M, CAMERA_Z_M  # noqa: E402
 
 N_SURFACE_SAMPLES = 400_000
@@ -158,7 +159,25 @@ def misregister(pts_m, sigma_mm, sigma_deg, rng):
 # Both rules need 3+ heads to differ from union; below that they FALL BACK to it,
 # so the 1- and 2-head columns must read identically to the union table — a free
 # self-check that the plumbing did not change what the baseline measures.
-FUSIONS = ["union", "loo-min", "perhead-median"]
+# "structural-gated" is candidate 2 of the branch brief, and it is NOT the plain
+# structural fusion already measured (footprint from the top head, side heads
+# contributing only the hidden vertical). Plain structural flattens tolerance to
+# 80 % at ANY head count: it removes the extra heads' penalty and their benefit
+# together. The gated version admits the side heads to the FOOTPRINT as well, but
+# only where the top head is unreliable.
+#
+# The gate is the relief the top head sees, the same quantity and threshold that
+# already licenses the production body-OBB (BODY_OBB_MIN_RELIEF). It splits the
+# two failure modes measured here, which are opposites:
+#   * flat body, low relief (the pen): the top view's shadow IS the footprint, so
+#     the top head alone is right — and admitting side heads only inflates its
+#     9 mm past the 10 mm floor. Keep top-only.
+#   * domed or tilted body, high relief (the helmet): the top view under-reads
+#     what it cannot see, which is exactly the information a side head carries.
+#     Admit every head.
+# One rule, opposite treatment per item, chosen by a property of the frame rather
+# than by the item's name.
+FUSIONS = ["union", "loo-min", "perhead-median", "structural-gated"]
 
 
 # Candidate 3: instead of biasing the estimate, admit where it cannot pick a side.
@@ -185,8 +204,42 @@ def near_threshold(dims_mm, band_mm):
                for v, lim in list(zip(d, MAX_DIMS_MM)) + list(zip(d, MIN_DIMS_MM)))
 
 
+def _top_relief_ratio(top_pts_m):
+    """Share of the item's height that the TOP head's own surface spans.
+
+    Same quantity the production body-OBB gate uses: a box lid reads ~0 (the top
+    view reveals nothing about the sides), a dome or a tilted rest reads ~1.
+    """
+    h = top_pts_m[:, 2] - BELT_TOP_Z_M
+    peak = float(h.max())
+    if peak <= 0.0:
+        return 0.0
+    return float(np.percentile(h, 95.0) - np.percentile(h, 5.0)) / peak
+
+
+def _structural_dims_mm(parts):
+    """Footprint from the TOP head only; height from the tallest point any head sees."""
+    from scipy.spatial import ConvexHull, QhullError
+
+    xy_mm = parts[0][:, :2] * 1000.0
+    try:
+        hull = ConvexHull(xy_mm)
+    except QhullError:
+        return None
+    long_mm, short_mm, _dir = _obb_dims_px(xy_mm[hull.vertices])
+    h_mm = max(float(p[:, 2].max()) for p in parts) * 1000.0 - BELT_TOP_Z_M * 1000.0
+    return sorted([float(long_mm), float(short_mm), h_mm], reverse=True)
+
+
 def fuse_dims(parts, rule):
     """Dims (mm, desc) from per-head visible clouds under one fusion rule."""
+    if rule == "structural-gated":
+        # gate on the TOP head alone: it is the head whose reliability is in
+        # question, and it is the one head present in every configuration
+        if _top_relief_ratio(parts[0]) >= BODY_OBB_MIN_RELIEF:
+            return cloud_dims_mm(np.vstack(parts))   # domed/tilted: admit all heads
+        dims = _structural_dims_mm(parts)
+        return cloud_dims_mm(np.vstack(parts)) if dims is None else dims
     if rule == "union" or len(parts) < 3:
         return cloud_dims_mm(np.vstack(parts))
     if rule == "loo-min":

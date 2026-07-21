@@ -185,3 +185,53 @@ def test_near_threshold_is_sorted_before_comparing():
 def test_zero_band_flags_nothing_away_from_a_threshold():
     """A degenerate band must not quietly flag the whole flow."""
     assert not near_threshold([200.0, 150.0, 60.0], 0.0)
+
+
+def _dome_cloud_m(radius_mm=140.0, n=3000, seed=0):
+    """Upper half-shell resting on the belt: high relief, the top view under-reads."""
+    rng = np.random.default_rng(seed)
+    v = rng.normal(size=(n, 3))
+    v /= np.linalg.norm(v, axis=1, keepdims=True)
+    v[:, 2] = np.abs(v[:, 2])
+    pts = v * radius_mm / 1000.0
+    pts[:, 2] += BELT_TOP_Z_M
+    return pts
+
+
+def _flat_slab_m(lx=148.0, ly=13.0, lz=9.0, n=3000, seed=0):
+    """Pen-like slab: near-zero relief, the top view's shadow IS the footprint."""
+    rng = np.random.default_rng(seed)
+    pts = rng.uniform(-0.5, 0.5, size=(n, 3)) * np.array([lx, ly, lz]) / 1000.0
+    pts[:, 2] = lz / 2000.0          # flat lid: one height, no relief
+    pts[:, 2] += BELT_TOP_Z_M + lz / 2000.0
+    return pts
+
+
+def test_structural_gate_keeps_a_flat_body_on_the_top_head_alone():
+    """The pen's failure is inflation, so extra heads must not touch its footprint.
+
+    A misregistered side head is handed in; under union it widens the slab, under
+    the gate it may only raise the height, never the footprint.
+    """
+    top = _flat_slab_m()
+    side = _flat_slab_m(seed=1) + np.array([0.0, 0.006, 0.0])   # 6 mm out, sideways
+    parts = [top, side, _flat_slab_m(seed=2)]
+
+    gated = fuse_dims(parts, "structural-gated")
+    union = fuse_dims(parts, "union")
+    assert gated[1] < union[1], f"gate must not inherit the union widening: {gated} vs {union}"
+    assert gated[1] == pytest.approx(fuse_dims([top], "structural-gated")[1], abs=0.5)
+
+
+def test_structural_gate_admits_every_head_on_a_domed_body():
+    """The helmet's failure is the opposite — the top view cannot see its flanks,
+    so the gate must fall through to the full union there."""
+    parts = [_dome_cloud_m(seed=s) for s in (0, 1, 2)]
+    assert fuse_dims(parts, "structural-gated") == fuse_dims(parts, "union")
+
+
+def test_structural_gate_reads_relief_from_the_top_head_only():
+    """The gate asks whether the TOP head is trustworthy; a side head's own relief
+    must not decide that, or a flat item flanked by side views flips to union."""
+    parts = [_flat_slab_m(), _dome_cloud_m(seed=1), _dome_cloud_m(seed=2)]
+    assert fuse_dims(parts, "structural-gated") != fuse_dims(parts, "union")
