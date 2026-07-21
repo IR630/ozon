@@ -343,17 +343,26 @@ def main(argv=None):
           "типичная 2 мм / 0.2°")
     print("поймано = мисроут стал честным «не уверен»; "
           "цена = верный вердикт ушёл в ручную разборку\n")
+    # THE DECIDING COLUMN IS THE LAST ONE. "cost/flow" alone flatters whichever
+    # config has the fewest healthy items flagged, but a CAUGHT misroute leaves
+    # the automatic flow too — it goes to the same manual bench. What the cell is
+    # actually judged on is the share of the stream it sorts automatically AND
+    # correctly, so that is computed here rather than left to the reader:
+    #   auto-correct = (total - caught - cost - still-wrong) / total
     print(f"{'конфигурация':28}{'полоса':>8}{'мисроутов':>11}{'поймано':>9}"
-          f"{'осталось':>10}{'цена':>7}{'цена/поток':>12}")
+          f"{'осталось':>10}{'цена':>7}{'отведено':>10}{'верно авто':>12}")
     for cfg_name in CONFIGS:
         mis, _tol, total, _c, _e, bands = results[
             (cfg_name, "типичная 2 мм / 0.2°", "union")]
         n_runs = len(CALIB_SEEDS)
         for band in UNCERTAIN_BANDS_MM:
             caught, cost = bands.get(band, [0, 0])
+            left = mis - caught
+            auto_ok = (total - caught - cost - left) / max(total, 1) * 100.0
             print(f"{cfg_name:28}{band:>7.0f}м{mis / n_runs:>11.1f}"
-                  f"{caught / n_runs:>9.1f}{(mis - caught) / n_runs:>10.1f}"
-                  f"{cost / n_runs:>7.1f}{cost / max(total, 1) * 100:>11.0f}%")
+                  f"{caught / n_runs:>9.1f}{left / n_runs:>10.1f}"
+                  f"{cost / n_runs:>7.1f}{(caught + cost) / n_runs:>10.1f}"
+                  f"{auto_ok:>11.1f}%")
 
     print("\n\n### Кто именно мисроутит (режим «типичная 2 мм / 0.2°»)")
     for fusion in FUSIONS:
