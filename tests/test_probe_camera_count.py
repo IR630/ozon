@@ -15,6 +15,7 @@ from scripts.probe_camera_count import (
     CONFIGS,
     fuse_dims,
     misregister,
+    near_threshold,
     place,
 )
 
@@ -164,3 +165,23 @@ def test_unknown_fusion_rule_is_loud():
     parts = [_box_faces_mm(300, 200, 100, seed=s) for s in (1, 2, 3)]
     with pytest.raises(ValueError):
         fuse_dims(parts, "median-ish")
+
+
+def test_near_threshold_reads_both_ends_of_the_sorter_window():
+    """The band must guard the floor and the ceiling — the pen fails against
+    10 mm, a box would fail against 450/320/320."""
+    assert near_threshold([148.0, 13.0, 10.4], 1.0)      # pen, against the floor
+    assert near_threshold([449.0, 300.0, 300.0], 2.0)    # box, against the ceiling
+    assert not near_threshold([200.0, 150.0, 60.0], 4.0)  # lunchbox, clear of both
+
+
+def test_near_threshold_is_sorted_before_comparing():
+    """Dims arrive in any order; the sorter window is defined on sorted dims, so
+    an unsorted comparison would guard the wrong axis against the wrong limit."""
+    assert near_threshold([300.0, 449.0, 300.0], 2.0)
+    assert near_threshold([449.0, 300.0, 300.0], 2.0)
+
+
+def test_zero_band_flags_nothing_away_from_a_threshold():
+    """A degenerate band must not quietly flag the whole flow."""
+    assert not near_threshold([200.0, 150.0, 60.0], 0.0)

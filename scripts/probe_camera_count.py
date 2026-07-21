@@ -44,6 +44,7 @@ from build_item_models import ITEMS, STL_DIR, set_belt_origin  # noqa: E402
 from probe_side_camera import census_resting_quats, cloud_dims_mm, visible_points  # noqa: E402
 
 from src.classification import classify, within_measurement_tolerance  # noqa: E402
+from src.constants import MAX_DIMS_MM, MIN_DIMS_MM  # noqa: E402
 from src.perception import BELT_TOP_Z_M, CAMERA_X_M, CAMERA_Y_M, CAMERA_Z_M  # noqa: E402
 
 N_SURFACE_SAMPLES = 400_000
@@ -160,6 +161,30 @@ def misregister(pts_m, sigma_mm, sigma_deg, rng):
 FUSIONS = ["union", "loo-min", "perhead-median"]
 
 
+# Candidate 3: instead of biasing the estimate, admit where it cannot pick a side.
+# union is the most ACCURATE rule measured here (|error| 3.71 mm on 3 heads,
+# against 4.58 on two and 16.68 on one) and is nearly unbiased (+0.64 mm). Its
+# routing failures are not spread out — they sit against the sorter thresholds,
+# where an error smaller than the calibration budget decides the category. So keep
+# union and refuse to guess inside a band around each threshold: that is Karpathy
+# principle 6 from CLAUDE.md — an explicit "not sure" stream beats a quietly wrong
+# verdict. Swept rather than fixed, because the band's width IS the trade: too
+# narrow catches nothing, too wide sends healthy items to manual handling.
+UNCERTAIN_BANDS_MM = [2.0, 3.0, 4.0, 5.0]
+
+
+def near_threshold(dims_mm, band_mm):
+    """Does any dimension sit within band_mm of a sorter threshold?
+
+    Thresholds come from src/constants.py only (CLAUDE.md: duplicating them is a
+    bug). Both ends matter: the pen fails against the 10 mm floor, a box would
+    fail against the 450/320/320 ceiling.
+    """
+    d = sorted(dims_mm, reverse=True)
+    return any(abs(v - lim) <= band_mm
+               for v, lim in list(zip(d, MAX_DIMS_MM)) + list(zip(d, MIN_DIMS_MM)))
+
+
 def fuse_dims(parts, rule):
     """Dims (mm, desc) from per-head visible clouds under one fusion rule."""
     if rule == "union" or len(parts) < 3:
@@ -232,7 +257,7 @@ def main(argv=None):
         for calib_name, s_mm, s_deg in CALIBRATIONS:
             seeds = [0] if s_mm == 0.0 and s_deg == 0.0 else CALIB_SEEDS
             for fusion in FUSIONS:
-                mis, tol, total, culprits, errs = 0, 0, 0, {}, []
+                mis, tol, total, culprits, errs, bands = 0, 0, 0, {}, [], {}
                 # rng is rebuilt per fusion, so every rule sees the IDENTICAL
                 # sequence of misregistration draws: the comparison is between
                 # fusion rules, not between random draws.
@@ -255,11 +280,18 @@ def main(argv=None):
                         total += 1
                         tol += within_measurement_tolerance(dims, t_dims)
                         errs.extend(np.asarray(dims) - np.asarray(t_dims))
-                        if classify(dims, t_k) != t_cat:
+                        wrong = classify(dims, t_k) != t_cat
+                        if wrong:
                             mis += 1
                             culprits[slug] = culprits.get(slug, 0) + 1
+                        for band in UNCERTAIN_BANDS_MM:
+                            if not near_threshold(dims, band):
+                                continue
+                            # [misroutes the band catches, correct routes it costs]
+                            hit = bands.setdefault(band, [0, 0])
+                            hit[0 if wrong else 1] += 1
                 results[(cfg_name, calib_name, fusion)] = (mis, tol, total, culprits,
-                                                           np.asarray(errs))
+                                                           np.asarray(errs), bands)
                 print(f"готово: {cfg_name:26} | {calib_name:28} | {fusion}", flush=True)
 
     for fusion in FUSIONS:
@@ -269,7 +301,7 @@ def main(argv=None):
         for calib_name, *_ in CALIBRATIONS:
             row = f"{calib_name:30}"
             for cfg_name in CONFIGS:
-                mis, _tol, total, _c, _e = results[(cfg_name, calib_name, fusion)]
+                mis, _tol, total, _c, _e, _b = results[(cfg_name, calib_name, fusion)]
                 n_runs = 1 if calib_name.startswith("идеальная") else len(CALIB_SEEDS)
                 row += f"{mis / n_runs:>21.1f}/{len(poses)}"
             print(row)
@@ -280,7 +312,7 @@ def main(argv=None):
         for calib_name, *_ in CALIBRATIONS:
             row = f"{calib_name:30}"
             for cfg_name in CONFIGS:
-                _mis, tol, total, _c, _e = results[(cfg_name, calib_name, fusion)]
+                _mis, tol, total, _c, _e, _b = results[(cfg_name, calib_name, fusion)]
                 row += f"{tol / max(total, 1) * 100:>25.0f}%"
             print(row)
 
@@ -297,17 +329,37 @@ def main(argv=None):
     print(f"{'слияние':18}{'конфигурация':28}{'смещение':>12}{'|ошибка|':>12}")
     for fusion in FUSIONS:
         for cfg_name in CONFIGS:
-            *_rest, errs = results[(cfg_name, "типичная 2 мм / 0.2°", fusion)]
+            *_rest, errs, _b = results[(cfg_name, "типичная 2 мм / 0.2°", fusion)]
             if not len(errs):
                 continue
             print(f"{fusion:18}{cfg_name:28}{errs.mean():>+12.2f}"
                   f"{np.abs(errs).mean():>12.2f}")
 
+    # The trade, printed as two numbers side by side and never as one. "Caught"
+    # is a misroute converted into an honest "not sure"; "cost" is a correctly
+    # routed item sent to manual handling for nothing. A band that catches
+    # everything by flagging half the flow has not solved anything.
+    print("\n\n### Полоса «не уверен» вокруг порогов, слияние union, "
+          "типичная 2 мм / 0.2°")
+    print("поймано = мисроут стал честным «не уверен»; "
+          "цена = верный вердикт ушёл в ручную разборку\n")
+    print(f"{'конфигурация':28}{'полоса':>8}{'мисроутов':>11}{'поймано':>9}"
+          f"{'осталось':>10}{'цена':>7}{'цена/поток':>12}")
+    for cfg_name in CONFIGS:
+        mis, _tol, total, _c, _e, bands = results[
+            (cfg_name, "типичная 2 мм / 0.2°", "union")]
+        n_runs = len(CALIB_SEEDS)
+        for band in UNCERTAIN_BANDS_MM:
+            caught, cost = bands.get(band, [0, 0])
+            print(f"{cfg_name:28}{band:>7.0f}м{mis / n_runs:>11.1f}"
+                  f"{caught / n_runs:>9.1f}{(mis - caught) / n_runs:>10.1f}"
+                  f"{cost / n_runs:>7.1f}{cost / max(total, 1) * 100:>11.0f}%")
+
     print("\n\n### Кто именно мисроутит (режим «типичная 2 мм / 0.2°»)")
     for fusion in FUSIONS:
         print(f"\n-- слияние «{fusion}»")
         for cfg_name in CONFIGS:
-            _mis, _tol, _total, culprits, _e = results[
+            _mis, _tol, _total, culprits, _e, _b = results[
                 (cfg_name, "типичная 2 мм / 0.2°", fusion)]
             items = ", ".join(f"{k} ×{v}" for k, v in sorted(culprits.items(),
                                                              key=lambda kv: -kv[1])) or "—"
