@@ -23,6 +23,7 @@ REQUIRED_FILES = (
     "launch/skeleton.launch.py",
     "sim/worlds/cell_diverter.sdf",
     "scripts/run_skeleton.sh",
+    "docs/report/final_report.md",
     "docs/report/one_pager.md",
     "docs/report/classification.md",
     "docs/report/mechanism.md",
