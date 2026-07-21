@@ -62,6 +62,10 @@ SIDE_CAMERA_TARGET_M = (1.5, 0.0, BELT_TOP_Z_M + 0.20)
 # free-run at 15 Hz (~66 ms apart) and belt items are ~1 s apart at 1 m/s, so 100 ms
 # is fresh enough to be the SAME item while its travel is still small and compensable.
 SIDE_SYNC_MAX_DT_S = 0.10
+# A side cloud thinner than this cannot constrain an oriented box: on the 9 mm pen the
+# side head returns a few hundred points and the min-volume search blows the middle
+# extent to 63 mm (docs/experiments.md). Below the floor, keep the top-only result.
+SIDE_MIN_POINTS = 1000
 
 # Reject specks, but the thinnest item in the task is only a few pixels wide: at
 # 1.5 m the camera resolves 2.72 mm/px, so Ручка (148x13x9 mm) covers just
@@ -898,7 +902,8 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK
     # under-reads on a domed body. K and position are untouched below, so the
     # ItemMeasurement contract downstream never learns a second head exists.
     side_pts = np.asarray(side_points_world_m, dtype=float) if side_points_world_m is not None else None
-    if side_pts is not None and len(side_pts):  # empty/absent side -> top-only, bit-identical
+    # absent/empty/too-sparse side -> top-only, bit-identical to the single-camera main
+    if side_pts is not None and len(side_pts) >= SIDE_MIN_POINTS:
         top_world = np.column_stack([
             camera_x_m - (ys - cy) * depth_m[mask] / fy,
             camera_y_m - (xs - cx) * depth_m[mask] / fx,
@@ -906,7 +911,16 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK
         ])
         fused = fuse_dims_over_cloud_mm(np.vstack([top_world, side_pts]))
         if fused is not None and _dims_are_sane(fused):
-            dims = fused
+            # MONOTONE fusion: a second viewpoint may only REVEAL extent — the hidden
+            # lower section of a lying body of revolution the top view under-reads —
+            # never remove it. A smaller fused box is the min-volume search tilting on
+            # a soft/round cloud (bag, helmet dome), not a real measurement; reject it
+            # with a per-axis max against the top-only dims. Measured on live Gazebo
+            # frames: naive union 23/33 -> monotone 29/33 organizer tolerance, zero
+            # regressions against top-only's 27/33 (docs/experiments.md).
+            top_sorted = sorted(dims, reverse=True)
+            fused_sorted = sorted(fused, reverse=True)
+            dims = [max(t, f) for t, f in zip(top_sorted, fused_sorted)]
     if not _dims_are_sane(dims):
         return None
 

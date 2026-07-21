@@ -12,16 +12,17 @@ Everything the branch promises is pinned here against the frozen single-camera p
   4. The side head never touches K. K stays top-only and yaw-invariant, so a fused
      frame reports the SAME K as the top-only frame (a side view sees an end-on circle
      on every lying body and would wrongly route it to D).
-  5. The win: a helmet dome pose that the top view over-measures into C is recovered
-     to its reference B by the side flank — the hidden vertical the top cannot see.
+  5. Monotone fusion: the side view may only GROW a dimension (reveal the hidden lower
+     section of a lying body), never shrink one — a smaller fused box is the min-volume
+     search tilting on a soft/round cloud, not a measurement. Plus a sparse-point guard,
+     because a thin side cloud (the 9 mm pen) blows the OBB up instead of constraining it.
 """
 import numpy as np
 
 from scripts.render_depth import load_mesh, render_depth
-from scripts.probe_camera_count import truth_of
 from scripts.probe_side_camera import place_on_belt, visible_points
 
-from src.classification import classify, within_measurement_tolerance
+from src.classification import within_measurement_tolerance
 from src.perception import (
     BELT_TOP_Z_M,
     FX,
@@ -156,14 +157,28 @@ def test_fusion_leaves_K_top_only():
     assert fused.dims_mm != top.dims_mm, "but it must change the dimensions"
 
 
-def test_side_view_recovers_helmet_dome_category():
-    _dims, true_k, true_cat = truth_of("helmet")
-    assert true_cat == "B"
+def test_monotone_fusion_never_shrinks_below_top_only():
+    """The core guarantee: a second view may only REVEAL extent, never remove it.
+
+    Naive union let the min-volume box tilt on a soft/round cloud and UNDER-read a
+    dimension the top view had right (bag height 148 vs 170, helmet 247 vs 282), which
+    measured a NET REGRESSION on live frames (23/33 vs top-only 27/33). Monotone fusion
+    takes the per-axis max against top-only, so every fused dim is >= its top-only value
+    — recovering under-read dims (lying-body lower section) without the shrink regressions
+    (measured 29/33, docs/experiments.md).
+    """
     depth, side = _top_and_side("helmet", _dome_quat())
+    top = np.sort(measure_items(depth)[0].dims_mm)[::-1]
+    fused = np.sort(measure_items(depth, side_points_world_m=side)[0].dims_mm)[::-1]
+    assert np.all(fused >= top - 1e-9), (top, fused)
+
+
+def test_sparse_side_cloud_keeps_top_only():
+    """A side cloud below SIDE_MIN_POINTS (the thin pen) corrupts the OBB; ignore it."""
+    from src.perception import SIDE_MIN_POINTS
+
+    depth, side = _top_and_side("helmet", _dome_quat())
+    assert len(side) >= SIDE_MIN_POINTS, "helmet flank should be dense"
     top = measure_items(depth)[0]
-    fused = measure_items(depth, side_points_world_m=side)[0]
-    # the top view over-measures the dome cross-section and busts the 320 mm limit -> C
-    assert classify(top.dims_mm, true_k) == "C", top.dims_mm
-    # the side flank supplies the true cross-section: category recovered, within tolerance
-    assert classify(fused.dims_mm, true_k) == "B", fused.dims_mm
-    assert within_measurement_tolerance(fused.dims_mm, tuple(_dims)), fused.dims_mm
+    sparse = measure_items(depth, side_points_world_m=side[: SIDE_MIN_POINTS - 1])[0]
+    assert sparse.dims_mm == top.dims_mm, "too-sparse side must fall back to top-only"
