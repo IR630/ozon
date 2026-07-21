@@ -108,3 +108,32 @@ def test_soft_start_wait_is_overridable_and_defaults_to_the_shipped_value():
     # 60 tries x 0.5 s = the 30 s the shipped census has always used
     assert "sleep 0.5" in text
     assert "soft-start done" in text
+
+
+def test_the_cycle_number_is_broken_down_into_attributable_stages():
+    """One "cycle 94.3s" cannot tell a slow pipeline from a slow harness.
+
+    It is measured from `ros2 launch`, so it carries the whole ROS stack coming
+    up as well as the parcel's ride. A shipped line starts that stack once per
+    shift and not once per parcel, so a rig comparison quoting the total alone
+    charges the three-head rig for processes rather than for perception. The
+    stamps must bracket bring-up, feed and transit separately.
+    """
+    text = SCRIPT.read_text(encoding="utf-8")
+
+    for stamp in ("T0=$(date +%s.%N)", "T_UP=$(date +%s.%N)", "T_FED=$(date +%s.%N)",
+                  "T1=$(date +%s.%N)"):
+        assert stamp in text, f"missing stage stamp {stamp}"
+    assert text.index("T0=$(date") < text.index("T_UP=$(date") < text.index("T_FED=$(date")
+    assert "stages: bringup" in text
+
+
+def test_the_simulator_speed_is_recorded_next_to_the_wall_clock():
+    """Render load slows GAZEBO, not the pipeline: at RTF 0.4 every wall-clock
+    number stretches 2.5x with no line of our code getting slower. On real
+    hardware three cameras do not slow physics, so the term is a simulation cost
+    and the report has to be able to separate it out."""
+    text = SCRIPT.read_text(encoding="utf-8")
+
+    assert "real_time_factor" in text
+    assert "rtf ${RTF:-unknown}" in text

@@ -171,6 +171,14 @@ if ! grep -q "soft-start done" /tmp/skeleton_e2e.log; then
     echo "ABORT: belt never reached full speed — the controller did not come up" >&2
     exit 1
 fi
+# WHAT THE "cycle" NUMBER IS MADE OF. It is measured from `ros2 launch`, so it
+# carries the whole ROS stack coming up as well as the item's ride — and a rig
+# comparison that quotes it alone cannot tell "our pipeline is slow" from "our
+# harness starts more processes". The three-head rig runs a ~74-94 s median
+# against the one-head world's ~23 s, and that gap has to be attributed before
+# anything is optimised (a shipped line starts its stack ONCE; it pays bring-up
+# per shift, not per parcel).
+T_UP=$(date +%s.%N)
 
 ign service -s /world/cell/create --reqtype ignition.msgs.EntityFactory \
     --reptype ignition.msgs.Boolean --timeout 5000 \
@@ -182,6 +190,15 @@ ign service -s /world/cell/create --reqtype ignition.msgs.EntityFactory \
 # deadline later, never earlier.
 ros2 topic pub -w 1 --once /infeed/fed std_msgs/msg/Empty > /dev/null 2>&1 &
 sleep 2
+T_FED=$(date +%s.%N)
+# Simulator speed at the moment the goods are on the belt: the other half of the
+# attribution. A depth camera costs RENDER, and render slows Gazebo rather than
+# the pipeline — an RTF of 0.4 stretches every wall-clock measurement by 2.5x
+# without a single line of our code getting slower. On real hardware three
+# cameras do not slow physics, so this term is a SIMULATION cost, not a product
+# one, and the report has to say which is which.
+RTF=$(timeout 5 ign topic -e -t /world/cell/stats -n 1 2>/dev/null \
+      | grep -A1 real_time_factor | tail -1 | tr -dc '0-9.' || true)
 
 # Position AND orientation, from ONE query: the verdict scores the item's BODY, and
 # the reported pose is only its ORIGIN (the default pose's bottom — Gazebo rotates the
@@ -240,6 +257,11 @@ CYCLE=$(python3 -c "print(f'{$T1 - $T0:.1f}')")
 
 read X Y Z RR PP YY <<< "$(item_pose)"
 echo "$SLUG -> $EXPECT: $VERDICT (pose x=$X y=$Y z=$Z, cycle ${CYCLE}s from launch)"
+# The split behind that one number, so a rig comparison is attributable.
+echo "  stages: bringup $(python3 -c "print(f'{$T_UP - $T0:.1f}')")s," \
+     "feed $(python3 -c "print(f'{$T_FED - $T_UP:.1f}')")s," \
+     "transit+verdict $(python3 -c "print(f'{$T1 - $T_FED:.1f}')")s," \
+     "rtf ${RTF:-unknown}"
 echo "  resting rpy: r=$RR p=$PP y=$YY"
 python3 scripts/body_pose.py "$SLUG" "$X" "$Y" "$Z" "$RR" "$PP" "$YY" 2>/dev/null \
     | sed 's/^/  /' || true
