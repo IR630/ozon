@@ -19,7 +19,12 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from src.constants import ROUND_K_THRESHOLD, SANE_DIM_MM_MAX, SANE_DIM_MM_MIN
+from src.constants import (
+    BELT_SPEED_M_S,
+    ROUND_K_THRESHOLD,
+    SANE_DIM_MM_MAX,
+    SANE_DIM_MM_MIN,
+)
 
 CAMERA_X_M = 1.5      # cell.sdf: camera model pose x
 CAMERA_Y_M = 0.0      # cell.sdf: camera model pose y
@@ -32,6 +37,21 @@ HFOV_RAD = 1.05       # cell.sdf: camera horizontal_fov
 BELT_DEPTH_M = CAMERA_Z_M - BELT_TOP_Z_M
 # square pixels: fy == fx (verified against the real frame, ±3 mm on Короб 300)
 FX = FY = (IMG_W / 2.0) / np.tan(HFOV_RAD / 2.0)
+
+# --- Side depth camera (feat/two-cameras): the hidden vertical dimension ---
+# A second head across the belt from -Y, looking toward +Y at item height. It feeds
+# the DIMENSION path only, never K (which stays top-only and yaw-invariant; a side
+# view sees an end-on circle on every lying body and would wrongly route it to D).
+# Camera geometry is single-sourced here alongside the top camera, not split into
+# constants.py: co-locating the two heads beats smearing the rig across two files
+# (docs/decisions.md — reasoned deviation from the branch brief's letter).
+# |y|=0.90 clears the diverter pivots (|y|=0.28) and the belt guides (y=±0.272); a
+# top-frustum render shows the housing sits ~3 cm outside the top camera's belt-level
+# Y window (|y| < 0.869 m at z=0.4), so it casts no blob into the top mask — the day-5
+# _find_item=None blocker. The mount MUST approach from -Y with nothing descending to
+# low z inside |y|<0.87, or the low structure re-enters the widening frustum.
+SIDE_CAMERA_POS_M = (1.5, -0.90, BELT_TOP_Z_M + 0.35)
+SIDE_CAMERA_TARGET_M = (1.5, 0.0, BELT_TOP_Z_M + 0.10)
 
 # Reject specks, but the thinnest item in the task is only a few pixels wide: at
 # 1.5 m the camera resolves 2.72 mm/px, so Ручка (148x13x9 mm) covers just
@@ -647,9 +667,53 @@ def _body_obb_dims_mm(xs, ys, depth_col_m, heights_m, fx, fy, cx, cy,
     return sorted([float(e1[best]), float(e2[best]), float(thick[best])], reverse=True)
 
 
+def compensate_belt_motion(side_points_world_m, dt_s, belt_speed_m_s=BELT_SPEED_M_S):
+    """Register side-head world points to the TOP frame's instant along the belt.
+
+    The heads are not hardware-triggered (15 Hz), so the side frame is stamped dt_s
+    after the top frame and the item has travelled belt_speed*dt_s in +x by then — up
+    to 66.7 mm at 1 m/s, 13x the 5 mm tolerance. Unioning the two clouds "as is" would
+    smear that travel into the measured length. dt_s = t_side - t_top; shifting the
+    side points back by belt_speed*dt_s puts both clouds at the top frame's instant.
+    """
+    shifted = np.asarray(side_points_world_m, dtype=float).copy()
+    if len(shifted):
+        shifted[:, 0] -= belt_speed_m_s * dt_s
+    return shifted
+
+
+def fuse_dims_over_cloud_mm(world_pts_m):
+    """Lateral dims + height (mm, descending) of the min-volume body box over a cloud.
+
+    The second camera enters the measurement here and ONLY here: measure_item unions
+    the top item's visible world points with the side head's and calls this, which
+    runs the same frozen _body_obb_dims_mm the top-only path runs — identity intrinsics
+    (fx=fy=1, depth=1, cx=cy=0) make its internal backprojection a no-op, so it searches
+    the same hull-facet orientations on the fused world points. This is the exact recipe
+    the offline side-camera probe validated (organizer tolerance 14/33 -> 30/33);
+    production now runs it on live clouds. Height is the fused cloud's true rise above
+    the belt — the hidden vertical the top view under-reads (the helmet dome).
+    """
+    world_pts_m = np.asarray(world_pts_m, dtype=float)
+    if len(world_pts_m) < 4:
+        return None
+    heights_m = world_pts_m[:, 2] - BELT_TOP_Z_M
+    dz_mm = float(heights_m.max() * 1000.0)
+    dims = _body_obb_dims_mm(
+        xs=world_pts_m[:, 0], ys=world_pts_m[:, 1],
+        depth_col_m=np.ones(len(world_pts_m)), heights_m=heights_m,
+        fx=1.0, fy=1.0, cx=0.0, cy=0.0,
+        legacy_dims_mm=(1e4, 1e4, 1e4), dz_mm=dz_mm, px_pad_mm=0.0)
+    if dims is None:
+        extent = (world_pts_m.max(axis=0) - world_pts_m.min(axis=0)) * 1000.0
+        extent[2] = max(extent[2], dz_mm)
+        return sorted((float(e) for e in extent), reverse=True)
+    return dims
+
+
 def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK_MARGIN_M,
                  camera_x_m=CAMERA_X_M, camera_y_m=CAMERA_Y_M, cx=None, cy=None,
-                 _found=None):
+                 side_points_world_m=None, _found=None):
     """Measurement of the single item on the belt, or None (empty / partial view).
 
     depth_m: HxW depth image in meters (0 = no return). Two lateral dims come
@@ -658,6 +722,11 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK
     top-view hull; position from the mask centroid via the verified pixel->world
     mapping. cx/cy: principal point (px); default to the image center — the node
     passes CameraInfo's k[2]/k[5] so a shifted principal point is honored.
+
+    side_points_world_m: optional Nx3 world-frame cloud from the side head, already
+    motion-compensated to this frame's instant (feat/two-cameras). When given, it is
+    fused into the DIMENSIONS only; K and position stay top-only. When None, this
+    path is never entered and the result is bit-identical to the single-camera main.
     """
     # measure_items() has already segmented the full frame. Reusing its exact
     # mask avoids copying a belt-sized frame and running _find_items once more
@@ -727,6 +796,22 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK
                                       cx, cy, dims, dz_mm, px_pad_mm)
         if body_dims is not None:
             dims = body_dims
+    # Second head (feat/two-cameras): fuse the side cloud into the DIMENSIONS only.
+    # Union the top item's visible world points with the side head's (already
+    # motion-compensated and world-framed by the node) and re-measure the body box
+    # over the union — the side flank supplies the hidden vertical the top view
+    # under-reads on a domed body. K and position are untouched below, so the
+    # ItemMeasurement contract downstream never learns a second head exists.
+    side_pts = np.asarray(side_points_world_m, dtype=float) if side_points_world_m is not None else None
+    if side_pts is not None and len(side_pts):  # empty/absent side -> top-only, bit-identical
+        top_world = np.column_stack([
+            camera_x_m - (ys - cy) * depth_m[mask] / fy,
+            camera_y_m - (xs - cx) * depth_m[mask] / fx,
+            BELT_TOP_Z_M + heights_m,
+        ])
+        fused = fuse_dims_over_cloud_mm(np.vstack([top_world, side_pts]))
+        if fused is not None and _dims_are_sane(fused):
+            dims = fused
     if not _dims_are_sane(dims):
         return None
 
@@ -770,15 +855,23 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK
 
 def measure_items(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY,
                   margin_m=MASK_MARGIN_M, camera_x_m=CAMERA_X_M,
-                  camera_y_m=CAMERA_Y_M, cx=None, cy=None):
+                  camera_y_m=CAMERA_Y_M, cx=None, cy=None,
+                  side_points_world_m=None):
     """Measure every disconnected, fully visible item in a depth frame.
 
     Geometry remains single-sourced in measure_item(), but the masks found in the
     one full-frame segmentation are passed directly into that path. Touching
     products may already be separate masks after the conservative EDT split.
+
+    side_points_world_m: optional side-head world cloud (feat/two-cameras). It is a
+    single cloud for the whole frame, so it is fused ONLY when exactly one item is on
+    the belt — the belt's normal sequential state. With two items in frame there is no
+    per-item association, so fusion is skipped and every item degrades to top-only.
     """
+    found_all = _find_items(depth_m, belt_depth_m, margin_m)
+    single_item = len(found_all) == 1 and side_points_world_m is not None
     measurements = []
-    for found in _find_items(depth_m, belt_depth_m, margin_m):
+    for found in found_all:
         measurement = measure_item(
             depth_m,
             belt_depth_m=belt_depth_m,
@@ -789,6 +882,7 @@ def measure_items(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY,
             camera_y_m=camera_y_m,
             cx=cx,
             cy=cy,
+            side_points_world_m=side_points_world_m if single_item else None,
             _found=found,
         )
         if measurement is not None:
