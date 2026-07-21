@@ -97,8 +97,14 @@ item_pose() {
         | tr -d "[]" | awk '{print $1, $2, $3}'
 }
 blade_angle() {  # C blade, read from the JOINT — not from the command we sent
+    # Parsed in Python, NOT by grep: protobuf omits a field at its default, so a
+    # blade parked at exactly 0 rad prints no `position:` line, and the old
+    # `grep -A6 axis1 | grep -m1` read that as "keep scanning" and returned a
+    # value from a LATER streamed message. That is the whole reason this smoke
+    # failed with 1.831, 2.856, 3.638 and 4.106 rad on four runs of identical
+    # code while a 131-sample trace showed the blade parked at 0.0 throughout.
     timeout 2 ign topic -e -t /world/cell/model/diverter_c/joint_state 2>/dev/null \
-        | grep -A6 "axis1" | grep -m1 -oE "position: -?[0-9.]+" | awk '{print $2}'
+        | python3 scripts/joint_angle.py
 }
 
 # Wait until the blade is actually engaged: that is the state under test.
