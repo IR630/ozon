@@ -110,7 +110,7 @@ GUI Gazebo пробрасывается через X11 (Linux) или WSLg (Wind
 в CI; непроверенные локальные правки в неё не попадают — сначала коммит):
 
 ```bash
-python scripts/check_submission.py   # быстрый preflight артефактов и плейсхолдеров
+python scripts/check_submission.py   # preflight полного контура, артефактов и ссылок
 bash scripts/check_clean_deploy.sh
 ```
 

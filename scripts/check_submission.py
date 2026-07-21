@@ -14,13 +14,28 @@ from pathlib import Path
 
 REQUIRED_FILES = (
     "README.md",
+    "src/constants.py",
+    "src/perception.py",
+    "src/classification.py",
+    "src/controller_node.py",
+    "ros_msgs/msg/ItemMeasurement.msg",
+    "ros_msgs/msg/ItemClassification.msg",
+    "launch/skeleton.launch.py",
+    "sim/worlds/cell_diverter.sdf",
+    "scripts/run_skeleton.sh",
     "docs/report/one_pager.md",
+    "docs/report/classification.md",
+    "docs/report/mechanism.md",
+    "docs/report/architecture.md",
+    "docs/report/methodology_and_limitations.md",
     "docs/report/criteria_coverage.md",
     "docs/report/presentation_outline.md",
     "docs/report/video/hero_stream_mixed_cd.mp4",
     "docs/defense/cad/out/cell_sideview.step",
     "docs/defense/cad/out/cell_sideview.stl",
     "docker/Dockerfile",
+    "docker/docker-compose.yml",
+    "requirements.txt",
     ".github/workflows/ci.yml",
     "scripts/check_clean_deploy.sh",
 )
@@ -37,6 +52,7 @@ ALLOWED_LARGE_FILES = {
     "docs/software.pdf",
 }
 ALLOWED_LARGE_PREFIXES = ("docs/Step/", "docs/Stl/")
+VIDEO_LABEL = "**Видеодемонстрация:**"
 
 
 def tracked_files(root: Path) -> list[str]:
@@ -49,6 +65,15 @@ def tracked_files(root: Path) -> list[str]:
     return [part.decode("utf-8") for part in result.stdout.split(b"\0") if part]
 
 
+def has_https_video_link(readme: str) -> bool:
+    """Return whether the video paragraph contains a usable cloud URL."""
+    _, label, remainder = readme.partition(VIDEO_LABEL)
+    if not label:
+        return False
+    paragraph = remainder.split("\n\n", maxsplit=1)[0]
+    return "https://" in paragraph
+
+
 def submission_issues(root: Path, tracked: list[str] | None = None) -> list[str]:
     issues = []
     for relative in REQUIRED_FILES:
@@ -58,6 +83,7 @@ def submission_issues(root: Path, tracked: list[str] | None = None) -> list[str]
         if not any(root.glob(pattern)):
             issues.append(f"MISSING: {pattern}")
 
+    placeholder_files = set()
     for relative, markers in PLACEHOLDERS.items():
         path = root / relative
         if not path.is_file():
@@ -66,6 +92,13 @@ def submission_issues(root: Path, tracked: list[str] | None = None) -> list[str]
         for marker in markers:
             if marker in text:
                 issues.append(f"PLACEHOLDER: {relative}: {marker}")
+                placeholder_files.add(relative)
+
+    readme_path = root / "README.md"
+    if readme_path.is_file() and "README.md" not in placeholder_files:
+        readme = readme_path.read_text(encoding="utf-8")
+        if not has_https_video_link(readme):
+            issues.append("CLOUD_LINK: README.md: missing HTTPS video URL")
 
     for relative in tracked if tracked is not None else tracked_files(root):
         path = root / relative
