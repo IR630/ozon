@@ -36,6 +36,7 @@ from src.perception import (
     fuse_dims_over_cloud_mm,
     measure_items,
     select_side_item_points,
+    side_cloud_from_frame,
 )
 
 
@@ -83,6 +84,33 @@ def test_backproject_inverts_the_side_projection():
         depth[v, u] = z
         got = backproject_depth_to_world(depth, SIDE_CAMERA_POS_M, SIDE_CAMERA_TARGET_M, FX, FY)
         assert len(got) == 1 and np.linalg.norm(got[0] - p) < 0.005, (p, got)
+
+
+def _rasterize_side(world_pts):
+    """A sparse side depth frame (z-buffered) of world points, for the node pipeline."""
+    forward, right, up = _camera_basis(SIDE_CAMERA_POS_M, SIDE_CAMERA_TARGET_M)
+    cam = np.asarray(SIDE_CAMERA_POS_M, dtype=float)
+    depth = np.zeros((IMG_H, IMG_W))
+    for p in world_pts:
+        rel = p - cam
+        z = rel @ forward
+        u = int(round(IMG_W / 2.0 + (rel @ right) * FX / z))
+        v = int(round(IMG_H / 2.0 - (rel @ up) * FY / z))
+        if 0 <= u < IMG_W and 0 <= v < IMG_H and (depth[v, u] == 0 or z < depth[v, u]):
+            depth[v, u] = z
+    return depth
+
+
+def test_side_cloud_from_frame_recovers_flank_and_compensates_motion():
+    """The node's side pipeline end to end: frame -> world flank -> motion-registered."""
+    world = np.random.default_rng(1).uniform([1.45, -0.10, 0.42], [1.55, -0.05, 0.55], size=(200, 3))
+    depth = _rasterize_side(world)
+    at_top = side_cloud_from_frame(depth, 0.0, FX, FY)
+    assert len(at_top) > 50 and abs(at_top[:, 0].mean() - 1.5) < 0.02
+    # a side frame stamped 66.7 ms after the top frame: its item rode +66.7 mm, so the
+    # compensated cloud sits 66.7 mm back in x from the uncompensated one.
+    compensated = side_cloud_from_frame(depth, 0.0667, FX, FY)
+    assert abs(compensated[:, 0].mean() - (at_top[:, 0].mean() - 0.0667)) < 1e-6
 
 
 def test_select_side_item_points_keeps_flank_drops_background():

@@ -52,6 +52,10 @@ FX = FY = (IMG_W / 2.0) / np.tan(HFOV_RAD / 2.0)
 # low z inside |y|<0.87, or the low structure re-enters the widening frustum.
 SIDE_CAMERA_POS_M = (1.5, -0.90, BELT_TOP_Z_M + 0.35)
 SIDE_CAMERA_TARGET_M = (1.5, 0.0, BELT_TOP_Z_M + 0.10)
+# Fuse a buffered side frame only if it is within this of the top frame. The heads
+# free-run at 15 Hz (~66 ms apart) and belt items are ~1 s apart at 1 m/s, so 100 ms
+# is fresh enough to be the SAME item while its travel is still small and compensable.
+SIDE_SYNC_MAX_DT_S = 0.10
 
 # Reject specks, but the thinnest item in the task is only a few pixels wide: at
 # 1.5 m the camera resolves 2.72 mm/px, so Ручка (148x13x9 mm) covers just
@@ -743,6 +747,22 @@ def select_side_item_points(world_pts_m, item_x_m, x_gate_m=0.30, y_gate_m=0.30,
             & (np.abs(p[:, 1]) < y_gate_m)
             & (np.abs(p[:, 0] - item_x_m) < x_gate_m))
     return p[keep]
+
+
+def side_cloud_from_frame(depth_side_m, dt_s, fx, fy, cx=None, cy=None,
+                          cam_pos_m=SIDE_CAMERA_POS_M, cam_target_m=SIDE_CAMERA_TARGET_M,
+                          item_x_m=CAMERA_X_M):
+    """Motion-compensated world flank cloud from one side depth frame, ready to fuse.
+
+    The node's whole side pipeline in one testable call: back-project the frame to
+    world, keep the item's flank (select_side_item_points), and register it to the top
+    frame's instant (compensate_belt_motion, dt_s = t_side - t_top). Returns an Nx3
+    cloud for measure_items(side_points_world_m=...); an empty frame yields an empty
+    cloud, which the fusion path treats as "no side data" (top-only, bit-identical).
+    """
+    world = backproject_depth_to_world(depth_side_m, cam_pos_m, cam_target_m, fx, fy, cx, cy)
+    item = select_side_item_points(world, item_x_m)
+    return compensate_belt_motion(item, dt_s)
 
 
 def fuse_dims_over_cloud_mm(world_pts_m):
