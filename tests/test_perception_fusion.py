@@ -24,11 +24,18 @@ from scripts.probe_side_camera import place_on_belt, visible_points
 from src.classification import classify, within_measurement_tolerance
 from src.perception import (
     BELT_TOP_Z_M,
+    FX,
+    FY,
+    IMG_H,
+    IMG_W,
     SIDE_CAMERA_POS_M,
     SIDE_CAMERA_TARGET_M,
+    _camera_basis,
+    backproject_depth_to_world,
     compensate_belt_motion,
     fuse_dims_over_cloud_mm,
     measure_items,
+    select_side_item_points,
 )
 
 
@@ -55,6 +62,38 @@ def test_compensate_belt_motion_undoes_travel():
     back = compensate_belt_motion(travelled, dt_s=0.0667, belt_speed_m_s=1.0)
     assert np.allclose(back, pts, atol=1e-9)
     assert compensate_belt_motion(np.empty((0, 3)), dt_s=0.05).shape == (0, 3)
+
+
+def test_backproject_inverts_the_side_projection():
+    """A world point projected into the side frame and back must return to itself.
+
+    Guards the node's geometry: depth-frame -> world uses the SAME pinhole convention
+    the fusion tests project with, so the two never drift. Rasterizing to integer
+    pixels costs sub-pixel error (~1.6 mm/px at 0.9 m), hence the 5 mm tolerance.
+    """
+    forward, right, up = _camera_basis(SIDE_CAMERA_POS_M, SIDE_CAMERA_TARGET_M)
+    cam = np.asarray(SIDE_CAMERA_POS_M, dtype=float)
+    world = np.array([[1.50, 0.02, 0.55], [1.42, -0.05, 0.48], [1.58, 0.08, 0.62]])
+    for p in world:
+        rel = p - cam
+        z = rel @ forward
+        u = int(round(IMG_W / 2.0 + (rel @ right) * FX / z))
+        v = int(round(IMG_H / 2.0 - (rel @ up) * FY / z))
+        depth = np.zeros((IMG_H, IMG_W))
+        depth[v, u] = z
+        got = backproject_depth_to_world(depth, SIDE_CAMERA_POS_M, SIDE_CAMERA_TARGET_M, FX, FY)
+        assert len(got) == 1 and np.linalg.norm(got[0] - p) < 0.005, (p, got)
+
+
+def test_select_side_item_points_keeps_flank_drops_background():
+    item = np.random.default_rng(0).uniform([1.45, -0.1, 0.42], [1.55, 0.1, 0.55], size=(50, 3))
+    background = np.array([[3.0, 0.0, 0.45],      # far down-belt wall
+                           [1.5, 1.2, 0.30],      # far guide, outside |y| gate
+                           [1.5, 0.0, 0.39],      # below the belt band
+                           [1.5, 0.0, 1.20]])     # gantry, above the band
+    kept = select_side_item_points(np.vstack([item, background]), item_x_m=1.5)
+    assert len(kept) == len(item), "must keep the flank and drop every background point"
+    assert select_side_item_points(np.empty((0, 3)), item_x_m=1.5).shape == (0, 3)
 
 
 def test_fuse_synthetic_box_recovers_true_dims():

@@ -682,6 +682,69 @@ def compensate_belt_motion(side_points_world_m, dt_s, belt_speed_m_s=BELT_SPEED_
     return shifted
 
 
+def _camera_basis(cam_pos_m, cam_target_m):
+    """(forward, right, up) unit vectors of a camera at pos looking at target.
+
+    Matches the offline side-probe's pinhole convention (scripts/probe_side_camera.py)
+    exactly, so a point projected by the probe and back-projected here round-trips: the
+    fusion tests and the live node then share ONE geometry. world_up flips to +x when
+    the view is near-vertical, as the probe does, to keep `right` well-defined.
+    """
+    cam = np.asarray(cam_pos_m, dtype=float)
+    forward = np.asarray(cam_target_m, dtype=float) - cam
+    forward /= np.linalg.norm(forward)
+    world_up = np.array([0.0, 0.0, 1.0])
+    if abs(forward @ world_up) > 0.99:
+        world_up = np.array([1.0, 0.0, 0.0])
+    right = np.cross(forward, world_up)
+    right /= np.linalg.norm(right)
+    up = np.cross(right, forward)
+    return forward, right, up
+
+
+def backproject_depth_to_world(depth_m, cam_pos_m, cam_target_m, fx, fy, cx=None, cy=None):
+    """World points (Nx3, m) of every valid pixel of a depth frame at an ARBITRARY pose.
+
+    The top camera has a straight-down shortcut (measure_item); the side head looks
+    across the belt, so its frame is back-projected generally: depth is the distance
+    along the optical axis, and each pixel's ray is forward + right*(u-cx)/fx +
+    up*-(v-cy)/fy, scaled by depth, added to the camera position. Convention is
+    _camera_basis (the probe's), NOT yet confirmed against Gazebo's optical frame —
+    the in-sim dump must verify it (a possible axis flip is isolated to this function).
+    """
+    height, width = depth_m.shape
+    if cx is None:
+        cx = width / 2.0
+    if cy is None:
+        cy = height / 2.0
+    vs, us = np.nonzero(depth_m > 0)
+    d = depth_m[vs, us].astype(float)
+    forward, right, up = _camera_basis(cam_pos_m, cam_target_m)
+    rel = (forward[None, :] * d[:, None]
+           + right[None, :] * ((us - cx) * d / fx)[:, None]
+           + up[None, :] * (-(vs - cy) * d / fy)[:, None])
+    return np.asarray(cam_pos_m, dtype=float)[None, :] + rel
+
+
+def select_side_item_points(world_pts_m, item_x_m, x_gate_m=0.30, y_gate_m=0.30,
+                            z_lo_m=BELT_TOP_Z_M + MASK_MARGIN_M, z_hi_m=BELT_TOP_Z_M + 0.60):
+    """Side-head points belonging to the ONE item on the belt, in world frame.
+
+    The side frame also sees the far cell wall, guides and floor; segmenting in the
+    tilted side image is fragile, so we filter in WORLD space instead: keep points
+    standing above the belt (z band), within the belt's lateral span (|y|) and near the
+    item's along-belt position (|x - item_x|). This is the item's near flank — the
+    hidden vertical the top view under-reads.
+    """
+    p = np.asarray(world_pts_m, dtype=float)
+    if not len(p):
+        return p.reshape(0, 3)
+    keep = ((p[:, 2] > z_lo_m) & (p[:, 2] < z_hi_m)
+            & (np.abs(p[:, 1]) < y_gate_m)
+            & (np.abs(p[:, 0] - item_x_m) < x_gate_m))
+    return p[keep]
+
+
 def fuse_dims_over_cloud_mm(world_pts_m):
     """Lateral dims + height (mm, descending) of the min-volume body box over a cloud.
 
