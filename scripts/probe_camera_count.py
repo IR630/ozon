@@ -232,7 +232,7 @@ def main(argv=None):
         for calib_name, s_mm, s_deg in CALIBRATIONS:
             seeds = [0] if s_mm == 0.0 and s_deg == 0.0 else CALIB_SEEDS
             for fusion in FUSIONS:
-                mis, tol, total, culprits = 0, 0, 0, {}
+                mis, tol, total, culprits, errs = 0, 0, 0, {}, []
                 # rng is rebuilt per fusion, so every rule sees the IDENTICAL
                 # sequence of misregistration draws: the comparison is between
                 # fusion rules, not between random draws.
@@ -254,10 +254,12 @@ def main(argv=None):
                             continue
                         total += 1
                         tol += within_measurement_tolerance(dims, t_dims)
+                        errs.extend(np.asarray(dims) - np.asarray(t_dims))
                         if classify(dims, t_k) != t_cat:
                             mis += 1
                             culprits[slug] = culprits.get(slug, 0) + 1
-                results[(cfg_name, calib_name, fusion)] = (mis, tol, total, culprits)
+                results[(cfg_name, calib_name, fusion)] = (mis, tol, total, culprits,
+                                                           np.asarray(errs))
                 print(f"готово: {cfg_name:26} | {calib_name:28} | {fusion}", flush=True)
 
     for fusion in FUSIONS:
@@ -267,7 +269,7 @@ def main(argv=None):
         for calib_name, *_ in CALIBRATIONS:
             row = f"{calib_name:30}"
             for cfg_name in CONFIGS:
-                mis, _tol, total, _c = results[(cfg_name, calib_name, fusion)]
+                mis, _tol, total, _c, _e = results[(cfg_name, calib_name, fusion)]
                 n_runs = 1 if calib_name.startswith("идеальная") else len(CALIB_SEEDS)
                 row += f"{mis / n_runs:>21.1f}/{len(poses)}"
             print(row)
@@ -278,15 +280,34 @@ def main(argv=None):
         for calib_name, *_ in CALIBRATIONS:
             row = f"{calib_name:30}"
             for cfg_name in CONFIGS:
-                _mis, tol, total, _c = results[(cfg_name, calib_name, fusion)]
+                _mis, tol, total, _c, _e = results[(cfg_name, calib_name, fusion)]
                 row += f"{tol / max(total, 1) * 100:>25.0f}%"
             print(row)
+
+    # PRINTED NEXT TO EVERY ROUTING WIN, DELIBERATELY. A rule can score zero
+    # misroutes by SHRINKING every dimension rather than by measuring better: the
+    # only 3-head routing failure here is the pen inflating past its 10 mm
+    # threshold, so ANY downward bias "fixes" it as a side effect. A rule with
+    # bias -b misroutes every item whose true dim sits within b ABOVE a threshold;
+    # this catalogue happens to contain no such item, which is luck of the
+    # catalogue, not a property of the rule. Read these columns before believing
+    # the tables above — measured perhead-median -5.63 mm against union +0.64 mm.
+    print("\n\n### Смещение оценки (режим «типичная 2 мм / 0.2°»), мм")
+    print("отрицательное смещение = систематически МЕНЬШЕ истины\n")
+    print(f"{'слияние':18}{'конфигурация':28}{'смещение':>12}{'|ошибка|':>12}")
+    for fusion in FUSIONS:
+        for cfg_name in CONFIGS:
+            *_rest, errs = results[(cfg_name, "типичная 2 мм / 0.2°", fusion)]
+            if not len(errs):
+                continue
+            print(f"{fusion:18}{cfg_name:28}{errs.mean():>+12.2f}"
+                  f"{np.abs(errs).mean():>12.2f}")
 
     print("\n\n### Кто именно мисроутит (режим «типичная 2 мм / 0.2°»)")
     for fusion in FUSIONS:
         print(f"\n-- слияние «{fusion}»")
         for cfg_name in CONFIGS:
-            _mis, _tol, _total, culprits = results[
+            _mis, _tol, _total, culprits, _e = results[
                 (cfg_name, "типичная 2 мм / 0.2°", fusion)]
             items = ", ".join(f"{k} ×{v}" for k, v in sorted(culprits.items(),
                                                              key=lambda kv: -kv[1])) or "—"
