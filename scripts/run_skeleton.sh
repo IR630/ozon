@@ -191,14 +191,14 @@ ign service -s /world/cell/create --reqtype ignition.msgs.EntityFactory \
 ros2 topic pub -w 1 --once /infeed/fed std_msgs/msg/Empty > /dev/null 2>&1 &
 sleep 2
 T_FED=$(date +%s.%N)
-# Simulator speed at the moment the goods are on the belt: the other half of the
-# attribution. A depth camera costs RENDER, and render slows Gazebo rather than
-# the pipeline — an RTF of 0.4 stretches every wall-clock measurement by 2.5x
-# without a single line of our code getting slower. On real hardware three
-# cameras do not slow physics, so this term is a SIMULATION cost, not a product
-# one, and the report has to say which is which.
-RTF=$(timeout 5 ign topic -e -t /world/cell/stats -n 1 2>/dev/null \
-      | grep -A1 real_time_factor | tail -1 | tr -dc '0-9.' || true)
+# NO SIMULATOR-SPEED PROBE HERE, DELIBERATELY. An `ign topic -e ... -n 1` on the
+# stats topic was tried and removed: it returned nothing in six episodes and
+# still burned its full 5 s timeout in each, which on CI eats a twenty-fourth of
+# the 120 s the whole contour smoke is allowed. Render load is separated from
+# pipeline latency by the numbers already logged instead — the controller prints
+# `cam->decision` (34 ms one head, 68 ms three), so a transit that grows by
+# SECONDS while the decision grows by MILLISECONDS is the simulator rendering,
+# not our code computing.
 
 # Position AND orientation, from ONE query: the verdict scores the item's BODY, and
 # the reported pose is only its ORIGIN (the default pose's bottom — Gazebo rotates the
@@ -257,11 +257,11 @@ CYCLE=$(python3 -c "print(f'{$T1 - $T0:.1f}')")
 
 read X Y Z RR PP YY <<< "$(item_pose)"
 echo "$SLUG -> $EXPECT: $VERDICT (pose x=$X y=$Y z=$Z, cycle ${CYCLE}s from launch)"
-# The split behind that one number, so a rig comparison is attributable.
-echo "  stages: bringup $(python3 -c "print(f'{$T_UP - $T0:.1f}')")s," \
-     "feed $(python3 -c "print(f'{$T_FED - $T_UP:.1f}')")s," \
-     "transit+verdict $(python3 -c "print(f'{$T1 - $T_FED:.1f}')")s," \
-     "rtf ${RTF:-unknown}"
+# The split behind that one number, so a rig comparison is attributable. ONE
+# python start, not three: this line runs inside a 120 s CI budget.
+python3 -c "print(f'  stages: bringup {$T_UP - $T0:.1f}s,'
+                 f' feed {$T_FED - $T_UP:.1f}s,'
+                 f' transit+verdict {$T1 - $T_FED:.1f}s')"
 echo "  resting rpy: r=$RR p=$PP y=$YY"
 python3 scripts/body_pose.py "$SLUG" "$X" "$Y" "$Z" "$RR" "$PP" "$YY" 2>/dev/null \
     | sed 's/^/  /' || true

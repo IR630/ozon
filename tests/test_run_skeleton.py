@@ -128,12 +128,15 @@ def test_the_cycle_number_is_broken_down_into_attributable_stages():
     assert "stages: bringup" in text
 
 
-def test_the_simulator_speed_is_recorded_next_to_the_wall_clock():
-    """Render load slows GAZEBO, not the pipeline: at RTF 0.4 every wall-clock
-    number stretches 2.5x with no line of our code getting slower. On real
-    hardware three cameras do not slow physics, so the term is a simulation cost
-    and the report has to be able to separate it out."""
+def test_the_episode_does_not_block_on_a_simulator_query_it_cannot_afford():
+    """A stats probe was added here and removed the same evening.
+
+    It returned nothing in six episodes and still burned its full 5 s timeout in
+    each, and `ci_e2e.sh` gives the WHOLE contour smoke 120 s — so a diagnostic
+    that yields no number may not sit in the episode path. Render load is
+    separated from pipeline latency by `cam->decision` instead.
+    """
     text = SCRIPT.read_text(encoding="utf-8")
 
-    assert "real_time_factor" in text
-    assert "rtf ${RTF:-unknown}" in text
+    assert "ign topic -e -t /world/cell/stats" not in text
+    assert "real_time_factor" not in text
