@@ -145,11 +145,11 @@ class PerceptionNode(Node):
         fy = self.fy if self.fy is not None else FY
         for item_id, measurement in zip(item_ids, measurements):
             dims_mm = measurement.dims_mm
+            n_side = 0
             if self._side_frames:
-                dims_mm = fuse_dims_mm(
-                    dims_mm,
-                    self._side_clouds(t_top, measurement, fx, fy, self.cx, self.cy),
-                    measurement.position_m)
+                clouds = self._side_clouds(t_top, measurement, fx, fy, self.cx, self.cy)
+                n_side = sum(1 for c in clouds if c is not None and len(c) >= 4)
+                dims_mm = fuse_dims_mm(dims_mm, clouds, measurement.position_m)
             out = ItemMeasurement()
             out.header.stamp = msg.header.stamp  # measurement time = frame time
             out.header.frame_id = "world"
@@ -161,10 +161,14 @@ class PerceptionNode(Node):
             out.confidence = 1.0  # classifier aggregation computes decision confidence
             out.position.x, out.position.y, out.position.z = measurement.position_m
             self.pub.publish(out)
+            # heads=N is not decoration. A rig whose side streams never arrive
+            # degrades silently to the top view and still prints a plausible
+            # measurement, so a whole census could be reported as three-camera
+            # while being single-camera. The count makes that visible in the log.
             self.get_logger().info(
                 f"item {out.item_id}: {out.dims_mm[0]:.0f}x{out.dims_mm[1]:.0f}x"
                 f"{out.dims_mm[2]:.0f} mm K={out.k:.2f} at "
-                f"({out.position.x:.2f}, {out.position.y:.2f})"
+                f"({out.position.x:.2f}, {out.position.y:.2f}) heads={1 + n_side}"
             )
 
 
