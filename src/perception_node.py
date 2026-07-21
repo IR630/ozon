@@ -100,6 +100,7 @@ class PerceptionNode(Node):
         depth = np.frombuffer(msg.data, dtype=np.float32).reshape(msg.height, msg.width)
         depth = np.nan_to_num(depth, nan=0.0, posinf=0.0, neginf=0.0)
         self._side_frame = (depth.astype(np.float64), _stamp_s(msg.header.stamp))
+        self.get_logger().info("side depth received", throttle_duration_sec=3.0)
 
     def _side_points_for(self, top_stamp_s):
         """World flank cloud from the buffered side frame, or None (no fresh side data).
@@ -108,10 +109,13 @@ class PerceptionNode(Node):
         top-only and the published measurement is bit-identical to the single-camera main.
         """
         if self._side_frame is None:
+            self.get_logger().warn("no side frame buffered yet", throttle_duration_sec=2.0)
             return None
         depth_side, side_stamp_s = self._side_frame
         dt_s = side_stamp_s - top_stamp_s
         if abs(dt_s) > SIDE_SYNC_MAX_DT_S:
+            self.get_logger().warn(
+                f"side frame stale: dt={dt_s:.3f}s", throttle_duration_sec=2.0)
             return None
         fx = self.side_fx if self.side_fx is not None else FX
         fy = self.side_fy if self.side_fy is not None else FY
@@ -129,6 +133,9 @@ class PerceptionNode(Node):
             kwargs = {"fx": self.fx, "fy": self.fy, "cx": self.cx, "cy": self.cy}
         depth64 = depth.astype(np.float64)
         side_points = self._side_points_for(_stamp_s(msg.header.stamp))
+        if side_points is not None and len(side_points):
+            self.get_logger().info(
+                f"side head fused: {len(side_points)} flank points", throttle_duration_sec=1.0)
         measurements = measure_items(depth64, side_points_world_m=side_points, **kwargs)
         item_ids = self.tracker.update([measurement.position_m for measurement in measurements])
         if self._dump_dir and measurements:

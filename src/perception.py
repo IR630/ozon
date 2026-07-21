@@ -51,7 +51,13 @@ FX = FY = (IMG_W / 2.0) / np.tan(HFOV_RAD / 2.0)
 # _find_item=None blocker. The mount MUST approach from -Y with nothing descending to
 # low z inside |y|<0.87, or the low structure re-enters the widening frustum.
 SIDE_CAMERA_POS_M = (1.5, -0.90, BELT_TOP_Z_M + 0.35)
-SIDE_CAMERA_TARGET_M = (1.5, 0.0, BELT_TOP_Z_M + 0.10)
+# Target z MUST match the world file's camera_side pitch (0.165 rad): the aim direction
+# is (0, +0.9, -0.15), i.e. from z=0.75 the ray reaches z=0.60 at the belt centre. An
+# earlier 0.50 here made the backprojection ray steeper than the real sensor and put the
+# reconstructed belt at z=0.32 instead of 0.40 — a silent 8 cm drop that pushed the item's
+# flank below the fusion gate, so nothing fused (validated against a live Gazebo frame,
+# docs/experiments.md). test_side_camera_aim_matches_world_pitch pins the two together.
+SIDE_CAMERA_TARGET_M = (1.5, 0.0, BELT_TOP_Z_M + 0.20)
 # Fuse a buffered side frame only if it is within this of the top frame. The heads
 # free-run at 15 Hz (~66 ms apart) and belt items are ~1 s apart at 1 m/s, so 100 ms
 # is fresh enough to be the SAME item while its travel is still small and compensable.
@@ -730,7 +736,7 @@ def backproject_depth_to_world(depth_m, cam_pos_m, cam_target_m, fx, fy, cx=None
     return np.asarray(cam_pos_m, dtype=float)[None, :] + rel
 
 
-def select_side_item_points(world_pts_m, item_x_m, x_gate_m=0.30, y_gate_m=0.30,
+def select_side_item_points(world_pts_m, item_x_m, x_gate_m=0.90, y_gate_m=0.26,
                             z_lo_m=BELT_TOP_Z_M + MASK_MARGIN_M, z_hi_m=BELT_TOP_Z_M + 0.60):
     """Side-head points belonging to the ONE item on the belt, in world frame.
 
@@ -739,6 +745,12 @@ def select_side_item_points(world_pts_m, item_x_m, x_gate_m=0.30, y_gate_m=0.30,
     standing above the belt (z band), within the belt's lateral span (|y|) and near the
     item's along-belt position (|x - item_x|). This is the item's near flank — the
     hidden vertical the top view under-reads.
+
+    y_gate 0.26 sits just inside the camera-section guide rails (|y|=0.272) so their
+    tops never leak into the flank; x_gate is wide (fusion runs only for a lone item,
+    so the belt window holds nothing else above the belt) because the node does not
+    know the item's exact x before measuring it — the belt centre with a window-wide
+    gate captures the flank wherever in the window the item currently sits.
     """
     p = np.asarray(world_pts_m, dtype=float)
     if not len(p):
