@@ -110,8 +110,12 @@ GUI Gazebo пробрасывается через X11 (Linux) или WSLg (Wind
 в CI; непроверенные локальные правки в неё не попадают — сначала коммит):
 
 ```bash
+python scripts/check_submission.py   # быстрый preflight артефактов и плейсхолдеров
 bash scripts/check_clean_deploy.sh
 ```
+
+До загрузки видео в облако первый preflight намеренно возвращает `BLOCKED` на
+плейсхолдере ссылки в README. Это текущая человеко-задача H6, а не ошибка кода.
 
 Версии зафиксированы двумя замками: базовый образ — по digest в
 `docker/Dockerfile`, python-зависимости образа — `docker/pip-constraints.txt`
