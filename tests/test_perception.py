@@ -12,6 +12,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from src.constants import MEASUREMENT_TOL_MM
+from src.classification import within_measurement_tolerance
 from src.perception import BELT_DEPTH_M, measure_dims_mm, measure_item, measure_items
 
 IMG_DIR = Path(__file__).resolve().parents[1] / "docs" / "report" / "img"
@@ -40,6 +42,62 @@ def test_measure_synthetic():
     dims = measure_dims_mm(_synthetic_box(), belt_depth_m=1.5, fx=500.0, fy=500.0)
     # lateral = 100 * 1.3 / 500 * 1000 = 260 mm; height = (1.5-1.3)*1000 = 200 mm
     assert dims == pytest.approx([260.0, 260.0, 200.0])
+
+
+def _synthetic_stepped_body(belt=1.5, plate_depth=1.45, block_depth=1.20):
+    """A wide plate carrying a narrower block: the widest section is DEEPER than
+    the median of the visible surface.
+
+    Every face is parallel to the sensor, so the frame is exact under a pinhole
+    camera and the ground truth is analytic — no ray casting, no render error.
+    The block covers 64 % of the mask, so np.median() of the mask depth lands on
+    the BLOCK (1.20 m) while the footprint that sets the dims belongs to the
+    PLATE (1.45 m). Scaling the whole silhouette by that one median under-reads
+    the footprint by the depth ratio 1.20/1.45 — the defect this exercises.
+    """
+    depth = np.full((480, 640), belt)
+    depth[140:340, 220:420] = plate_depth   # 200x200 px
+    depth[160:320, 240:400] = block_depth   # 160x160 px = 64 % of the mask
+    return depth
+
+
+def test_depth_scale_backprojects_each_pixel_with_its_own_depth():
+    # The plate spans 199 px between its extreme pixel centers at 1.45 m:
+    # 199 * 1.45 / 500 * 1000 = 577.1 mm. A single median depth (1.20 m, the
+    # block) reads it as 199 * 1.20 / 500 * 1000 = 477.6 mm — 100 mm short, far
+    # outside the organizers' tolerance. See docs/plan-fix-depth-scale.md.
+    fx = fy = 500.0
+    truth_mm = [199 * 1.45 / fx * 1000.0, 199 * 1.45 / fy * 1000.0, 300.0]
+    dims = measure_dims_mm(_synthetic_stepped_body(), belt_depth_m=1.5, fx=fx, fy=fy)
+    assert dims is not None
+    assert within_measurement_tolerance(dims, truth_mm), f"{dims} vs truth {truth_mm}"
+
+
+def test_relief_body_dims_invariant_to_yaw():
+    """Per-pixel backprojection must not make the footprint depend on belt yaw.
+
+    test_obb_dims_invariant_to_yaw above uses a flat rectangle at ONE depth, so
+    it cannot see a depth-dependent scale error at all. Here the body carries
+    relief (a raised ridge), which is what makes the metric hull depth-dependent
+    — the property the per-pixel fix introduces and must not get wrong.
+    """
+    fx = 2000.0
+    yy, xx = np.mgrid[0:480, 0:640]
+    dims_by_angle = []
+    for angle in (0, 20, 45, 70):
+        a = np.deg2rad(angle)
+        dx, dy = xx - 320.0, yy - 240.0
+        xr = np.cos(a) * dx + np.sin(a) * dy
+        yr = -np.sin(a) * dx + np.cos(a) * dy
+        depth = np.full((480, 640), 1.5)
+        body = (np.abs(xr) <= 100.0) & (np.abs(yr) <= 40.0)
+        # ridge height falls off across the short axis -> real relief, many depths
+        depth[body] = 1.5 - (1.5 / fx) * np.sqrt(np.maximum(40.0**2 - yr[body] ** 2, 0.0))
+        dims = measure_dims_mm(depth, belt_depth_m=1.5, fx=fx, fy=fx)
+        assert dims is not None, f"no measurement @ {angle}deg"
+        dims_by_angle.append(dims)
+    spread = np.ptp(np.array(dims_by_angle), axis=0)
+    assert spread.max() <= MEASUREMENT_TOL_MM, f"yaw-dependent dims: {dims_by_angle}"
 
 
 def _synthetic_rotated_rect(l_px, w_px, angle_deg, top=1.3, belt=1.5):

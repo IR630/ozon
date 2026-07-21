@@ -680,8 +680,26 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK
     # docs/experiments.md) and can cross the sorter limit. +1 px matches the
     # inclusive-pixel convention (a lone axis-aligned box reads the same as before).
     long_px, short_px, long_dir = _obb_dims_px(pts[hull.vertices])
-    dx_mm = (long_px + 1.0) * top_depth_m / fx * 1000.0
-    dy_mm = (short_px + 1.0) * top_depth_m / fy * 1000.0
+    if cx is None:
+        cx = depth_m.shape[1] / 2.0
+    if cy is None:
+        cy = depth_m.shape[0] / 2.0
+    # Footprint in MILLIMETERS, every mask pixel backprojected with ITS OWN depth.
+    # A single median depth takes the scale from the item's TOP and applies it to
+    # the silhouette of its widest section, which on a convex body sits deeper:
+    # a systematic UNDER-read that grows with convexity (Пуфик 65.1 mm of error
+    # -> 6.7 mm, 11/11 against 8/11 offline; docs/plan-fix-depth-scale.md). The
+    # pixel OBB above stays as it is — the silhouette K and the elongation gate
+    # below are scale-free ratios and must keep reading pixels, not millimeters.
+    pts_mm = np.column_stack([(xs - cx) * depth_m[mask] / fx,
+                              (ys - cy) * depth_m[mask] / fy]) * 1000.0
+    hull_mm = ConvexHull(pts_mm)
+    long_mm, short_mm, _ = _obb_dims_px(pts_mm[hull_mm.vertices])
+    # +1 px of inclusive-pixel pad, as the pixel path had; at the median depth,
+    # which is where that convention was calibrated.
+    px_pad_mm = top_depth_m / fx * 1000.0
+    dx_mm = long_mm + px_pad_mm
+    dy_mm = short_mm + px_pad_mm
     # height = the item's HIGHEST point (bounding box), not the mask median:
     # concave items (Тарелка — rim 27 mm, dish bottom 8 mm) would otherwise
     # read below the 10 mm min-dim threshold and flip category to C.
@@ -691,10 +709,6 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK
     if not _dims_are_sane(dims):
         return None
 
-    if cx is None:
-        cx = depth_m.shape[1] / 2.0
-    if cy is None:
-        cy = depth_m.shape[0] / 2.0
     world_x = camera_x_m - (float(ys.mean()) - cy) * top_depth_m / fy
     world_y = camera_y_m - (float(xs.mean()) - cx) * top_depth_m / fx
     world_z = BELT_TOP_Z_M + dz_mm / 1000.0 / 2.0
@@ -710,7 +724,7 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK
     # half-section (the day-4 bottle read 69 mm against its true 91 that way).
     if k_section <= ROUND_K_THRESHOLD:
         body_dims = _body_obb_dims_mm(xs, ys, depth_m[mask], heights_m, fx, fy,
-                                      cx, cy, dims, dz_mm, top_depth_m / fx * 1000.0)
+                                      cx, cy, dims, dz_mm, px_pad_mm)
         if body_dims is not None:
             dims = body_dims
     if not _dims_are_sane(dims):
