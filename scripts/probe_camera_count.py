@@ -45,7 +45,7 @@ from probe_side_camera import census_resting_quats, cloud_dims_mm, visible_point
 
 from src.classification import classify, within_measurement_tolerance  # noqa: E402
 from src.constants import MAX_DIMS_MM, MIN_DIMS_MM  # noqa: E402
-from src.perception import BODY_OBB_MIN_RELIEF, _obb_dims_px  # noqa: E402
+from src.perception import BODY_OBB_MIN_RELIEF, _body_obb_dims_mm, _obb_dims_px  # noqa: E402
 from src.perception import BELT_TOP_Z_M, CAMERA_X_M, CAMERA_Y_M, CAMERA_Z_M  # noqa: E402
 
 N_SURFACE_SAMPLES = 400_000
@@ -177,7 +177,19 @@ def misregister(pts_m, sigma_mm, sigma_deg, rng):
 #     Admit every head.
 # One rule, opposite treatment per item, chosen by a property of the frame rather
 # than by the item's name.
-FUSIONS = ["union", "loo-min", "perhead-median", "structural-gated"]
+# "union-prod" exists because every rule above is measured through cloud_dims_mm,
+# which hands _body_obb_dims_mm a legacy box of (1e4, 1e4, 1e4) — deliberately
+# huge, so the belt-aligned shadow box can NEVER win and the probe always reports
+# the tilted min-volume box. Production does the opposite: measure_item passes the
+# REAL shadow box and keeps whichever of the two has the smaller volume. So the
+# probe's estimator is not the shipped one, and an ordering proved under it is
+# proved for an estimator that does not exist in the cell.
+#
+# This rule closes that hole: shadow box from the fused cloud's own XY footprint,
+# body-OBB allowed to win only when it is genuinely smaller — the production
+# contract. If the head-count ordering survives here, the screening verdict is
+# about the shipped pipeline rather than an artifact of the probe's wiring.
+FUSIONS = ["union", "loo-min", "perhead-median", "structural-gated", "union-prod"]
 
 
 # Candidate 3: instead of biasing the estimate, admit where it cannot pick a side.
@@ -231,8 +243,35 @@ def _structural_dims_mm(parts):
     return sorted([float(long_mm), float(short_mm), h_mm], reverse=True)
 
 
+def _prod_dims_mm(pts_m):
+    """Dims (mm, desc) the way production measure_item resolves them.
+
+    The shadow box (min-area rect of the footprint + height above the belt) is the
+    candidate to beat, and the tilted body-OBB replaces it only when its volume is
+    smaller — the guard cloud_dims_mm switches off with its 1e4 legacy box.
+    """
+    from scipy.spatial import ConvexHull, QhullError
+
+    xy_mm = pts_m[:, :2] * 1000.0
+    heights_m = pts_m[:, 2] - BELT_TOP_Z_M
+    dz_mm = float(heights_m.max()) * 1000.0
+    try:
+        hull = ConvexHull(xy_mm)
+    except QhullError:
+        return None
+    long_mm, short_mm, _dir = _obb_dims_px(xy_mm[hull.vertices])
+    shadow = sorted([float(long_mm), float(short_mm), dz_mm], reverse=True)
+    body = _body_obb_dims_mm(
+        xs=pts_m[:, 0], ys=pts_m[:, 1], depth_col_m=np.ones(len(pts_m)),
+        heights_m=heights_m, fx=1.0, fy=1.0, cx=0.0, cy=0.0,
+        legacy_dims_mm=tuple(shadow), dz_mm=dz_mm, px_pad_mm=0.0)
+    return shadow if body is None else body
+
+
 def fuse_dims(parts, rule):
     """Dims (mm, desc) from per-head visible clouds under one fusion rule."""
+    if rule == "union-prod":
+        return _prod_dims_mm(np.vstack(parts))
     if rule == "structural-gated":
         # gate on the TOP head alone: it is the head whose reliability is in
         # question, and it is the one head present in every configuration

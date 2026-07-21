@@ -235,3 +235,27 @@ def test_structural_gate_reads_relief_from_the_top_head_only():
     must not decide that, or a flat item flanked by side views flips to union."""
     parts = [_flat_slab_m(), _dome_cloud_m(seed=1), _dome_cloud_m(seed=2)]
     assert fuse_dims(parts, "structural-gated") != fuse_dims(parts, "union")
+
+
+def test_union_prod_lets_the_shadow_box_win_when_it_is_smaller():
+    """The production contract the probe's own cloud_dims_mm switches off.
+
+    cloud_dims_mm hands _body_obb_dims_mm a 1e4 legacy box so the tilted box
+    always wins; measure_item passes the real shadow box and keeps the smaller
+    volume. On a flat slab the tilted search can only match or overshoot, so
+    union-prod must not read LARGER than the probe's own union there.
+    """
+    parts = [_flat_slab_m(seed=s) for s in (0, 1, 2)]
+    prod = fuse_dims(parts, "union-prod")
+    probe = fuse_dims(parts, "union")
+    assert prod is not None
+    assert np.prod(prod) <= np.prod(probe) * 1.001, f"{prod} vs {probe}"
+
+
+def test_union_prod_still_measures_a_dome():
+    """The guard must not break the case the body-OBB exists for: a dome's
+    tilted box is genuinely smaller than its shadow box, so it should win."""
+    parts = [_dome_cloud_m(seed=s) for s in (0, 1, 2)]
+    dims = fuse_dims(parts, "union-prod")
+    assert dims is not None
+    assert dims[0] == pytest.approx(280.0, rel=0.15)   # 2R of a 140 mm half-shell
