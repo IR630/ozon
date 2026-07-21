@@ -96,6 +96,51 @@ def test_crop_drops_the_belt_and_keeps_the_item():
     assert kept[0][0] == pytest.approx(1.5)
 
 
+def test_the_belt_a_miscalibrated_head_reconstructs_is_rejected():
+    """The census this margin was raised for, pinned by its measured number.
+
+    At the +-2 mm / 0.2 deg calibration budget the belt reconstructs 5.00-5.23 mm
+    above itself (measured on dumped frames, scripts/diagnose_side_clouds.sh). The
+    shipped 5 mm floor let it through, the crop then admitted two strips of belt
+    edge across its whole window, and a 303 mm bottle read 740x505 mm.
+    """
+    from src.constants import SIDE_BELT_MARGIN_M
+
+    worst_leak_m = BELT_TOP_Z_M + 0.00523
+    belt = np.array([[1.4, 0.22, worst_leak_m], [1.9, -0.22, worst_leak_m]])
+    assert len(crop_to_item(belt, (1.5, 0.0, BELT_TOP_Z_M), [303.0, 94.0, 91.0])) == 0
+    assert SIDE_BELT_MARGIN_M > 0.00523, "the margin no longer clears the measured leak"
+
+
+def test_the_margin_still_leaves_the_thinnest_item_visible_to_the_side_heads():
+    """And the other side of the trade: the 9 mm pen is WHY the heads are there.
+
+    A floor set above the pen would make the rig degrade to one camera on exactly
+    the item that motivated the third.
+    """
+    from src.constants import MIN_DIMS_MM, SIDE_BELT_MARGIN_M
+
+    assert SIDE_BELT_MARGIN_M * 1000.0 < 9.0 < MIN_DIMS_MM[0]
+    pen_top = np.array([[1.5, 0.0, BELT_TOP_Z_M + 0.009]])
+    assert len(crop_to_item(pen_top, (1.5, 0.0, BELT_TOP_Z_M), [148.0, 13.0, 9.0])) == 1
+
+
+def test_the_grazing_margin_is_deliberately_not_the_top_view_margin():
+    """Reusing the top head's 5 mm here is the defect, so the two are pinned apart.
+
+    A downward view moves the belt SIDEWAYS under a pointing error; a grazing
+    view tilts the plane about the lens and lifts it by the error times the
+    range. Same budget, different geometry, different floor.
+    """
+    from src.constants import SIDE_BELT_MARGIN_M
+    from src.perception import MASK_MARGIN_M
+
+    assert SIDE_BELT_MARGIN_M > MASK_MARGIN_M, "the grazing floor collapsed back onto the top one"
+    # 2 mm of translation plus 0.2 deg over the longest range the crop admits
+    bound_m = 0.002 + np.radians(0.2) * 1.28
+    assert SIDE_BELT_MARGIN_M >= bound_m, f"below the {bound_m * 1000:.1f} mm calibration bound"
+
+
 def test_a_lost_head_degrades_to_the_top_measurement_instead_of_crashing():
     """Brief boundary: a missing head must degrade the node, not kill it."""
     top = [300.0, 200.0, 100.0]

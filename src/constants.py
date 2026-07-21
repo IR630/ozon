@@ -76,6 +76,30 @@ CAMERA_RIG_POSES_M = (CAMERA_TOP_POSE_M,
 # size of the error being cancelled, not an allowance to live with.
 CAMERA_FRAME_PERIOD_S = 1.0 / 15.0
 
+# How far above the belt a side head's point must sit to count as goods.
+#
+# THIS IS NOT THE TOP HEAD'S 5 mm, AND REUSING THAT NUMBER COST THE BRANCH A
+# CENSUS. perception.MASK_MARGIN_M = 5 mm was derived for a straight-down view,
+# where the empty belt spreads about 1 mm and a pointing error moves the belt
+# SIDEWAYS. A side head grazes the belt plane, so the same pointing error tilts
+# that plane about the lens and lifts it: measured on a dumped frame at the
+# +-2 mm / 0.2 deg calibration budget, the belt reconstructs 5.00-5.23 mm above
+# itself and walks straight through a 5 mm floor. The crop then admits two
+# strips of belt edge spanning its whole +-225 mm window, and a 303 mm bottle
+# reads 740x505 mm — C instead of D, on every frame (runs/census_3cam_miscal,
+# 2 of 8 cells, docs/report/img/side_cloud_miscal.png).
+#
+# The bound is the translation error plus the rotation error over the longest
+# range the crop admits: 2 mm + 0.2 deg x 1.28 m = 6.5 mm for the largest item
+# in the catalogue. 8 mm clears that and still sits under the 9 mm pen, which is
+# the thinnest item and the one the side heads exist for.
+#
+# It costs almost nothing because it cuts from the BOTTOM: the side heads'
+# contribution to height is a MAXIMUM over the cloud, so trimming low points
+# leaves the height untouched, and the x/y shadow is floored by the top head's
+# own unoccluded view anyway.
+SIDE_BELT_MARGIN_M = 0.008
+
 # How many frame periods a side head may lag before its frame is discarded rather
 # than compensated. Compensation corrects the belt TRANSLATION; it cannot correct
 # what rotated or settled in between, so a badly lagged frame is not slightly

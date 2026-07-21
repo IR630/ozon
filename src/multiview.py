@@ -22,7 +22,7 @@ they are meaningless.
 """
 import numpy as np
 
-from src.constants import BELT_SPEED_M_S, MAX_DIMS_MM
+from src.constants import BELT_SPEED_M_S, MAX_DIMS_MM, SIDE_BELT_MARGIN_M
 from src.perception import BELT_TOP_Z_M, _body_obb_dims_mm, _obb_dims_px
 
 # How far outside the top head's own box a side head's points may still belong to
@@ -33,9 +33,11 @@ from src.perception import BELT_TOP_Z_M, _body_obb_dims_mm, _obb_dims_px
 # neighbouring product on the belt (items are fed sequentially, metres apart).
 _CROP_MARGIN_M = MAX_DIMS_MM[0] / 2000.0
 
-# Points this close to the belt are belt, not item — the same margin the top-view
-# segmentation uses to avoid swallowing a 9 mm pen into the plane.
-_BELT_MARGIN_M = 0.005
+# Points this close to the belt are belt, not item. NOT the top view's margin:
+# a grazing head lifts the belt plane under a pointing error where a downward
+# head only slides it sideways. Derivation and the census that measured it live
+# with the constant.
+_BELT_MARGIN_M = SIDE_BELT_MARGIN_M
 
 
 def camera_axes(pose):
