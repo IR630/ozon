@@ -11,7 +11,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_current_package_has_only_the_known_human_placeholder():
-    issues = submission_issues(ROOT)
+    # The colcon container exercises the unpacked source/package contract but its
+    # workspace does not guarantee a usable Git index. Large tracked binaries are
+    # covered separately below with an explicit inventory; the real CLI remains
+    # strict and obtains that inventory from ``git ls-files``.
+    issues = submission_issues(ROOT, tracked=[])
     assert issues == [
         "PLACEHOLDER: README.md: <ссылка на облако организаторов>",
     ]
