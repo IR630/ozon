@@ -75,3 +75,10 @@ CAMERA_RIG_POSES_M = (CAMERA_TOP_POSE_M,
 # cloud along +x by (t_reference - t_head) * BELT_SPEED_M_S, so this number is the
 # size of the error being cancelled, not an allowance to live with.
 CAMERA_FRAME_PERIOD_S = 1.0 / 15.0
+
+# How many frame periods a side head may lag before its frame is discarded rather
+# than compensated. Compensation corrects the belt TRANSLATION; it cannot correct
+# what rotated or settled in between, so a badly lagged frame is not slightly
+# wrong but describing a different piece of belt. Two periods is 133 ms and, at
+# 1 m/s, 133 mm of travel — already far outside the 5 mm accuracy budget.
+CAMERA_SIDE_STALE_FRAMES = 2.0

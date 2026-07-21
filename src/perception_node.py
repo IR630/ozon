@@ -23,8 +23,20 @@ from sensor_msgs.msg import CameraInfo, Image
 
 from ros_msgs.msg import ItemClassification, ItemMeasurement
 
+from src.constants import (
+    CAMERA_FRAME_PERIOD_S,
+    CAMERA_SIDE_NEG_Y_POSE_M,
+    CAMERA_SIDE_POS_Y_POSE_M,
+    CAMERA_SIDE_STALE_FRAMES,
+)
 from src.item_tracking import ItemTracker
-from src.perception import measure_items, save_items_overlay
+from src.multiview import (
+    compensate_belt_travel,
+    crop_to_item,
+    fuse_dims_mm,
+    world_cloud_from_depth,
+)
+from src.perception import FX, FY, measure_items, save_items_overlay
 
 # Aggregation states remembered for the debug overlay; same spirit as
 # aggregation.MAX_TRACKED_ITEMS — bounded, ample for a sequential belt.
@@ -47,11 +59,60 @@ class PerceptionNode(Node):
         # Last classifier verdict per item_id, shown on the dumped overlay so the
         # frame carries the aggregation STATE, not just the geometry (day 9 debt).
         self._agg_state = {}
+        # Latest frame from each side head, keyed by its rig pose: {pose: (t, depth)}.
+        # The top head drives the pipeline, so side frames only ever wait here to be
+        # picked up by the next top frame — there is no second detector.
+        self._side_frames = {}
         self.pub = self.create_publisher(ItemMeasurement, "/item/measurement", 10)
         self.create_subscription(Image, "/camera/depth_image", self.on_depth, 10)
         self.create_subscription(CameraInfo, "/camera/camera_info", self.on_info, 10)
         self.create_subscription(
             ItemClassification, "/item/classification", self.on_classification, 10)
+        for topic, pose in (("/camera_side_neg_y/depth_image", CAMERA_SIDE_NEG_Y_POSE_M),
+                            ("/camera_side_pos_y/depth_image", CAMERA_SIDE_POS_Y_POSE_M)):
+            self.create_subscription(
+                Image, topic, lambda msg, pose=pose: self.on_side_depth(msg, pose), 10)
+
+    @staticmethod
+    def _stamp_s(header):
+        return float(header.stamp.sec) + float(header.stamp.nanosec) * 1e-9
+
+    def on_side_depth(self, msg, pose):
+        """Park one side head's frame until the next top frame consumes it.
+
+        Nothing is measured here on purpose: a side view has no belt plane to
+        segment against, so giving it its own detector would put three
+        disagreeing detectors in a cell that needs one.
+        """
+        if msg.encoding != "32FC1":
+            self.get_logger().error(
+                f"side head: expected 32FC1 depth, got {msg.encoding}", once=True)
+            return
+        depth = np.frombuffer(msg.data, dtype=np.float32).reshape(msg.height, msg.width)
+        self._side_frames[pose] = (self._stamp_s(msg.header),
+                                   np.nan_to_num(depth, nan=0.0, posinf=0.0,
+                                                 neginf=0.0).astype(np.float64))
+
+    def _side_clouds(self, t_top, measurement, fx, fy, cx, cy):
+        """World clouds of the side heads, belt-travel compensated and cropped.
+
+        A head that has gone quiet for more than STALE_FRAMES periods is dropped
+        rather than extrapolated: at 1 m/s a stale frame is not slightly wrong, it
+        is describing a different piece of belt. Losing a head must degrade the
+        measurement to the top view, never fail the node.
+        """
+        clouds = []
+        for pose, (t_side, depth) in self._side_frames.items():
+            dt = t_top - t_side
+            if abs(dt) > CAMERA_SIDE_STALE_FRAMES * CAMERA_FRAME_PERIOD_S:
+                self.get_logger().warn(
+                    f"side head {pose[0]} stale by {dt * 1000:.0f} ms, dropped",
+                    throttle_duration_sec=5.0)
+                continue
+            pts = world_cloud_from_depth(depth, pose, fx, fy, cx, cy)
+            pts = compensate_belt_travel(pts, dt)
+            clouds.append(crop_to_item(pts, measurement.position_m, measurement.dims_mm))
+        return clouds
 
     def on_classification(self, msg):
         if msg.item_id not in self._agg_state and len(self._agg_state) >= _MAX_OVERLAY_STATES:
@@ -79,12 +140,23 @@ class PerceptionNode(Node):
         item_ids = self.tracker.update([measurement.position_m for measurement in measurements])
         if self._dump_dir and measurements:
             self._dump_frame(depth64, measurements, item_ids)
+        t_top = self._stamp_s(msg.header)
+        fx = self.fx if self.fx is not None else FX
+        fy = self.fy if self.fy is not None else FY
         for item_id, measurement in zip(item_ids, measurements):
+            dims_mm = measurement.dims_mm
+            if self._side_frames:
+                dims_mm = fuse_dims_mm(
+                    dims_mm,
+                    self._side_clouds(t_top, measurement, fx, fy, self.cx, self.cy),
+                    measurement.position_m)
             out = ItemMeasurement()
             out.header.stamp = msg.header.stamp  # measurement time = frame time
             out.header.frame_id = "world"
             out.item_id = item_id
-            out.dims_mm = [float(d) for d in measurement.dims_mm]
+            out.dims_mm = [float(d) for d in dims_mm]
+            # K stays TOP-ONLY, deliberately. A side head sees the end circle of
+            # anything lying down and would route every prone body to D.
             out.k = measurement.k
             out.confidence = 1.0  # classifier aggregation computes decision confidence
             out.position.x, out.position.y, out.position.z = measurement.position_m
