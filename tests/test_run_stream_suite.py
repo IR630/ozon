@@ -40,6 +40,7 @@ def test_dry_run_covers_every_model_once_per_orientation():
         env=env,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=False,
     )
 
@@ -63,6 +64,7 @@ def test_same_zone_gap_override_keeps_cross_zone_pair_and_slow_item_guards():
         env=env,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=False,
     )
 
@@ -83,6 +85,7 @@ def test_reversed_orientation_range_is_rejected():
         env=env,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=False,
     )
 
@@ -102,6 +105,7 @@ def test_each_runner_failure_gets_a_durable_status(tmp_path):
         env=env,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=False,
     )
 

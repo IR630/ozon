@@ -29,6 +29,7 @@ def test_dry_run_selects_only_requested_tail():
         env=env,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=False,
     )
 
@@ -56,7 +57,7 @@ def test_the_census_measures_the_final_mechanism_and_says_which():
     env.pop("WORLD", None)
     result = subprocess.run(
         [bash, str(SCRIPT), "0", "1", "0", "0"],
-        cwd=ROOT, env=env, capture_output=True, text=True, check=False,
+        cwd=ROOT, env=env, capture_output=True, text=True, encoding="utf-8", check=False,
     )
 
     assert result.returncode == 0, result.stderr
@@ -70,7 +71,7 @@ def test_the_baseline_mechanism_can_still_be_measured_on_purpose():
     env["WORLD"] = "sim/worlds/cell.sdf"
     result = subprocess.run(
         [bash, str(SCRIPT), "0", "1", "0", "0"],
-        cwd=ROOT, env=env, capture_output=True, text=True, check=False,
+        cwd=ROOT, env=env, capture_output=True, text=True, encoding="utf-8", check=False,
     )
 
     assert result.returncode == 0, result.stderr
@@ -83,7 +84,7 @@ def test_dry_run_reports_the_selected_world():
     env["WORLD"] = "sim/worlds/cell_diverter.sdf"
     result = subprocess.run(
         [bash, str(SCRIPT), "0", "1", "0", "0"],
-        cwd=ROOT, env=env, capture_output=True, text=True, check=False,
+        cwd=ROOT, env=env, capture_output=True, text=True, encoding="utf-8", check=False,
     )
 
     assert result.returncode == 0, result.stderr
@@ -97,7 +98,7 @@ def test_cell_timeout_bounds_a_wedged_episode(tmp_path):
     bash, env = _bash_env()
     probe = subprocess.run(
         [bash, "-lc", "timeout --version"],
-        capture_output=True, text=True, check=False,
+        capture_output=True, text=True, encoding="utf-8", check=False,
     )
     if "coreutils" not in (probe.stdout + probe.stderr).lower():
         pytest.skip("GNU coreutils timeout unavailable")
@@ -111,7 +112,7 @@ def test_cell_timeout_bounds_a_wedged_episode(tmp_path):
 
     result = subprocess.run(
         [bash, str(SCRIPT), "0", "1", "0", "0"],  # one cell: bottle, oi=0
-        cwd=ROOT, env=env, capture_output=True, text=True,
+        cwd=ROOT, env=env, capture_output=True, text=True, encoding="utf-8",
         check=False, timeout=25,
     )
 
@@ -135,6 +136,7 @@ def test_runner_error_is_saved_in_a_durable_cell_status(tmp_path):
         env=env,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=False,
     )
 
@@ -164,6 +166,7 @@ def test_targeted_replay_can_keep_a_pose_trace_per_cell(tmp_path):
         env=env,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=False,
     )
 
@@ -181,6 +184,7 @@ def test_dry_run_rejects_invalid_item_range():
         env=env,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=False,
     )
 
