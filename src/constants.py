@@ -47,3 +47,31 @@ SANE_DIM_MM_MAX = 1000.0
 CATEGORY_B = "B"  # подходит для сортировки
 CATEGORY_C = "C"  # не подходит по габаритам
 CATEGORY_D = "D"  # доупаковка (круг в сечении)
+
+
+# --- Three-head camera rig (branch feat/three-cameras) --------------------------
+#
+# Poses of ALL heads live here and nowhere else, so the world file, the node and
+# the probes cannot drift apart. Each entry is (position_m, look_at_m) in world
+# coordinates; the belt runs along +x and the sorter's belt edges are at |y|=0.25.
+#
+# THE SIDE HEADS' HEIGHT IS A CONSTRAINT, NOT A PREFERENCE. A body inside the top
+# head's cone lands in its mask and _find_item returns None on every frame — a
+# silent, total failure. The cone is 869 mm wide at BELT level and only 666 mm at
+# the side heads' mounting height, so the same |y| = 0.90 m that clears by 189 mm
+# up here would sit 14 mm INSIDE the frame down at the belt (measured with a
+# 90 mm D435-class housing, docs/report/img/three_camera_layout_yz.png). Lower
+# these heads and the rig breaks silently. test_three_camera_layout.py guards it.
+CAMERA_TOP_POSE_M = ((1.5, 0.0, 1.9), (1.5, 0.0, 0.4))
+CAMERA_SIDE_NEG_Y_POSE_M = ((1.5, -0.90, 0.75), (1.5, 0.0, 0.5))
+CAMERA_SIDE_POS_Y_POSE_M = ((1.5, +0.90, 0.75), (1.5, 0.0, 0.5))
+CAMERA_RIG_POSES_M = (CAMERA_TOP_POSE_M,
+                      CAMERA_SIDE_NEG_Y_POSE_M,
+                      CAMERA_SIDE_POS_Y_POSE_M)
+
+# Belt travel between two heads' frames is the sync penalty the brief calls out:
+# untriggered 15 Hz heads can be a full frame apart, and at 1 m/s that is 66.7 mm
+# against a 5 mm accuracy budget. The node compensates by shifting each head's
+# cloud along +x by (t_reference - t_head) * BELT_SPEED_M_S, so this number is the
+# size of the error being cancelled, not an allowance to live with.
+CAMERA_FRAME_PERIOD_S = 1.0 / 15.0

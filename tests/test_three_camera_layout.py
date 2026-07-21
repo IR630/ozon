@@ -9,7 +9,13 @@ import numpy as np
 import pytest
 
 from scripts.plot_three_camera_layout import BODY_W_M, SIDE_Y_M, SIDE_Z_M
-from src.perception import BELT_TOP_Z_M, CAMERA_Z_M, HFOV_RAD
+from src.constants import (
+    CAMERA_RIG_POSES_M,
+    CAMERA_SIDE_NEG_Y_POSE_M,
+    CAMERA_SIDE_POS_Y_POSE_M,
+    CAMERA_TOP_POSE_M,
+)
+from src.perception import BELT_TOP_Z_M, CAMERA_X_M, CAMERA_Y_M, CAMERA_Z_M, HFOV_RAD
 
 
 def _cone_half_width_m(z_m):
@@ -48,3 +54,30 @@ def test_figure_renders():
         out = Path(d) / "layout.png"
         assert main([str(out)]) == 0
         assert out.stat().st_size > 5000
+
+
+def test_rig_top_head_matches_the_calibration_perception_actually_uses():
+    """The rig table and perception.py must describe the SAME top camera.
+
+    perception.py carries the offline calibration of the saved frames and the rig
+    table is the single source for all three heads; duplicating a domain constant
+    is a bug per CLAUDE.md, so the duplication is turned into an invariant that
+    fails loudly the moment the two drift apart.
+    """
+    (x, y, z), _look_at = CAMERA_TOP_POSE_M
+    assert (x, y, z) == (CAMERA_X_M, CAMERA_Y_M, CAMERA_Z_M)
+
+
+def test_rig_side_heads_are_mounted_where_the_drawing_says():
+    """The figure and the constants must not diverge — the clearance argument is
+    only valid for the pose it was computed at."""
+    for pose, sign in ((CAMERA_SIDE_NEG_Y_POSE_M, -1), (CAMERA_SIDE_POS_Y_POSE_M, +1)):
+        (_x, y, z), _look_at = pose
+        assert y == pytest.approx(sign * SIDE_Y_M)
+        assert z == pytest.approx(SIDE_Z_M)
+
+
+def test_every_rig_head_clears_the_top_cone():
+    """Whatever heads the rig grows, none of their bodies may sit in the top view."""
+    for (x, y, z), _look_at in CAMERA_RIG_POSES_M[1:]:
+        assert abs(y) - BODY_W_M / 2 > _cone_half_width_m(z), f"head at {(x, y, z)} in frame"
