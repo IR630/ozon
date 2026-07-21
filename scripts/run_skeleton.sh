@@ -157,7 +157,13 @@ LAUNCH=$!
 # run_stream.sh has always fed this way, which is why the stream never saw the defect.
 # The item lands one clearance above a belt at 1 m/s, skids ~6 cm (mu=0.8) and is carried:
 # the infeed rails hold it through that, exactly as they hold it in the stream.
-for _ in $(seq 1 60); do
+# 30 s by default. This is a HARNESS constant, not a physical limit, and the
+# comment above records that it has already produced one false diagnosis pointing
+# at conveyor physics. It bites again on any configuration that boots slower than
+# the shipped one: the three-head rig runs a ~50 s cycle against this world's ~30 s
+# and overran the wait in 3 of 33 census cells. Overridable so a slow rig is
+# measured rather than mis-attributed.
+for _ in $(seq 1 "${SOFT_START_TRIES:-60}"); do
     grep -q "soft-start done" /tmp/skeleton_e2e.log && break
     sleep 0.5
 done

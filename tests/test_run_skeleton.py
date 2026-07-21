@@ -89,3 +89,22 @@ def test_every_spawn_is_announced_to_the_feed_watchdog():
     spawn = text.index("ign service -s /world/cell/create")
     announce = text.index("ros2 topic pub -w 1 --once /infeed/fed std_msgs/msg/Empty")
     assert spawn < announce, "the feed must be announced AFTER the spawn, never before"
+
+
+def test_soft_start_wait_is_overridable_and_defaults_to_the_shipped_value():
+    """The bring-up wait is a HARNESS constant that has twice produced a false
+    diagnosis, so it must be tunable without changing the shipped behaviour.
+
+    First time it claimed "the belt never reached full speed" on an unsourced
+    workspace (see the comment it carries). Second time it cost this branch a
+    wrong verdict: the three-head rig runs a ~74 s median cycle against this
+    world's ~23 s, overran the fixed 30 s in 3 of 33 census cells, and the
+    failure was attributed to bridge load rather than to the timer. With the
+    wait raised the same cells give 33/33.
+    """
+    text = SCRIPT.read_text(encoding="utf-8")
+
+    assert 'seq 1 "${SOFT_START_TRIES:-60}"' in text, "wait must read SOFT_START_TRIES"
+    # 60 tries x 0.5 s = the 30 s the shipped census has always used
+    assert "sleep 0.5" in text
+    assert "soft-start done" in text
