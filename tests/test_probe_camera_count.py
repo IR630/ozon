@@ -13,6 +13,7 @@ from scripts.probe_camera_count import (
     BELT_TOP_Z_M,
     CALIBRATIONS,
     CONFIGS,
+    fuse_dims,
     misregister,
     place,
 )
@@ -95,3 +96,71 @@ def test_calibration_sweep_starts_from_the_geometric_limit():
     assert CALIBRATIONS[0][1] == 0.0 and CALIBRATIONS[0][2] == 0.0
     sigmas = [c[1] for c in CALIBRATIONS]
     assert sigmas == sorted(sigmas), "calibration sweep must be monotone"
+
+
+def _box_faces_mm(lx, ly, lz, per_face=900, seed=0):
+    """Surface cloud of an axis-aligned box, in metres on the belt."""
+    rng = np.random.default_rng(seed)
+    half = np.array([lx, ly, lz]) / 2.0
+    pts = []
+    for axis in range(3):
+        for sign in (-1.0, 1.0):
+            p = rng.uniform(-1.0, 1.0, size=(per_face, 3)) * half
+            p[:, axis] = sign * half[axis]
+            pts.append(p)
+    pts = np.vstack(pts) / 1000.0
+    pts[:, 2] += BELT_TOP_Z_M + lz / 2000.0
+    return pts
+
+
+def test_loo_min_falls_back_to_union_below_three_heads():
+    """Documented contract: with 1-2 heads the rule IS union, bit for bit.
+
+    The 1- and 2-head columns of the loo-min table are therefore a free check
+    that the plumbing did not silently change what the baseline measures.
+    """
+    parts = [_box_faces_mm(300, 200, 100, seed=1), _box_faces_mm(300, 200, 100, seed=2)]
+    for n in (1, 2):
+        assert fuse_dims(parts[:n], "loo-min") == fuse_dims(parts[:n], "union")
+
+
+def test_loo_min_rejects_one_misregistered_head():
+    """The point of the rule: one head's rigid shift must not reach the dims.
+
+    Union takes a MAXIMUM over heads, so a shifted head pushes the box outward
+    and can only inflate. loo-min keeps the leave-one-out candidate that dropped
+    that head. NOTE a leave-one-out MEDIAN cannot do this and was rejected on
+    exactly this case: the bad head sits in 2 of the 3 candidates, a majority,
+    so the median preserves the inflation (measured 20.0 against union's 20.0).
+    """
+    clean = [_box_faces_mm(300, 200, 100, seed=s) for s in (1, 2, 3)]
+    truth = fuse_dims(clean, "union")
+
+    shifted = list(clean)
+    shifted[2] = clean[2] + np.array([0.02, 0.0, 0.0])   # 20 mm out, one head
+
+    union_err = abs(fuse_dims(shifted, "union")[0] - truth[0])
+    loo_err = abs(fuse_dims(shifted, "loo-min")[0] - truth[0])
+    assert union_err > 10.0, f"union should inflate on a 20 mm shift, got {union_err:.1f}"
+    assert loo_err < union_err / 2.0, f"loo-min {loo_err:.1f} vs union {union_err:.1f}"
+
+
+def test_loo_min_deflates_when_every_head_is_clean():
+    """The cost side of loo-min, stated as a test rather than discovered later.
+
+    With no misregistration at all it still drops a head's worth of coverage, so
+    it can only read the same or SMALLER than union. That is the mechanism by
+    which it could push a genuinely-at-threshold item under the threshold — the
+    risk the 165-pose sweep exists to price.
+    """
+    clean = [_box_faces_mm(300, 200, 100, seed=s) for s in (1, 2, 3)]
+    union = fuse_dims(clean, "union")
+    loo = fuse_dims(clean, "loo-min")
+    assert all(lo <= u + 1e-9 for lo, u in zip(loo, union)), f"{loo} vs {union}"
+
+
+def test_unknown_fusion_rule_is_loud():
+    """A typo in a rule name must not silently fall through to some default."""
+    parts = [_box_faces_mm(300, 200, 100, seed=s) for s in (1, 2, 3)]
+    with pytest.raises(ValueError):
+        fuse_dims(parts, "median-ish")
