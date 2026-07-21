@@ -16,8 +16,16 @@ from rclpy.node import Node
 from sensor_msgs.msg import Image
 
 
+# Side heads of the three-camera rig. OPT-IN (--side): in the one-camera world
+# these topics are silent, and a dumper that waited for them would never finish.
+SIDE_DEPTH_TOPICS = {
+    "depth_side_neg_y": "/camera_side_neg_y/depth_image",
+    "depth_side_pos_y": "/camera_side_pos_y/depth_image",
+}
+
+
 class CameraDumper(Node):
-    def __init__(self, out_dir, max_frames):
+    def __init__(self, out_dir, max_frames, side=False):
         super().__init__("camera_dumper")
         self.bridge = CvBridge()
         self.out = Path(out_dir)
@@ -26,12 +34,17 @@ class CameraDumper(Node):
         self.counts = {"rgb": 0, "depth": 0}
         self.create_subscription(Image, "/camera/image", lambda m: self.save(m, "rgb"), 10)
         self.create_subscription(Image, "/camera/depth_image", lambda m: self.save(m, "depth"), 10)
+        if side:
+            for kind, topic in SIDE_DEPTH_TOPICS.items():
+                self.counts[kind] = 0
+                self.create_subscription(
+                    Image, topic, lambda m, kind=kind: self.save(m, kind), 10)
 
     def save(self, msg, kind):
         if self.counts[kind] >= self.max_frames:
             return
         img = self.bridge.imgmsg_to_cv2(msg)
-        if kind == "depth":
+        if kind.startswith("depth"):
             # 32FC1 meters -> 16-bit PNG in millimeters, NaN/inf -> 0
             img = np.nan_to_num(img, nan=0.0, posinf=0.0, neginf=0.0)
             img = (img * 1000.0).clip(0, 65535).astype(np.uint16)
@@ -48,10 +61,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", default="out")
     parser.add_argument("--frames", type=int, default=5)
+    parser.add_argument("--side", action="store_true",
+                        help="also dump the three-camera rig's side depth heads")
     args = parser.parse_args()
 
     rclpy.init()
-    node = CameraDumper(args.out, args.frames)
+    node = CameraDumper(args.out, args.frames, side=args.side)
     while rclpy.ok() and not node.done():
         rclpy.spin_once(node, timeout_sec=1.0)
     node.destroy_node()

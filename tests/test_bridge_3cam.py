@@ -28,6 +28,19 @@ def test_three_head_bridge_adds_exactly_the_two_side_streams():
                           "/camera_side_pos_y/depth_image"}
 
 
+def test_the_frame_dumper_looks_at_the_same_side_topics_as_the_node():
+    """A dumper aimed at a topic nobody publishes produces an EMPTY diagnosis.
+
+    The side clouds are only ever inspected offline, off these dumps, so a typo
+    here reads as "the head sees nothing" — the exact conclusion the dump was
+    opened to test. Asserted by text: importing the dumper needs rclpy/cv_bridge,
+    which the test host does not have to carry.
+    """
+    dumper = (ROOT / "scripts" / "dump_camera.py").read_text(encoding="utf-8")
+    for topic in ("/camera_side_neg_y/depth_image", "/camera_side_pos_y/depth_image"):
+        assert topic in dumper, f"dumper does not dump {topic}"
+
+
 def test_side_topics_match_what_the_node_subscribes_to():
     """The world, the bridge and the node all name these topics; a typo in any
     one of them shows up as a head that never arrives."""
