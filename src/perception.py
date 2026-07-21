@@ -781,6 +781,34 @@ def side_cloud_from_frame(depth_side_m, dt_s, fx, fy, cx=None, cy=None,
     return compensate_belt_motion(item, dt_s)
 
 
+def fuse_side_height(top_world_m, side_pts_m):
+    """Structural two-camera dims: footprint from the TOP plan view, height from the
+    vertical extent BOTH heads see. This is the side head's real, measured contribution.
+
+    The top view under-reads the HEIGHT of a lying or curved body — it sees only the
+    highest visible surface — and a 3D min-volume box over the union tilts and loses the
+    vertical entirely (detergent read 162 mm from a cloud that reaches 172, true 179).
+    So height is the union cloud's robust rise above the belt, which an item resting on
+    the belt makes a direct measurement. The two lateral dims stay the TOP plan-view
+    footprint: the side sees only the near flank through occlusion and UNDER-reads the
+    footprint, so it must not touch it. Measured on live Gazebo frames — 27/33 top-only,
+    29/33 monotone-union, 30/33 this (docs/experiments.md).
+    """
+    from scipy.spatial import ConvexHull, QhullError
+
+    if len(top_world_m) < 4:
+        return None
+    union_z = np.concatenate([top_world_m[:, 2], side_pts_m[:, 2]])
+    height_mm = (np.percentile(union_z, 99.5) - BELT_TOP_Z_M) * 1000.0
+    xy_mm = top_world_m[:, :2] * 1000.0
+    try:
+        hull = ConvexHull(xy_mm)
+    except QhullError:
+        return None
+    long_mm, short_mm, _ = _obb_dims_px(xy_mm[hull.vertices])
+    return sorted([float(long_mm), float(short_mm), height_mm], reverse=True)
+
+
 def fuse_dims_over_cloud_mm(world_pts_m):
     """Lateral dims + height (mm, descending) of the min-volume body box over a cloud.
 
@@ -909,15 +937,13 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK
             camera_y_m - (xs - cx) * depth_m[mask] / fx,
             BELT_TOP_Z_M + heights_m,
         ])
-        fused = fuse_dims_over_cloud_mm(np.vstack([top_world, side_pts]))
+        fused = fuse_side_height(top_world, side_pts)
         if fused is not None and _dims_are_sane(fused):
-            # MONOTONE fusion: a second viewpoint may only REVEAL extent — the hidden
-            # lower section of a lying body of revolution the top view under-reads —
-            # never remove it. A smaller fused box is the min-volume search tilting on
-            # a soft/round cloud (bag, helmet dome), not a real measurement; reject it
-            # with a per-axis max against the top-only dims. Measured on live Gazebo
-            # frames: naive union 23/33 -> monotone 29/33 organizer tolerance, zero
-            # regressions against top-only's 27/33 (docs/experiments.md).
+            # Structural fusion refines the height; a per-axis max against the top-only
+            # dims keeps the guarantee that the second head may only REVEAL extent, never
+            # remove it (a shrink would be a viewpoint artifact, not a measurement). This
+            # both floors the result at the reliable single-camera main and lets the side
+            # head's vertical extent grow an under-read height.
             top_sorted = sorted(dims, reverse=True)
             fused_sorted = sorted(fused, reverse=True)
             dims = [max(t, f) for t, f in zip(top_sorted, fused_sorted)]

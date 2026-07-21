@@ -12,10 +12,12 @@ Everything the branch promises is pinned here against the frozen single-camera p
   4. The side head never touches K. K stays top-only and yaw-invariant, so a fused
      frame reports the SAME K as the top-only frame (a side view sees an end-on circle
      on every lying body and would wrongly route it to D).
-  5. Monotone fusion: the side view may only GROW a dimension (reveal the hidden lower
-     section of a lying body), never shrink one — a smaller fused box is the min-volume
-     search tilting on a soft/round cloud, not a measurement. Plus a sparse-point guard,
-     because a thin side cloud (the 9 mm pen) blows the OBB up instead of constraining it.
+  5. Structural fusion: two lateral dims from the top plan-view footprint, height from
+     the vertical extent both heads see (the side head's real contribution — the top
+     under-reads a lying/curved body's height, and a min-volume box over the union tilts
+     and loses it). A per-axis max against top-only keeps the "reveal, never shrink"
+     guarantee; a sparse-point guard drops a thin side cloud (the 9 mm pen) that would
+     blow the estimate up instead of constraining it.
 """
 import numpy as np
 
@@ -35,6 +37,7 @@ from src.perception import (
     backproject_depth_to_world,
     compensate_belt_motion,
     fuse_dims_over_cloud_mm,
+    fuse_side_height,
     measure_items,
     select_side_item_points,
     side_cloud_from_frame,
@@ -150,11 +153,25 @@ def test_none_side_is_bit_identical_to_main():
 
 
 def test_fusion_leaves_K_top_only():
+    """The side head refines DIMENSIONS only; K stays exactly the top-only value."""
     depth, side = _top_and_side("helmet", _dome_quat())
     top = measure_items(depth)[0]
     fused = measure_items(depth, side_points_world_m=side)[0]
     assert fused.k == top.k, "the side head must not change K"
-    assert fused.dims_mm != top.dims_mm, "but it must change the dimensions"
+
+
+def test_fuse_side_height_uses_top_footprint_and_union_vertical():
+    """Structural fusion: two lateral dims from the top plan view, height from the
+    union's vertical reach — the side head lifts a height the top view under-reads."""
+    xs = np.linspace(1.35, 1.65, 40)      # 300 mm footprint along x
+    ys = np.linspace(-0.10, 0.10, 30)     # 200 mm along y
+    gx, gy = np.meshgrid(xs, ys)
+    top = np.column_stack([gx.ravel(), gy.ravel(), np.full(gx.size, BELT_TOP_Z_M + 0.05)])
+    # the side head reaches 150 mm — the true top the plan view read as only 50 mm
+    side = np.column_stack([np.full(60, 1.5), np.linspace(-0.1, 0.1, 60),
+                            np.full(60, BELT_TOP_Z_M + 0.15)])
+    dims = fuse_side_height(top, side)
+    assert within_measurement_tolerance(dims, (300.0, 200.0, 150.0)), dims
 
 
 def test_monotone_fusion_never_shrinks_below_top_only():
