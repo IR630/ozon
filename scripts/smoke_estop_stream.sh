@@ -37,7 +37,24 @@ source "$ROS_INSTALL_ROOT/setup.bash"
 # moved up to cover the sources.
 set -u
 
-export HOLD_S=${HOLD_S:-2.5}
+# THE BLADE MUST STILL BE A WALL WHEN THE STOP LANDS, and 2.5 s was too short.
+# The production hold is 2.5 s (box_400 stroke), but this smoke reaches the
+# engaged blade through its OWN instrumentation: reading the joint is an
+# `ign topic -e` with a 2 s timeout, A_BEFORE is a second such read, and the
+# first `ros2 topic pub` on /emergency_stop pays publisher discovery — together
+# several seconds. Measured, three runs in a row: the blade auto-RETRACTED
+# (hold_s expired) about one second BEFORE the E-stop arrived, so the controller
+# correctly held an already-parked blade and the smoke then failed the engaged
+# assertion — testing a state it never actually set up.
+#
+# hold_s does not touch the E-stop code path (freeze-in-place is identical at any
+# hold), so a longer hold changes only WHETHER the blade is still engaged when we
+# stop it — which is the whole premise. 15 s covers the worst-case detection
+# latency with margin and does not lengthen the run (the stop still fires the
+# moment engagement is detected). Float, not int: the param is a DOUBLE, and
+# `-p hold_s:=15` is parsed as INTEGER and rejected, after which the controller
+# never comes up and the smoke fails as a soft-start timeout.
+export HOLD_S=${HOLD_S:-15.0}
 export FIRE_LEAD_S=${FIRE_LEAD_S:-0.5}
 export ENGAGE_CMD=${ENGAGE_CMD:-0.90}
 export RETRACT_CMD=${RETRACT_CMD:-0.0}
