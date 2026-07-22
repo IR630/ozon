@@ -22,7 +22,12 @@ Actions run `29591607813` и с тех пор входит в обязатель
 `33/33 ×3`. Финальная проверка `v0.5` состоит из двух полных stream-suite
 `33/33 + 33/33` и census-покрытия: успешный префикс `32/32` плюс возобновлённый
 хвост Helmet `3/3`. Вместе хвост с префиксом покрывает 33 уникальные ячейки, но
-не является одним непрерывным прогоном. Устойчивая производительность на **полной матрице всех
+не является одним непрерывным прогоном. **Все эти числа сняты на одном seed'е.**
+Мульти-seed перепись (5 seed'ов × 33 ячейки, 22.07, `runs/a2sweep_*`) даёт
+`163/165` при распределении `33/32/33/33/32`: `33/33` — свойство seed 0, а не
+решения. Оба промаха классификационные и одинаковые — K пограничного товара
+(Шлем, Мешок) садится чуть выше порога `0.8` и уводит его в D вместо B
+(`docs/report/path_to_line.md`). Устойчивая производительность на **полной матрице всех
 11 моделей** (потоковая суита `33/33` доставлено, 6/6 эпизодов) — медиана
 `10 товаров/мин` (диапазон по эпизодам `4–15`). Ранее полученные
 `18 товаров/мин` — только короткий пиковый поток, а не sustained-режим, поэтому
@@ -269,7 +274,7 @@ bash scripts/record_skeleton_video.sh plate D
 
 | Заявка | Команда | Проверка результата |
 |---|---|---|
-| Классификация + маршрутизация `33/33` | `WORLD=sim/worlds/cell_diverter.sdf bash scripts/run_matrix.sh 0 3` | census 11×3; `scripts/census_ruler_diff.py` |
+| Классификация + маршрутизация `33/33` на seed 0, `163/165` по пяти seed'ам | `WORLD=sim/worlds/cell_diverter.sdf bash scripts/run_matrix.sh 0 3` (один seed); `for s in 0 1 2 3 4; do bash scripts/run_matrix.sh $s 3; done` + `python3 scripts/census_seed_sweep.py` (пять) | census 11×3; `scripts/census_ruler_diff.py`; распределение по seed'ам — `scripts/census_seed_sweep.py` |
 | Потоковая матрица всех моделей `33/33`, 6/6 all-pass | `bash scripts/run_stream_suite.sh 0 0 2` | вердикты эпизодов; `runs/stream_suite_*` |
 | Sustained производительность `медиана 10 шт/мин` | `python3 scripts/measure_throughput.py runs/stream_suite_<...>` | steady-state median/p95, `calc_vs_sim.md` якорь 5 |
 | Камера→решение `0.030 с` (синхронизация) | тот же `measure_throughput.py` | per-stage latency, один sim-clock |
