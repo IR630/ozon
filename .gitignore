@@ -47,9 +47,10 @@ Thumbs.db
 sim/models/items/
 # То же для зондового набора (scripts/build_probe_items.py)
 sim/models/probe_items/
-# Генерируется scripts/make_miscal_world.py из cell_diverter_3cam.sdf — в гит
-# кладём генератор, а не производный мир: иначе два мира разъедутся молча
+# Генерируется scripts/make_miscal_world.py из чистого мира — в гит кладём
+# генератор, а не производный мир: иначе два мира разъедутся молча
 sim/worlds/cell_diverter_3cam_miscal.sdf
+sim/worlds/cell_diverter_2cam_miscal.sdf
 
 # Крупные артефакты — в облако организаторов, не в гит
 *.onnx

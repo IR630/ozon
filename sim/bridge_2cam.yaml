@@ -1,0 +1,62 @@
+# Bridge config for the TWO-HEAD rig (sim/worlds/cell_diverter_2cam.sdf).
+# Identical to bridge.yaml plus the ONE -y side depth stream. Kept separate so
+# each census bridges exactly what its world publishes and never waits on topics
+# that do not exist there: bridging /camera_side_pos_y here would be a head the
+# node waits for forever and then silently degrades over.
+# ros_gz_bridge config: Gazebo <-> ROS 2 (docs/decisions.md: Humble + Fortress).
+# Run inside the container:
+#   ros2 run ros_gz_bridge parameter_bridge --ros-args -p config_file:=/ws/sim/bridge.yaml
+#
+# /clock makes ROS nodes run on Gazebo sim time (use_sim_time): camera stamps
+# are sim time, so the controller's dead-reckoning must tick on the same clock.
+- topic_name: /clock
+  ros_type_name: rosgraph_msgs/msg/Clock
+  gz_type_name: ignition.msgs.Clock
+  direction: GZ_TO_ROS
+# Actuator seam: velocity (m/s) in the legacy pusher world, target angle (rad)
+# in the final positional-diverter world.
+- topic_name: /conveyor/cmd_vel
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: ignition.msgs.Double
+  direction: ROS_TO_GZ
+- topic_name: /pusher_c/cmd
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: ignition.msgs.Double
+  direction: ROS_TO_GZ
+- topic_name: /pusher_d/cmd
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: ignition.msgs.Double
+  direction: ROS_TO_GZ
+# Measured blade angles: a position target is not the current position while the
+# blade is moving. The controller uses these to hold the actual angle on E-stop
+# and refuses to restart the belt until fresh feedback proves both blades parked.
+- ros_topic_name: /diverter_c/joint_state
+  gz_topic_name: /world/cell/model/diverter_c/joint_state
+  ros_type_name: sensor_msgs/msg/JointState
+  gz_type_name: ignition.msgs.Model
+  subscriber_queue: 1
+  publisher_queue: 1
+  direction: GZ_TO_ROS
+- ros_topic_name: /diverter_d/joint_state
+  gz_topic_name: /world/cell/model/diverter_d/joint_state
+  ros_type_name: sensor_msgs/msg/JointState
+  gz_type_name: ignition.msgs.Model
+  subscriber_queue: 1
+  publisher_queue: 1
+  direction: GZ_TO_ROS
+- topic_name: /camera/image
+  ros_type_name: sensor_msgs/msg/Image
+  gz_type_name: ignition.msgs.Image
+  direction: GZ_TO_ROS
+- topic_name: /camera/depth_image
+  ros_type_name: sensor_msgs/msg/Image
+  gz_type_name: ignition.msgs.Image
+  direction: GZ_TO_ROS
+- topic_name: /camera/camera_info
+  ros_type_name: sensor_msgs/msg/CameraInfo
+  gz_type_name: ignition.msgs.CameraInfo
+  direction: GZ_TO_ROS
+- topic_name: /camera_side_neg_y/depth_image
+  ros_type_name: sensor_msgs/msg/Image
+  gz_type_name: ignition.msgs.Image
+  direction: GZ_TO_ROS

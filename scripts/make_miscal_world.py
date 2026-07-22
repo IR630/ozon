@@ -20,7 +20,16 @@ This is HARSHER than the offline probe's model, and deliberately so: the probe
 rotates each cloud about its own centroid (~0.5 mm at an item's radius), while a
 real head rotates about its LENS, which is 0.9 m away from what it is looking at.
 
-    python3 scripts/make_miscal_world.py [out.sdf]
+    python3 scripts/make_miscal_world.py [out.sdf] [src.sdf]
+
+The two-head rig is miscalibrated the same way, by naming its world:
+
+    python3 scripts/make_miscal_world.py \\
+        sim/worlds/cell_diverter_2cam_miscal.sdf sim/worlds/cell_diverter_2cam.sdf
+
+Only the heads the source world actually carries are moved, and which ones they
+were is printed: a rig quietly miscalibrated on fewer heads than intended is a
+census nobody can attribute.
 """
 import re
 import sys
@@ -40,12 +49,18 @@ TILT_DEG = 0.2
 _SIDE_HEADS = (("camera_side_neg_y", -1.0), ("camera_side_pos_y", +1.0))
 
 
-def miscalibrate(sdf_text, shift_mm=SHIFT_MM, tilt_deg=TILT_DEG):
-    """Return the world with both side heads displaced by the calibration error."""
+def heads_present(sdf_text):
+    """The subset of the side heads this world actually carries, in rig order."""
+    return tuple((name, sign) for name, sign in _SIDE_HEADS
+                 if '<model name="%s">' % name in sdf_text)
+
+
+def miscalibrate(sdf_text, shift_mm=SHIFT_MM, tilt_deg=TILT_DEG, heads=_SIDE_HEADS):
+    """Return the world with the named side heads displaced by the calibration error."""
     import math
 
     out = sdf_text
-    for name, sign in _SIDE_HEADS:
+    for name, sign in heads:
         pattern = re.compile(
             r'(<model name="%s">\s*\n\s*<static>true</static>\s*\n\s*<pose>)'
             r"([^<]+)(</pose>)" % re.escape(name))
@@ -64,10 +79,17 @@ def miscalibrate(sdf_text, shift_mm=SHIFT_MM, tilt_deg=TILT_DEG):
 
 def main(argv):
     out_path = Path(argv[0]) if argv else OUT_WORLD
+    src_path = Path(argv[1]) if len(argv) > 1 else SRC_WORLD
+    src = src_path.read_text(encoding="utf-8")
+    heads = heads_present(src)
+    if not heads:
+        print("ABORT: %s carries no side head to miscalibrate" % src_path)
+        return 2
     out_path.write_text(
-        miscalibrate(SRC_WORLD.read_text(encoding="utf-8")), encoding="utf-8")
-    print("miscalibrated world: %s (%+g mm outward, %+g deg pitch, both side heads)"
-          % (out_path, SHIFT_MM, TILT_DEG))
+        miscalibrate(src, heads=heads), encoding="utf-8")
+    print("miscalibrated world: %s from %s (%+g mm outward, %+g deg pitch, heads: %s)"
+          % (out_path, src_path, SHIFT_MM, TILT_DEG,
+             ", ".join(name for name, _sign in heads)))
     return 0
 
 
