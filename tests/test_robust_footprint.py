@@ -58,6 +58,34 @@ def test_yaw_invariant():
         assert abs(short_mm - base_short) < 8.0
 
 
+def test_resting_helmet_holds_category_B_under_range_noise():
+    """The fix's whole point: a helmet must not inflate into C under sensor noise.
+
+    The pre-change hull footprint let +3 mm range noise flip the resting helmet to C
+    on EVERY draw (the offline sweep measured 24/24); the trimmed footprint holds it
+    at B. Uses the committed real-Gazebo fixture, adds the make_noisy_world model
+    (additive per-pixel Gaussian), and asserts the category, not a dimension.
+    """
+    from src.classification import classify_conservative
+    from src.perception import load_depth_png, measure_item
+
+    depth = load_depth_png(ROOT / "tests" / "fixtures" / "frames" / "helmet_2_depth.png")
+    mask = depth > 0
+    assert classify_conservative(*_dims_k(measure_item(depth))) == "B"  # clean
+    for seed in range(8):
+        rng = np.random.default_rng(seed)
+        noisy = depth.copy()
+        noisy[mask] += rng.normal(0, 0.003, int(mask.sum()))  # 3 mm range noise
+        m = measure_item(noisy)
+        assert m is not None, f"seed {seed}: lost the helmet"
+        assert classify_conservative(m.dims_mm, m.k) == "B", \
+            f"seed {seed}: helmet inflated out of B -> {sorted(m.dims_mm, reverse=True)}"
+
+
+def _dims_k(m):
+    return m.dims_mm, m.k
+
+
 def test_long_axis_tracks_orientation():
     _l, _s, direction = _robust_footprint_mm(_rotate(_filled_rect(300, 100), 30))
     ang = np.degrees(np.arctan2(direction[1], direction[0])) % 180

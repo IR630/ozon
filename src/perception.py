@@ -558,35 +558,72 @@ def _obb_dims_px(hull_vertices):
 # noise and crossed the 320 mm sorter limit into C (docs/decisions.md 2026-07-23,
 # the one failure that survived to the contour). A percentile trim rejects those
 # outliers. 1 % is above the measured stray-pixel rate and far below the item's real
-# edge population. This SHIFTS the clean baseline down (a hull over-reads by its
-# outermost pixels), so it MANDATES a full census re-baseline — docs/experiments.md.
-FOOTPRINT_TRIM_PCT = 1.0
+# edge population. At the data-tuned 0.25 % below the shift is sub-pixel on clean
+# frames (every organizer-tolerance slice still passes, zero baseline changes) while
+# still rejecting the noise outliers — docs/experiments.md 2026-07-24.
+# LEVEL SET BY DATA, not by the helmet alone: an offline sweep over all 33 resting
+# frames (scripts/tune_footprint_trim.py) scored routing clean and under +3 mm noise,
+# cross-checked against the organizer-tolerance validation slices. 0.25 % already
+# FULLY fixes the helmet (24/24 noisy category flips -> 0) at clean routing 33/33 AND
+# leaves the round Plate's diameter byte-identical to the pre-change hull (a trim
+# shaves a disc's rim, so 0.5 % under-reads it 208 -> 202 mm and breaks its tolerance;
+# 0.25 % does not). Above 0.25 % buys no routing robustness the helmet needs and only
+# under-reads round/sparse frames. The remaining noisy flips (bottle's K, the 9 mm
+# pen's height) are separate mechanisms a footprint trim cannot touch — a second view
+# is their lever, not a trim (docs/experiments.md 2026-07-24).
+FOOTPRINT_TRIM_PCT = 0.25
+
+# A LARGER trim was tried for the body-OBB alone (0.5 %) to harden the worst tilted
+# helmet, but the concave Plate is ALSO measured by the body-OBB, so 0.5 % shaved its
+# rim below organizer tolerance (208 -> 202 mm). A percentile trim cannot tell the
+# Plate's dense real rim from the helmet's sparse noise outliers — both sit at the
+# extreme — so a single body-OBB trim serves both, and the worst tilted-helmet frame
+# still crosses 320 mm on ~3/8 of +3 mm-noise draws. Fully hardening it needs a
+# DENSITY-based outlier removal (isolated points, not extreme ones), tracked as a
+# follow-up; the flat 0.25 % here fixes the resting-pose helmets with zero regression
+# and keeps the Plate in tolerance (docs/experiments.md 2026-07-24).
+BODY_OBB_TRIM_PCT = FOOTPRINT_TRIM_PCT
 
 
-def _robust_footprint_mm(pts_mm, trim_pct=FOOTPRINT_TRIM_PCT):
-    """Long/short footprint (mm) and long-axis unit vector from a mm point cloud,
-    robust to per-pixel depth-noise outliers.
+def _lateral_inlier_mask(xy, trim_pct=None):
+    """Boolean mask of points within the trimmed percentile band on EACH PCA axis.
 
-    PCA only SELECTS inliers: the extreme trim_pct% along each principal axis is
-    dropped, killing the stray depth-noise pixels that a convex hull would promote to
-    a vertex. The reported dims then come from the SAME min-area-rect the clean
-    pipeline always used, run on the inliers — so a clean frame is unchanged but for
-    the ~2 % a symmetric trim shaves, while a noisy frame no longer inflates. Keeping
-    the min-area-rect orientation (not PCA's) is deliberate: on a non-rectangular
-    silhouette PCA's axis differs from the tightest box and would move the clean
-    baseline shape-dependently — the helmet's real-vs-synth agreement broke on it.
-    Returns the `_obb_dims_px` convention, so it is a drop-in for the mm footprint.
+    A depth-noise pixel lands far from the body on at least one axis; trimming the
+    extreme trim_pct% per principal axis drops it before a hull can promote it to a
+    dimension-setting vertex. PCA is used ONLY to pick inliers here — never to report
+    a dimension — so a clean frame keeps its shape while a noisy one loses its
+    stragglers. Measured on the real tilted-helmet frame: +3 mm range noise inflates
+    the convex-hull footprint 326 -> 403 mm, the trimmed one holds at 298
+    (docs/experiments.md).
     """
-    from scipy.spatial import ConvexHull, QhullError
-
-    pts_mm = np.asarray(pts_mm, dtype=float)
-    centered = pts_mm - np.median(pts_mm, axis=0)
+    if trim_pct is None:
+        trim_pct = FOOTPRINT_TRIM_PCT          # read at call time so a sweep can retune it
+    xy = np.asarray(xy, dtype=float)
+    centered = xy - np.median(xy, axis=0)
     cov = np.cov(centered.T)
     axes = np.eye(2) if not np.all(np.isfinite(cov)) else np.linalg.eigh(cov)[1]
     proj = centered @ axes
     lo = np.percentile(proj, trim_pct, axis=0)
     hi = np.percentile(proj, 100.0 - trim_pct, axis=0)
-    keep = np.all((proj >= lo) & (proj <= hi), axis=1)
+    return np.all((proj >= lo) & (proj <= hi), axis=1)
+
+
+def _robust_footprint_mm(pts_mm, trim_pct=None):
+    """Long/short footprint (mm) and long-axis unit vector from a mm point cloud,
+    robust to per-pixel depth-noise outliers.
+
+    Inliers are selected by `_lateral_inlier_mask`; the dims then come from the SAME
+    min-area-rect the clean pipeline always used, run on the inliers — so a clean
+    frame is unchanged but for the ~2 % a symmetric trim shaves, while a noisy frame
+    no longer inflates. Keeping the min-area-rect orientation (not PCA's) is
+    deliberate: on a non-rectangular silhouette PCA's axis differs from the tightest
+    box and would move the clean baseline shape-dependently — the helmet's
+    real-vs-synth agreement broke on it. Returns the `_obb_dims_px` convention.
+    """
+    from scipy.spatial import ConvexHull, QhullError
+
+    pts_mm = np.asarray(pts_mm, dtype=float)
+    keep = _lateral_inlier_mask(pts_mm, trim_pct)
     inliers = pts_mm[keep] if keep.sum() >= 3 else pts_mm
     try:
         hull = ConvexHull(inliers)
@@ -640,6 +677,16 @@ def _body_obb_dims_mm(xs, ys, depth_col_m, heights_m, fx, fy, cx, cy,
         (ys - cy) * depth_col_m / fy,
         heights_m,
     ]) * 1000.0
+    # Drop lateral depth-noise outliers before the hull, the SAME reason the top
+    # footprint does: one stray pixel becomes a hull vertex and sets a body extent.
+    # Only the two lateral axes are trimmed — the vertical extent is separately
+    # floored by dz_mm (the 1st-percentile height), already outlier-robust. Without
+    # this the tilted helmet's body box inflated 280 -> 349 mm under +3 mm range
+    # noise and crossed the 320 limit into C, even with a robust top footprint
+    # (docs/experiments.md): the miss lives in the body path, not the shadow.
+    keep = _lateral_inlier_mask(pts_mm[:, :2], BODY_OBB_TRIM_PCT)
+    if keep.sum() >= 4:
+        pts_mm = pts_mm[keep]
     # Decimate before the hull: extents of 1500 surface points match the full
     # cloud's within ~one pixel, and both the hull-vertex count and the candidate
     # count below scale with it. Deterministic stride, not random (Karpathy #5).
@@ -739,8 +786,11 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK
     # below are scale-free ratios and must keep reading pixels, not millimeters.
     pts_mm = np.column_stack([(xs - cx) * depth_m[mask] / fx,
                               (ys - cy) * depth_m[mask] / fy]) * 1000.0
-    hull_mm = ConvexHull(pts_mm)
-    long_mm, short_mm, _ = _obb_dims_px(pts_mm[hull_mm.vertices])
+    # Robust trimmed footprint, NOT the convex hull of every mask pixel: a single
+    # depth-noise outlier used to become a hull vertex and set the dimension (the
+    # helmet's 297 -> 354 mm width under noise, the one miss that reached the
+    # contour). Percentile trim rejects it. See _robust_footprint_mm.
+    long_mm, short_mm, _ = _robust_footprint_mm(pts_mm)
     # +1 px of inclusive-pixel pad, as the pixel path had; at the median depth,
     # which is where that convention was calibrated.
     px_pad_mm = top_depth_m / fx * 1000.0
