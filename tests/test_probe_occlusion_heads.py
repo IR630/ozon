@@ -111,6 +111,11 @@ def test_a_wedged_episode_is_recorded_instead_of_crashing_the_sweep(tmp_path, mo
     stub = tmp_path / "hang.sh"
     stub.write_text("#!/usr/bin/env bash\nsleep 30\n")
     monkeypatch.setenv("SKELETON", f"bash {stub}")
+    # NODE_LOG defaults to the SHARED /tmp/skeleton_e2e.log, so without this the
+    # assertion below reads whatever episode last ran on this machine: a census
+    # running in parallel made the wedged cell "recover" a measurement it never
+    # took, and the test failed on real perception lines from another world.
+    monkeypatch.setenv("NODE_LOG", str(tmp_path / "no_such_episode.log"))
     text = run_cell("ring", "flat", "sim/worlds/cell_diverter.sdf", "bridge.yaml",
                     tmp_path, timeout_s=1)
     assert "TIMEOUT" in text
