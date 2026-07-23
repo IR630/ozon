@@ -550,6 +550,52 @@ def _obb_dims_px(hull_vertices):
     return _min_area_rect_dims(hull_vertices)
 
 
+# Fraction of extreme mask pixels trimmed off EACH end of EACH footprint axis
+# before the extent is read. The top-view mm footprint used to be the convex hull
+# of EVERY mask pixel, so a single depth-noise outlier — a pixel whose range is off
+# by the sensor sigma — became a hull vertex and inflated the dimension by far more
+# than the noise itself: the helmet's width read 297 -> 354 mm under 0.2 %-range
+# noise and crossed the 320 mm sorter limit into C (docs/decisions.md 2026-07-23,
+# the one failure that survived to the contour). A percentile trim rejects those
+# outliers. 1 % is above the measured stray-pixel rate and far below the item's real
+# edge population. This SHIFTS the clean baseline down (a hull over-reads by its
+# outermost pixels), so it MANDATES a full census re-baseline — docs/experiments.md.
+FOOTPRINT_TRIM_PCT = 1.0
+
+
+def _robust_footprint_mm(pts_mm, trim_pct=FOOTPRINT_TRIM_PCT):
+    """Long/short footprint (mm) and long-axis unit vector from a mm point cloud,
+    robust to per-pixel depth-noise outliers.
+
+    PCA only SELECTS inliers: the extreme trim_pct% along each principal axis is
+    dropped, killing the stray depth-noise pixels that a convex hull would promote to
+    a vertex. The reported dims then come from the SAME min-area-rect the clean
+    pipeline always used, run on the inliers — so a clean frame is unchanged but for
+    the ~2 % a symmetric trim shaves, while a noisy frame no longer inflates. Keeping
+    the min-area-rect orientation (not PCA's) is deliberate: on a non-rectangular
+    silhouette PCA's axis differs from the tightest box and would move the clean
+    baseline shape-dependently — the helmet's real-vs-synth agreement broke on it.
+    Returns the `_obb_dims_px` convention, so it is a drop-in for the mm footprint.
+    """
+    from scipy.spatial import ConvexHull, QhullError
+
+    pts_mm = np.asarray(pts_mm, dtype=float)
+    centered = pts_mm - np.median(pts_mm, axis=0)
+    cov = np.cov(centered.T)
+    axes = np.eye(2) if not np.all(np.isfinite(cov)) else np.linalg.eigh(cov)[1]
+    proj = centered @ axes
+    lo = np.percentile(proj, trim_pct, axis=0)
+    hi = np.percentile(proj, 100.0 - trim_pct, axis=0)
+    keep = np.all((proj >= lo) & (proj <= hi), axis=1)
+    inliers = pts_mm[keep] if keep.sum() >= 3 else pts_mm
+    try:
+        hull = ConvexHull(inliers)
+        return _min_area_rect_dims(inliers[hull.vertices])
+    except QhullError:                          # collinear inliers: axis-aligned extent
+        ext = inliers.max(axis=0) - inliers.min(axis=0)
+        return float(max(ext)), float(min(ext)), (1.0, 0.0)
+
+
 # Body-OBB relief gate: share of the item's height that the visible surface itself
 # spans (robust p95-p05). A flat cloud (a box lid: relief ~0) reveals nothing about
 # the hidden sides, so only the shadow-box dims are honest for it; a cloud with real
