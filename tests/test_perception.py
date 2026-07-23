@@ -535,6 +535,36 @@ def test_measure_real_plate_frame_stays_round():
     assert m.k > 0.8, f"flat round plate must read round (-> D): K={m.k}"
 
 
+def test_the_flatness_clamp_leaves_exactly_zero_margin_to_D():
+    """CHARACTERISATION, NOT AN ENDORSEMENT: the clamp puts K exactly ON the
+    threshold it is then judged by, so a clamped item has ZERO margin to D.
+
+    The policy is right (a thick round lump is not a disc and must stay B) and
+    `k > ROUND_K_THRESHOLD` is strict, so exactly-threshold is B — on this frame.
+    In the CONTOUR the verdict is taken on the median K over ~13 frames
+    (src/aggregation.py), and "exactly 0.8" does not survive that: the census miss
+    logged `k=0.800` and still routed D (helmet oi=1 seed 1, reproduced on one head
+    22.07 and on two heads 23.07). Offline renders of all 165 census poses put 21 of
+    them exactly on the threshold — bag 8, helmet 7, pouf 6 — and for pouf the size
+    rule decides first, so 15 poses (9 %) hang on the last bit of arithmetic.
+
+    This test locks the fact so a fix is visible as a deliberate change rather than
+    a silent drift. Rewrite it when the clamp gains a real margin.
+    """
+    pytest.importorskip("cv2")
+    from src.classification import classify_conservative
+    from src.constants import ROUND_K_THRESHOLD
+    from src.perception import load_depth_png
+
+    m = measure_item(load_depth_png(BAG_PNG))
+    assert m is not None
+    assert m.k == ROUND_K_THRESHOLD, (
+        f"expected the clamped value, got K={m.k!r} — if the clamp changed, this "
+        f"test documents the old behaviour and must be rewritten, not deleted"
+    )
+    assert classify_conservative(m.dims_mm, m.k) == "B"
+
+
 def test_measure_real_pen_frame_is_seen_and_routed_to_c():
     # Real top-down depth of Ручка (148x13x9 mm) settled on the belt (Gazebo, day 4).
     # The thinnest item in the task: its mask is only ~179 px, so the old 200 px
