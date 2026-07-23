@@ -1,8 +1,11 @@
 name: CI
 
+# CI temporarily gated to manual runs only to conserve GitHub Actions minutes.
+# To restore automatic runs, put back:
+#   push:
+#   pull_request:
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   lint-and-test:
