@@ -98,7 +98,7 @@ item_pose() {
 }
 blade_angle() {  # C blade, read from the JOINT — not from the command we sent
     timeout 2 ign topic -e -t /world/cell/model/diverter_c/joint_state 2>/dev/null \
-        | grep -A6 "axis1" | grep -m1 -oE "position: -?[0-9.]+" | awk '{print $2}'
+        | python3 scripts/parse_ign_joint_angle.py || true
 }
 
 # Wait until the blade is actually engaged: that is the state under test.
