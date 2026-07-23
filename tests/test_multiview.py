@@ -141,6 +141,39 @@ def test_the_grazing_margin_is_deliberately_not_the_top_view_margin():
     assert SIDE_BELT_MARGIN_M >= bound_m, f"below the {bound_m * 1000:.1f} mm calibration bound"
 
 
+def test_a_side_head_raises_the_height_the_top_under_read():
+    """Arbitration's whole job: the side head reveals the hidden vertical extent.
+
+    The top read the helmet dome 100 mm tall (its visible cap); a side head that sees
+    the body reach 150 mm above the belt must lift the height to 150, leaving the two
+    lateral dims — which the top owns — untouched.
+    """
+    top = [300.0, 200.0, 100.0]                        # top_height = 100 mm at z=0.45
+    rng = np.random.default_rng(0)
+    # A realistic side cloud (thousands of points) reaching 150 mm above the belt,
+    # plus a few 200 mm strays the 99.5th percentile must reject (< 0.5 % of points)
+    # so a single noisy return does not set the dimension.
+    n = 2000
+    side = np.column_stack([
+        np.full(n, 1.5), rng.uniform(-0.05, 0.05, n),
+        BELT_TOP_Z_M + rng.uniform(0.0, 0.150, n),
+    ])
+    side[:3, 2] = BELT_TOP_Z_M + 0.200
+    fused = fuse_dims_mm(top, [side], (1.5, 0.0, 0.45))
+    assert fused[0] == pytest.approx(300.0)
+    assert fused[1] == pytest.approx(200.0)
+    assert fused[2] == pytest.approx(150.0, abs=6.0)   # ~150, not 100 and not 200
+    assert fused[2] > 100.0
+
+
+def test_too_few_side_points_degrade_rather_than_read_a_dim_off_a_sliver():
+    """A handful of grazing points is a sliver of flank, not a measurement."""
+    top = [300.0, 200.0, 100.0]
+    sliver = np.column_stack([np.full(10, 1.5), np.zeros(10),
+                              np.full(10, BELT_TOP_Z_M + 0.150)])
+    assert fuse_dims_mm(top, [sliver], (1.5, 0.0, 0.45)) == top
+
+
 def test_a_lost_head_degrades_to_the_top_measurement_instead_of_crashing():
     """Brief boundary: a missing head must degrade the node, not kill it."""
     top = [300.0, 200.0, 100.0]

@@ -23,7 +23,7 @@ they are meaningless.
 import numpy as np
 
 from src.constants import BELT_SPEED_M_S, MAX_DIMS_MM, SIDE_BELT_MARGIN_M
-from src.perception import BELT_TOP_Z_M, _body_obb_dims_mm, _obb_dims_px
+from src.perception import BELT_TOP_Z_M
 
 # How far outside the top head's own box a side head's points may still belong to
 # the same item. The top view measures a SHADOW, and the body under it can only be
@@ -104,39 +104,47 @@ def crop_to_item(pts_m, position_m, dims_mm, margin_m=_CROP_MARGIN_M):
     return pts_m[keep]
 
 
-def fuse_dims_mm(top_dims_mm, side_clouds_m, position_m):
-    """Dims (mm, desc) after admitting the side heads' points, or the top dims.
+# Fewest side points that make the height percentile trustworthy. Below this a
+# grazing head has seen only a sliver of a flank (a thin item edge-on, or a nearly
+# occluded one) and its z-spread is noise; the rig then degrades to the top view for
+# that frame rather than reading a dimension off a handful of pixels.
+SIDE_MIN_POINTS = 30
+# The item's height is the robust RISE of the side cloud above the belt. 99.5 rather
+# than the raw max so one stray high return does not set the dimension — the same
+# principle as the top footprint's trim.
+SIDE_HEIGHT_PCTL = 99.5
 
-    The fused cloud is resolved exactly the way production resolves a single view:
-    the belt-aligned shadow box is the candidate to beat and the tilted body-OBB
-    replaces it only when its volume is genuinely smaller. Returning the top dims
-    unchanged is the correct DEGRADED answer, not an error — a rig that loses a
-    head keeps sorting on the head it still has.
+
+def fuse_dims_mm(top_dims_mm, side_clouds_m, position_m):
+    """Dims (mm, desc) after ARBITRATION with the side heads, or the top dims.
+
+    NOT a cloud-merge: merging the top and side clouds into one min-volume OBB tilted
+    on soft and round bodies and regressed organizer tolerance 27 -> 23 (the naive
+    union, docs/decisions.md 2026-07-21). The heads have ASYMMETRIC roles, so each
+    measures what it sees best. The top head owns the FOOTPRINT — a grazing side head
+    sees only the near flank through occlusion and under-reads the two lateral dims, so
+    it must not touch them — and it owns K. The side heads contribute ONE thing: the
+    item's HEIGHT, the hidden vertical extent a top-down view under-reads (the helmet
+    dome, a lying body's lower half-shell). Height is taken as max(top, side), so a head
+    that sees no new height, is lost, or returns too few points degrades BIT-EXACT to
+    the top measurement — a rig sorts on the heads it still has. This is the structural
+    estimator that measured 30/33 (docs/experiments.md 2026-07-21), rebuilt on the
+    robust top footprint and generalised to any number of side clouds.
     """
-    clouds = [c for c in side_clouds_m if c is not None and len(c) >= 4]
+    clouds = [c for c in side_clouds_m if c is not None and len(c) >= SIDE_MIN_POINTS]
     if not clouds:
         return list(top_dims_mm)
-    pts = np.vstack(clouds)
-    if len(pts) < 4:
-        return list(top_dims_mm)
-
-    from scipy.spatial import ConvexHull, QhullError
-
-    heights_m = pts[:, 2] - BELT_TOP_Z_M
-    dz_mm = max(float(heights_m.max()) * 1000.0, float(min(top_dims_mm)))
-    try:
-        hull = ConvexHull(pts[:, :2] * 1000.0)
-    except QhullError:
-        return list(top_dims_mm)          # degenerate side view: trust the top head
-    long_mm, short_mm, _dir = _obb_dims_px((pts[:, :2] * 1000.0)[hull.vertices])
-    shadow = sorted([float(long_mm), float(short_mm), dz_mm], reverse=True)
-    body = _body_obb_dims_mm(
-        xs=pts[:, 0], ys=pts[:, 1], depth_col_m=np.ones(len(pts)),
-        heights_m=heights_m, fx=1.0, fy=1.0, cx=0.0, cy=0.0,
-        legacy_dims_mm=tuple(shadow), dz_mm=dz_mm, px_pad_mm=0.0)
-    fused = shadow if body is None else body
-    # The top head saw the item unoccluded from above; extra views may only ADD
-    # extent that was hidden, never carve away what was directly observed. Without
-    # this floor a partially-visible flank shrinks a correct measurement.
-    return sorted([max(a, b) for a, b in zip(fused, sorted(top_dims_mm, reverse=True))],
-                  reverse=True)
+    z_above_m = np.concatenate([c[:, 2] for c in clouds]) - BELT_TOP_Z_M
+    side_height_mm = float(np.percentile(z_above_m, SIDE_HEIGHT_PCTL)) * 1000.0
+    # The top head's own height, recovered from where measure_item centred the item:
+    # world_z = BELT_TOP_Z_M + dz_mm / 2, so dz_mm = (world_z - belt) * 2.
+    top_height_mm = (float(position_m[2]) - BELT_TOP_Z_M) * 2000.0
+    if side_height_mm <= top_height_mm:
+        return list(top_dims_mm)              # side reveals no hidden height: degrade
+    # Raise the height component (the dim the top set closest to its own height) to the
+    # taller reading. Increasing one element and re-sorting only lifts each order
+    # statistic, so the result never carves a dimension the top saw directly.
+    dims = list(top_dims_mm)
+    i = int(np.argmin([abs(d - top_height_mm) for d in dims]))
+    dims[i] = side_height_mm
+    return sorted(dims, reverse=True)
