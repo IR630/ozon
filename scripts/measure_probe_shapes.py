@@ -47,15 +47,13 @@ _CONTACT_TOL_MM = 1.0
 # Keyed by (slug, pose): after the section rewrite a probe can be right in one
 # resting pose and wrong in another, and a per-slug excuse would hide that.
 KNOWN_GAPS = {
-    # Compact round bodies have NO route to D: the silhouette route needs the item
-    # flat (FLATNESS_MAX, there to reject a slumped Мешок) and the section route
-    # needs it elongated (SECTION_MIN_ELONGATION, there to stop the same sack).
-    # A ball and an upright can satisfy neither. Attempting to close this with a
-    # reconstructed-section K made things measurably worse on real frames
-    # (docs/probe-models.md, "Отменённая попытка") — the fix has to be narrower.
-    ("squat_can", "upright"): ("B", "compact round body: both routes to D are gated off"),
-    ("squat_can", "on_side"): ("B", "cut runs along the wrong principal axis for a squat body"),
-    ("ball", "any"): ("B", "compact round body: both routes to D are gated off"),
+    # Compact round bodies now reach D via the relief's axial symmetry
+    # (src/perception._axial_symmetry_residual): a ball and an UPRIGHT can are
+    # bodies of revolution (height depends on radius alone), so they route to D as
+    # they must, while a slumped Мешок's irregular relief keeps it in B. What stays
+    # open is narrower and pose-specific:
+    ("squat_can", "on_side"): ("B", "lying can: silhouette K=0.69 is under the threshold, "
+                                    "so the symmetry route is never reached"),
     # A regular hexagon is round by the task's formula (K = cos 30 deg = 0.866) but
     # is not a circle, so the circle-fit residual rejects it. Reading the formula
     # literally instead would send the organizers' Цилиндр (K=0.74) to D — the two

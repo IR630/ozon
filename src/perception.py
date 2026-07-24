@@ -145,6 +145,16 @@ SECTION_MIN_ELONGATION = 2.0
 # section K route (Бутылка) is untouched, so a lying body of revolution reaches D.
 FLATNESS_MAX = 0.7
 
+# Below this, the visible height map is a function of RADIUS ALONE — the item is a
+# body of revolution standing on the belt (ball, upright can), genuinely round, not
+# a lump whose convex hull merely smooths into a circle. Measured
+# (docs/probe-models.md): upright can 0.0002, ball 0.0236 | real Мешок frame 0.0702.
+# 0.04 sits between, ~1.7x above the ball and ~1.8x below the bag. Only silhouettes
+# that ALREADY read round (K > 0.8) and thick ever reach this test, so Шлем (K=0.74)
+# never does — the helmet dome is MORE axially symmetric (0.0551) than the bag and
+# would otherwise be pulled into D against its reference B.
+AXIAL_SYMMETRY_MAX = 0.04
+
 
 @dataclass
 class Measurement:
@@ -462,6 +472,38 @@ def _silhouette_solidity(pts, hull):
     return float(min(len(pts) / hull_area, 1.0))
 
 
+def _axial_symmetry_residual(xs, ys, heights_m, nbins=10):
+    """RMS spread of height WITHIN a radius ring, normalised by the item's height.
+
+    A body of revolution standing on the belt (ball, upright can) has a height map
+    that depends on radius alone, so the spread inside a ring is ~0. A slumped bag
+    does not: at the same radius its surface wanders. This is the discriminator the
+    silhouette cannot supply — Мешок fills a round hull exactly like a rigid round
+    body does (solidity was refuted on the real bag frame for that reason,
+    docs/decisions.md 2026-07-12), but its RELIEF is irregular where a ball's is not.
+
+    Rings with too few pixels are skipped; each surviving ring is weighted by its
+    population so the wide outer rings dominate, as they should.
+    """
+    r = np.hypot(xs - xs.mean(), ys - ys.mean())
+    h_max = float(heights_m.max())
+    if r.max() <= 0.0 or h_max <= 0.0:
+        return None
+    edges = np.linspace(0.0, float(r.max()), nbins + 1)
+    idx = np.clip(np.digitize(r, edges) - 1, 0, nbins - 1)
+    spreads, weights = [], []
+    for b in range(nbins):
+        ring = heights_m[idx == b]
+        if len(ring) < 8:  # too few pixels for a meaningful spread
+            continue
+        spreads.append(float(ring.std()))
+        weights.append(float(len(ring)))
+    if not spreads:
+        return None
+    spreads, weights = np.asarray(spreads), np.asarray(weights)
+    return float(np.sqrt((weights * spreads**2).sum() / weights.sum()) / h_max)
+
+
 def _section_roundness_k(xs, ys, heights_m, long_dir, scale_m_per_px):
     """K of the item's cross-section perpendicular to its long axis, recovered
     from the top-view height map (heights_m: pixel heights above the belt, m).
@@ -749,7 +791,17 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK
     # — a thick round lump must not reach D through its silhouette — while keeping the
     # signal continuous: k > threshold is strict, so exactly-threshold is still B, and
     # max(k_silhouette, k_section) is unchanged for every verdict either way.
-    if k_silhouette > ROUND_K_THRESHOLD and dz_mm > FLATNESS_MAX * max(dx_mm, dy_mm):
+    # ...UNLESS the relief says it really is a body of revolution. The flatness gate
+    # alone vetoed EVERY thick round silhouette, which left the pipeline with no route
+    # to D for a compact round body at all — ball and squat_can rode to B, the exact
+    # item the sorter must never receive (KNOWN_GAPS, docs/probe-models.md). Axial
+    # symmetry separates the two: a ball's height depends on radius alone (0.0236),
+    # a slumped bag's does not (0.0702).
+    axial = _axial_symmetry_residual(xs, ys, heights_m)
+    is_body_of_revolution = axial is not None and axial < AXIAL_SYMMETRY_MAX
+    if (k_silhouette > ROUND_K_THRESHOLD
+            and dz_mm > FLATNESS_MAX * max(dx_mm, dy_mm)
+            and not is_body_of_revolution):
         k_silhouette = ROUND_K_THRESHOLD
     # The section circle is only the hidden end of a LYING body of revolution,
     # which is elongated (long footprint >> short). A near-cuboidal blob (Мешок)
