@@ -37,7 +37,12 @@ source "$ROS_INSTALL_ROOT/setup.bash"
 # moved up to cover the sources.
 set -u
 
-export HOLD_S=${HOLD_S:-2.5}
+# The occupied-stop scenario needs the C blade to remain a wall until the stop
+# arrives. This smoke spends several seconds on two joint reads and first-publish
+# discovery, whereas the production 2.5 s hold may retract normally before the
+# E-stop is sent. A longer value affects only this test setup, not the production
+# default in controller_node.py; the stop is still sent immediately after engage.
+export HOLD_S=${HOLD_S:-15.0}
 export FIRE_LEAD_S=${FIRE_LEAD_S:-0.5}
 export ENGAGE_CMD=${ENGAGE_CMD:-0.90}
 export RETRACT_CMD=${RETRACT_CMD:-0.0}
