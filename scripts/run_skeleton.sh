@@ -43,6 +43,9 @@ LAUNCH=""
 DYN_PID=""
 GAZEBO_PATTERN='^ign gazebo( |$)'
 cleanup() {
+    # errexit intentionally stays relaxed after the pre-launch `cleanup` call below:
+    # a transient python/ign flake in the poll loop must not abort the cell. The
+    # verdict is driven by the polled item pose + explicit `exit 1` guards, not by -e.
     set +e
     [ -n "$DYN_PID" ] && kill "$DYN_PID" 2>/dev/null
     [ -n "$LAUNCH" ] && kill "$LAUNCH" 2>/dev/null

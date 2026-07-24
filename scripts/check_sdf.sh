@@ -14,6 +14,7 @@ for w in sim/worlds/*.sdf; do
         fails=1
     fi
 done
+shopt -s nullglob  # a fresh checkout has no generated sim/models/items yet; skip cleanly
 for m in sim/models/items/*/model.sdf; do
     if ign sdf -k "$m" > /dev/null; then
         echo "OK: $m"
