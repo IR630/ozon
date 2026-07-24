@@ -437,8 +437,9 @@ def _roundness_k(pts, hull):
     best = minimize(neg_ratio, c0, method="Nelder-Mead",
                     options={"xatol": 1e-3, "fatol": 1e-6, "maxiter": 400})
     k = -float(best.fun)
-    assert k > 0.0, "degenerate hull"
-    return float(min(k, 1.0))
+    # Clamp, don't assert: a 15 Hz perception node must not crash on a degenerate
+    # hull, and asserts vanish under `python -O`. k <= 0 means no inscribed circle.
+    return float(min(max(k, 0.0), 1.0))
 
 
 def _silhouette_solidity(pts, hull):
@@ -458,7 +459,8 @@ def _silhouette_solidity(pts, hull):
     the `pts`/`hull` already built in measure_item.
     """
     hull_area = float(hull.volume)  # 2-D ConvexHull.volume is the enclosed area
-    assert hull_area > 0.0, "degenerate hull"
+    if hull_area <= 0.0:            # degenerate hull: 0, not a division-by-zero crash
+        return 0.0
     return float(min(len(pts) / hull_area, 1.0))
 
 

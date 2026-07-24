@@ -37,7 +37,13 @@ class ClassifierNode(Node):
         out.k = est.k
         out.confidence = est.confidence
         out.position = msg.position
-        out.category = classify_conservative(est.dims_mm, est.k)
+        try:
+            out.category = classify_conservative(est.dims_mm, est.k)
+        except ValueError as e:
+            # Out-of-contract measurement (stray/replayed publisher, NaN K): drop the
+            # frame loudly instead of taking the classifier node down mid-stream.
+            self.get_logger().error(f"item {msg.item_id}: skipped bad measurement — {e}")
+            return
         self.pub.publish(out)
         self.get_logger().info(
             f"item {msg.item_id}: {out.category} "
