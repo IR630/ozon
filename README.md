@@ -130,7 +130,7 @@ bash scripts/check_clean_deploy.sh
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-pytest -q                        # unit-тесты; ROS-node тесты гоняет CI и Docker-среда
+pytest -q                        # unit-тесты; ROS-node тесты — Docker/ручной CI
 python scripts/build_item_models.py
 python scripts/measure_validation.py
 python scripts/measure_hard_scenes.py
