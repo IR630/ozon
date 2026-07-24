@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" font-family="'Segoe UI','Helvetica Neue',Arial,sans-serif">
+  <!-- Video insert (segment 7, video_script.md): "Доказано числом".
+       All numbers verified against final_report.md / calc_vs_sim.md / soak.md 2026-07-24.
+       1920x1080; import into the editor or rasterize to PNG. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0a0e1a"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1920" height="10" fill="#005BFF"/>
+
+  <text x="150" y="170" fill="#ffffff" font-size="76" font-weight="700">Доказано числом</text>
+  <rect x="152" y="200" width="120" height="6" fill="#005BFF"/>
+
+  <!-- rows: label (left, muted) | value (right, bright) -->
+  <g font-size="40">
+    <g transform="translate(0,320)">
+      <text x="150" fill="#9aa4b2">Классификация</text>
+      <text x="1770" text-anchor="end" fill="#ffffff" font-weight="600">census 33/33 · multi-seed 163/165 · execution 0</text>
+      <line x1="150" y1="42" x2="1770" y2="42" stroke="#1e2636"/>
+    </g>
+    <g transform="translate(0,430)">
+      <text x="150" fill="#9aa4b2">Производительность (sustained)</text>
+      <text x="1770" text-anchor="end" fill="#00d1b2" font-weight="700">медиана 10 шт/мин</text>
+      <line x1="150" y1="42" x2="1770" y2="42" stroke="#1e2636"/>
+    </g>
+    <g transform="translate(0,540)">
+      <text x="150" fill="#9aa4b2">Синхронизация</text>
+      <text x="1770" text-anchor="end" fill="#ffffff" font-weight="600">камера→решение медиана 0.030 с</text>
+      <line x1="150" y1="42" x2="1770" y2="42" stroke="#1e2636"/>
+    </g>
+    <g transform="translate(0,650)">
+      <text x="150" fill="#9aa4b2">Бережность</text>
+      <text x="1770" text-anchor="end" fill="#ffffff" font-weight="600">шибер мягче толкателя ≥1.3× (точечно 3–4×)</text>
+      <line x1="150" y1="42" x2="1770" y2="42" stroke="#1e2636"/>
+    </g>
+    <g transform="translate(0,760)">
+      <text x="150" fill="#9aa4b2">Безопасность</text>
+      <text x="1770" text-anchor="end" fill="#ffffff" font-weight="600">E-stop · зоны · полный цикл с возвратом</text>
+      <line x1="150" y1="42" x2="1770" y2="42" stroke="#1e2636"/>
+    </g>
+    <g transform="translate(0,870)">
+      <text x="150" fill="#9aa4b2">УГТ (самооценка)</text>
+      <text x="1770" text-anchor="end" fill="#005BFF" font-weight="700">CV 4 × Исполнение 4 — расчёт↔симуляция</text>
+    </g>
+  </g>
+
+  <text x="150" y="1000" fill="#6b7688" font-size="32">Каждая цифра воспроизводится одной командой и seed.</text>
+</svg>

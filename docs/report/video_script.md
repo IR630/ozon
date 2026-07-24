@@ -94,9 +94,13 @@
 - `census 33/33 · multi-seed 163/165 · execution 0` · `sustained 10 шт/мин` ·
   `камера→решение 0.030 с` · `Исполнение УГТ 4 (расчёт↔симуляция)`
 
-## Что доснять/собрать, если нет под рукой
-- Оверлей depth-кадра — взять существующий `docs/report/img/day9_overlay_ids_state.png`
-  как статичную вставку (клипа не требует).
-- Тайминг-график и таблицу «доказано числом» — экспортировать из `one_pager.md`.
-- Если `hero_diverter_cylinder_B.mp4` недоступен — переснять
+## Готовые вставки (собраны) и что доснять
+**Готово** в `docs/report/video/inserts/` (1920×1080, SVG-источник + PNG, числа сверены):
+- `metrics_card.*` — карточка «Доказано числом» (сегмент 7).
+- `sync_timeline.*` — «упреждение работает с запасом» (сегмент 4).
+- Оверлей depth-кадра (сегмент 3) — существующий `docs/report/img/day9_overlay_ids_state.png`.
+Перерендер после правки SVG: `rsvg-convert -w 1920 -h 1080 X.svg -o X.png`.
+
+**Нужен Gazebo (доснять, если клипа нет в облаке):**
+- `hero_diverter_cylinder_B.mp4` →
   `WORLD=sim/worlds/cell_diverter.sdf bash scripts/record_skeleton_video.sh cylinder B`.
