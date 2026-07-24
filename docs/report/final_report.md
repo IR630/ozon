@@ -112,7 +112,7 @@ E-stop останавливает ленту, отменяет будущие д
 | Два принятых потоковых suite v0.5 | **33/33 + 33/33** | [soak.md](soak.md) |
 | Последний однокамерный multi-seed на depth-scale базе | **163/165**; два K-промаха, execution 0 | `feat/three-cameras@4581d8d`, [experiments.md](../experiments.md) |
 | Пять seed до depth-scale fix | **162–165/165** run-to-run; промахи только у K≈0.8, execution 0 | [soak.md](soak.md) |
-| Офлайн-точность габаритов после depth-scale fix | **11/11** в допуске организаторов | [classification.md](classification.md) |
+| Офлайн-точность габаритов после depth-scale fix | **11/11** (чистые офлайн-рендеры, не Gazebo-кадры) | [experiments.md](../experiments.md), [decisions.md](../decisions.md) |
 | Устойчивая производительность полной матрицы | медиана **10 шт/мин**, диапазон 4–15 | [mechanism.md](mechanism.md) |
 | Камера → решение | медиана **0.030 с** в общем sim-clock | [soak.md](soak.md) |
 | Физический occupied E-stop | PASS в pinned ROS/Gazebo CI | [experiments.md](../experiments.md) |
