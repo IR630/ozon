@@ -83,6 +83,15 @@ WORLD=${WORLD:-sim/worlds/cell.sdf}
 # Generated organizer models are intentionally gitignored. CI points this seam
 # at a text-only geometric fixture with the same domain dimensions and mass.
 ITEM_MODEL_ROOT=${ITEM_MODEL_ROOT:-sim/models/items}
+# WHERE THE NODES' OWN OUTPUT GOES, AND WHY IT IS A SEAM. This file is what the
+# episode greps for "soft-start done" and for the perception line, and until
+# 23.07 it was hardcoded to one path shared by every episode on the machine. Two
+# runs at once then read each other: a probe cell that TIMED OUT recovered a
+# confident measurement from a different world's episode (401x400x302 heads=1
+# under a two-head census) and would have printed it as its own. A caller that
+# runs cells concurrently points this at its own per-cell file; the default keeps
+# the single-run path CI already copies out of the container.
+NODE_LOG=${NODE_LOG:-/tmp/skeleton_e2e.log}
 # Diverter semantics on those same topics (forwarded by skeleton.launch.py as
 # controller parameters): the blade is a WALL — it must finish forming BEFORE
 # the item's front edge enters its sweep zone (FIRE_LEAD_S; pusher timing
@@ -141,7 +150,7 @@ if [ "$CAPTURE_DYNAMICS" = 1 ]; then
 fi
 
 T0=$(date +%s.%N)
-ros2 launch launch/skeleton.launch.py > /tmp/skeleton_e2e.log 2>&1 &
+ros2 launch launch/skeleton.launch.py > "$NODE_LOG" 2>&1 &
 LAUNCH=$!
 
 # FEED ONTO A BELT ALREADY AT SPEED — do not start the belt UNDER the goods.
@@ -164,10 +173,10 @@ LAUNCH=$!
 # and overran the wait in 3 of 33 census cells. Overridable so a slow rig is
 # measured rather than mis-attributed.
 for _ in $(seq 1 "${SOFT_START_TRIES:-60}"); do
-    grep -q "soft-start done" /tmp/skeleton_e2e.log && break
+    grep -q "soft-start done" "$NODE_LOG" && break
     sleep 0.5
 done
-if ! grep -q "soft-start done" /tmp/skeleton_e2e.log; then
+if ! grep -q "soft-start done" "$NODE_LOG"; then
     echo "ABORT: belt never reached full speed — the controller did not come up" >&2
     exit 1
 fi
@@ -270,7 +279,7 @@ python3 scripts/body_pose.py "$SLUG" "$X" "$Y" "$Z" "$RR" "$PP" "$YY" 2>/dev/nul
 # both makes the cells the RULER moved visible per cell — as opposed to the cells physics
 # moved, which show up as a cell differing between two runs (scripts/census_ruler_diff.py).
 echo "  legacy origin-scored verdict: $LEGACY (body-scored: $VERDICT)"
-grep -E "item [0-9]+:" /tmp/skeleton_e2e.log | tail -3 || true
+grep -E "item [0-9]+:" "$NODE_LOG" | tail -3 || true
 
 if [ -n "$DYN_PID" ]; then
     kill "$DYN_PID" 2>/dev/null || true

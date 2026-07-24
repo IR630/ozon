@@ -116,6 +116,13 @@ def run_cell(slug, pose_name, world, bridge, logdir, timeout_s=300):
     runner = os.environ.get("SKELETON", "bash scripts/run_skeleton.sh").split()
     log = Path(logdir) / f"{slug}_{pose_name}_{Path(world).stem}.log"
     log.parent.mkdir(parents=True, exist_ok=True)
+    # THIS CELL'S NODE LOG, NOT THE MACHINE'S. run_skeleton.sh defaults to the
+    # shared /tmp/skeleton_e2e.log, so a cell that timed out used to recover its
+    # "measurement" from whatever episode ran last — observed 23.07: a wedged
+    # probe cell reported 401x400x302 heads=1 from a two-head census running in
+    # another worktree. Per-cell path makes the recovery honest and keeps the
+    # dumped log next to the cell it belongs to.
+    env["NODE_LOG"] = str(log.with_suffix(".node.log"))
     try:
         done = subprocess.run(runner + [slug, PROBES[slug].expected], cwd=str(ROOT),
                               env=env, capture_output=True, text=True, timeout=timeout_s)
@@ -124,21 +131,21 @@ def run_cell(slug, pose_name, world, bridge, logdir, timeout_s=300):
         # A wedged episode is a result, not a crash: record it and keep the sweep
         # moving, exactly as run_matrix.sh caps its cells.
         text = "TIMEOUT: episode exceeded the cell ceiling\n"
-    text += _node_measurements()
+    text += _node_measurements(env["NODE_LOG"])
     log.write_text(text)
     return text
 
 
-def _node_measurements():
+def _node_measurements(node_log_path=None):
     """Perception lines of the episode that just ended, from the node log.
 
     run_skeleton.sh echoes only the LAST THREE `item N:` lines, and on a good
     episode those are often the classifier's and the controller's — a cell then
-    reads "no measurement in log" while the measurement exists. The node log is
-    the same file run_skeleton.sh greps, and it is rewritten per episode, so
-    reading it here reads THIS cell and no other.
+    reads "no measurement in log" while the measurement exists. The path is the
+    CELL'S OWN log (run_cell sets NODE_LOG), so this reads that episode and no
+    other; the env fallback stays for a caller that drives run_skeleton.sh itself.
     """
-    node_log = Path(os.environ.get("NODE_LOG", "/tmp/skeleton_e2e.log"))
+    node_log = Path(node_log_path or os.environ.get("NODE_LOG", "/tmp/skeleton_e2e.log"))
     if not node_log.exists():
         return ""
     lines = [line for line in node_log.read_text(errors="replace").splitlines()

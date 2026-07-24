@@ -51,6 +51,9 @@ sim/models/probe_items/
 # генератор, а не производный мир: иначе два мира разъедутся молча
 sim/worlds/cell_diverter_3cam_miscal.sdf
 sim/worlds/cell_diverter_2cam_miscal.sdf
+# То же для scripts/make_noisy_world.py: сигма — параметр эксперимента, и мир
+# с зашитым в файл числом разъехался бы с тем, чем его на самом деле гоняли
+sim/worlds/*_noisy.sdf
 
 # Крупные артефакты — в облако организаторов, не в гит
 *.onnx

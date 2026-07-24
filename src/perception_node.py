@@ -165,9 +165,16 @@ class PerceptionNode(Node):
             # degrades silently to the top view and still prints a plausible
             # measurement, so a whole census could be reported as three-camera
             # while being single-camera. The count makes that visible in the log.
+            # K to FOUR decimals, not two. The flatness gate clamps a thick round
+            # body's K to exactly ROUND_K_THRESHOLD, and the category rule then
+            # tests that same boundary strictly — so "0.80" in a log is ambiguous
+            # between the safe clamped value and the miss just above it. The two
+            # multi-seed misses both printed K=0.80 and routed D, and no log we
+            # own can say by how much. Four decimals cost nothing and are the
+            # difference between a diagnosis and a guess. Parsers read [\d.]+.
             self.get_logger().info(
                 f"item {out.item_id}: {out.dims_mm[0]:.0f}x{out.dims_mm[1]:.0f}x"
-                f"{out.dims_mm[2]:.0f} mm K={out.k:.2f} at "
+                f"{out.dims_mm[2]:.0f} mm K={out.k:.4f} at "
                 f"({out.position.x:.2f}, {out.position.y:.2f}) heads={1 + n_side}"
             )
 

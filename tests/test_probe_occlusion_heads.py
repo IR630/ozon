@@ -97,20 +97,38 @@ def test_the_measurement_is_recovered_from_the_node_log(tmp_path, monkeypatch):
     perception one — the cell must still find the measurement it exists to read."""
     stub = tmp_path / "quiet.sh"
     stub.write_text("#!/usr/bin/env bash\necho 'ring -> D: PASS (pose x=4)'\n")
-    node_log = tmp_path / "skeleton_e2e.log"
+    # The cell's OWN node log, at the path run_cell hands the runner — a real
+    # episode writes it there, and reading it back is what this test locks.
+    node_log = tmp_path / "ring_flat_cell_diverter.node.log"
     node_log.write_text("[classifier]: item 1: D (k=0.98)\n" + _PERCEPTION_LINE + "\n")
     monkeypatch.setenv("SKELETON", f"bash {stub}")
-    monkeypatch.setenv("NODE_LOG", str(node_log))
     text = run_cell("ring", "flat", "sim/worlds/cell_diverter.sdf", "bridge.yaml", tmp_path)
     dims, _k, heads = parse_measurement(text)
     assert dims == [324.0, 298.0, 284.0]
     assert heads == 3
 
 
+def test_the_cell_hands_the_runner_its_own_node_log(tmp_path, monkeypatch):
+    """The seam itself: whatever NODE_LOG the environment carries, the runner must
+    be given the CELL's path. Concurrent runs sharing one file is how a probe cell
+    reported another world's measurement as its own."""
+    stub = tmp_path / "echo_env.sh"
+    stub.write_text("#!/usr/bin/env bash\necho \"node_log=$NODE_LOG\"\n")
+    monkeypatch.setenv("SKELETON", f"bash {stub}")
+    monkeypatch.setenv("NODE_LOG", "/tmp/skeleton_e2e.log")
+    text = run_cell("ring", "flat", "sim/worlds/cell_diverter.sdf", "bridge.yaml", tmp_path)
+    assert f"node_log={tmp_path / 'ring_flat_cell_diverter.node.log'}" in text
+
+
 def test_a_wedged_episode_is_recorded_instead_of_crashing_the_sweep(tmp_path, monkeypatch):
     stub = tmp_path / "hang.sh"
     stub.write_text("#!/usr/bin/env bash\nsleep 30\n")
     monkeypatch.setenv("SKELETON", f"bash {stub}")
+    # No node log is written for this cell, so nothing may be recovered. Before
+    # the per-cell NODE_LOG this read the machine-wide /tmp/skeleton_e2e.log and
+    # a parallel census made the wedged cell "recover" a measurement it never
+    # took — 401x400x302 heads=1, from another world.
+    monkeypatch.setenv("NODE_LOG", "/tmp/skeleton_e2e.log")
     text = run_cell("ring", "flat", "sim/worlds/cell_diverter.sdf", "bridge.yaml",
                     tmp_path, timeout_s=1)
     assert "TIMEOUT" in text

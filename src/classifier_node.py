@@ -39,9 +39,14 @@ class ClassifierNode(Node):
         out.position = msg.position
         out.category = classify_conservative(est.dims_mm, est.k)
         self.pub.publish(out)
+        # k to SIX decimals: this is the number the category rule is applied to,
+        # and the clamped value sits EXACTLY on the threshold it is compared
+        # against. `k=0.800` told us a cell routed D under a strict `k > 0.8`
+        # rule but not by how much — the whole diagnosis hung on digits the log
+        # did not print.
         self.get_logger().info(
             f"item {msg.item_id}: {out.category} "
-            f"(k={est.k:.3f}, conf={est.confidence:.2f}, n={est.n_frames})")
+            f"(k={est.k:.6f}, conf={est.confidence:.2f}, n={est.n_frames})")
 
 
 def main():

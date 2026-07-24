@@ -30,6 +30,7 @@ def test_ci_e2e_runs_occupied_estop_with_text_only_fixtures():
     assert "ITEM_MODEL_ROOT=${ITEM_MODEL_ROOT:-sim/models/items}" in smoke
     assert "LOGDIR=/tmp/estop_stream_e2e" in e2e
     assert "timeout 180 bash scripts/smoke_estop_stream.sh" in e2e
+    assert "python3 scripts/parse_ign_joint_angle.py" in smoke
 
 
 def test_host_requirements_include_opencv_for_validation_paths():
