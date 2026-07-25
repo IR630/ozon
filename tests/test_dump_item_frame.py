@@ -25,6 +25,16 @@ def test_the_bridge_config_moves_with_the_world_seam():
     assert '"$PWD/sim/bridge.yaml"' not in text, "the bridge config is hard-coded again"
 
 
+def test_an_inherited_out_dir_survives_the_positional_default():
+    """`OUT=<dir> bash scripts/dump_item_frame.sh <slug>` is a written-down recipe
+    (scripts/probe_noise_heads.py docstring), and a plain `:-` default silently won
+    over it: the frames landed in /tmp while the operator believed they were in the
+    repo, and the probe then scored against dumps nobody had refreshed."""
+    text = SCRIPT.read_text(encoding="utf-8")
+
+    assert "OUT=${2:-${OUT:-/tmp/frames_$SLUG}}" in text
+
+
 def test_the_side_heads_can_be_dumped_and_are_off_by_default():
     """Off by default: in the one-camera world those topics never publish, so a
     dumper waiting on them would hang instead of finishing."""

@@ -84,11 +84,20 @@ def test_a_bare_belt_is_empty_without_noise_and_grows_phantoms_with_it():
     ("helmet_oi2_node", "helmet"),
     ("bottle_oi0", "bottle"),
     ("box_300x200x200_oi2", "box_300x200x200"),
+    # Rig dumps. These are the ONLY dirs carrying depth_side_* frames, i.e. the only
+    # ones the one-vs-two-vs-three-head comparison can run on at all — and the suffix
+    # this module's own docstring prescribes was the one it could not peel.
+    ("helmet_3cam", "helmet"),
+    ("bag_2cam", "bag"),
+    ("bag_oi1_3cam", "bag"),
 ])
 def test_dump_dir_names_map_to_catalogue_items(dir_name, slug):
     assert slug_of_dir(dir_name) == slug
 
 
-def test_an_unknown_dump_dir_is_loud_instead_of_scoring_against_the_wrong_truth():
+@pytest.mark.parametrize("dir_name", ["mystery_oi0", "mystery_3cam"])
+def test_an_unknown_dump_dir_is_loud_instead_of_scoring_against_the_wrong_truth(dir_name):
+    """Peeling a rig suffix must not become a way to guess: an unknown slug stays
+    an error however many suffixes came off it."""
     with pytest.raises(ValueError):
-        slug_of_dir("mystery_oi0")
+        slug_of_dir(dir_name)
