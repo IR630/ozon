@@ -21,10 +21,10 @@ WHAT THE NUMBER IS AND IS NOT — read before quoting it anywhere:
     probe reported a number the contour then did not reproduce.
   * It therefore DOES NOT ADD UP with the census. A census cell is a routing
     verdict on a moving item; a row here is a measurement error on a still one.
-  * Head configurations are NOT covered: every frame under `runs/frames/` was
-    dumped from the top head alone (no `depth_side_*` files exist). The
-    one-vs-two-vs-three-head delta under noise stays unmeasured — dumping side
-    frames needs Gazebo, which this probe deliberately does not start.
+  * Head configurations are NOT covered BY THIS PROBE: it noises and measures the
+    top frame only. Rig dumps do exist under `runs/frames/*_3cam` (they carry
+    `depth_side_*` frames); the one-vs-two-vs-three-head delta under noise is
+    measured by `scripts/probe_noise_heads.py`, which reads them, not here.
 
 Ground truth is the mesh OBB (`analyze_models.analyze_file`), the same truth
 `scripts/census_tolerance.py` uses, so the two are at least measuring error
@@ -64,9 +64,12 @@ SIGMAS_FRAC = (0.0, 0.005, 0.01, 0.02)
 DEFAULT_TRIALS = 10
 DEFAULT_SEED = 0
 
-# Dump dirs are named <slug>[_oi<N>][_dyn][_node] in any order the caller happened
-# to use, so suffixes are peeled one at a time rather than matched in a fixed order.
-_DIR_SUFFIX_RE = re.compile(r"(_node|_dyn|_oi\d+)$")
+# Dump dirs are named <slug>[_oi<N>][_dyn][_node][_<N>cam] in any order the caller
+# happened to use, so suffixes are peeled one at a time rather than matched in a
+# fixed order. `_<N>cam` marks a rig dump and postdates the rest: without it this
+# module raised on exactly the three dirs that carry side frames, i.e. the only
+# ones the head-count comparison can use.
+_DIR_SUFFIX_RE = re.compile(r"(_node|_dyn|_oi\d+|_\d+cam)$")
 
 
 def add_depth_noise(depth_m, sigma_frac, rng):

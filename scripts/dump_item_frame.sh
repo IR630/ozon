@@ -24,7 +24,7 @@ source /opt/ros/humble/setup.bash
 source "$ROS_INSTALL_ROOT/setup.bash"
 
 SLUG=${1:?usage: dump_item_frame.sh <slug> [outdir]}
-OUT=${2:-/tmp/frames_$SLUG}
+OUT=${2:-${OUT:-/tmp/frames_$SLUG}}
 FRAMES=${FRAMES:-3}
 OX=${ORIENT_X:-0}; OY=${ORIENT_Y:-0}; OZ=${ORIENT_Z:-0}; OW=${ORIENT_W:-1}
 # Spawn height/offset seam, mirroring run_skeleton.sh: a seeded pose must rest at
