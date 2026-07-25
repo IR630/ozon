@@ -209,6 +209,34 @@ def test_section_k_lying_cylinder_is_round():
     assert m.k > 0.8, f"lying cylinder must read round (D): K={m.k}"
 
 
+def test_thin_item_height_is_not_inflated_by_depth_noise():
+    # Ручка, 9 mm thin -> C, is the pinned edge case the noise broke: height is the
+    # 1st PERCENTILE of the mask's depth, and a tail quantile of noisy pixels sits
+    # ~2.3 sigma off however many pixels it averages, so at sigma=3 mm this 9 mm
+    # slab read 16.1 mm, the <10 mm thin trigger never fired and the item mis-routed
+    # C -> B. Denoising the patch under that quantile cuts the inflation to +2.9 mm.
+    #
+    # It does NOT remove it, and this test pins the honest bound rather than the one
+    # we would like: the bias shrinks with the window far too slowly to buy (5x5 ->
+    # +1.8 mm, 7x7 -> +1.3 mm, both measured), so at sigma=3 mm a tail-quantile
+    # height CANNOT resolve the organizers' 10 mm boundary. The pen survives the
+    # offline corpus only because the real frame UNDER-reads it (6.8 mm against a
+    # true 9), and that cancellation is luck, not margin -- docs/experiments.md
+    # 2026-07-26 carries it as an open risk for the real line.
+    belt, top = 1.5, 1.5 - 0.009            # a 9 mm slab on the belt
+    base = np.full((480, 640), belt)
+    base[200:280, 150:450] = top
+    item = base < belt
+    assert min(measure_dims_mm(base, belt_depth_m=belt)) == pytest.approx(9.0, abs=0.1)
+    for seed in range(5):
+        depth = base.copy()
+        rng = np.random.default_rng(seed)
+        depth[item] += rng.normal(0, 3.0 / 1000.0, int(item.sum()))
+        dims = measure_dims_mm(depth, belt_depth_m=belt)
+        assert dims is not None, f"seed {seed}: lost the slab"
+        assert min(dims) < 13.0, f"seed {seed}: 9 mm slab read {min(dims):.1f} mm"
+
+
 def test_section_k_survives_depth_noise_spikes():
     # THE noise defect of the one-eye estimator (docs/experiments.md 2026-07-25):
     # under sigma=3 mm depth noise the lying bottle's section K fell 1.00 -> 0.69

@@ -114,6 +114,8 @@ SECTION_TAU_HI = 2.6      # below = shallow arc, above = dome cap floating high
 SECTION_TAU_RAMP = 0.15   # trapezoid edge width -> full-strength plateau ~[2.0, 2.45]
 SECTION_RMS_HI = 0.05     # rms/R above this is not a circle (rounded square / soft blob)
 SECTION_RMS_SPAN = 0.03   # saturates to "circle" at rms/R <= HI - SPAN (0.02)
+DEPTH_MEDIAN_KSIZE = 3    # depth denoise window for the height statistic, see
+                          # _denoise_depth; 5 already eats the plate's rim
 SECTION_RIDGE_PCTL = 95   # per-bin ridge percentile, not the raw max (= 100): rejects
                           # depth-noise spikes that wreck the circle fit. Swept on the
                           # 33-cell offline corpus (docs/experiments.md 2026-07-26):
@@ -321,6 +323,35 @@ def _split_touching(mask):
         full[y0:y1, x0:x1] = piece
         out.append(full)
     return out
+
+
+def _denoise_depth(depth_m):
+    """Median-filter a depth patch before a TAIL QUANTILE is taken off it.
+
+    A tail quantile of noisy pixels carries a bias that does NOT shrink as pixels
+    are added -- the 1st percentile sits ~2.3 sigma off no matter how large the
+    mask is -- so at sigma=3 mm the pen's 9 mm height read 14 mm, lost the thin
+    trigger and mis-routed C -> B (docs/experiments.md 2026-07-26). A 3x3 median
+    averages the independent per-pixel noise away while real structure, tens of
+    pixels wide, survives; 5x5 already eats the plate's rim (25.4 -> 23.5 mm).
+
+    Used on the height statistic ONLY. Denoising the frame itself was measured and
+    rejected: it moves the MASK, and that erodes thin and soft bodies on CLEAN
+    frames past the organizers' tolerance (the pen's 148 mm length read 142.9
+    against a 3 mm tolerance; the pouf lost 11.6 mm).
+    """
+    from scipy.ndimage import median_filter, minimum_filter
+
+    valid = depth_m > 0.0
+    if not valid.any():
+        return depth_m
+    smoothed = median_filter(depth_m, size=DEPTH_MEDIAN_KSIZE)
+    # A pixel whose window touches a NO-RETURN hole keeps its own value: the 0 of
+    # "no return" is not a depth, and letting it into the median drags the
+    # neighbour toward the camera -- a phantom rim of height around every black or
+    # transparent body, which the real line has and our simulator does not.
+    interior = minimum_filter(valid, size=DEPTH_MEDIAN_KSIZE)
+    return np.where(interior, smoothed, depth_m)
 
 
 def _find_items(depth_m, belt_depth_m, margin_m):
@@ -770,7 +801,9 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK
     """
     # measure_items() has already segmented the full frame. Reusing its exact
     # mask avoids copying a belt-sized frame and running _find_items once more
-    # per product; ordinary single-item callers keep the public behavior.
+    # per product; ordinary single-item callers keep the public behavior. That
+    # caller has already denoised the frame it hands over, so the filter runs
+    # exactly once per frame either way.
     found = _find_item(depth_m, belt_depth_m, margin_m) if _found is None else _found
     if found is None:
         return None
@@ -815,8 +848,16 @@ def measure_item(depth_m, belt_depth_m=BELT_DEPTH_M, fx=FX, fy=FY, margin_m=MASK
     # height = the item's HIGHEST point (bounding box), not the mask median:
     # concave items (Тарелка — rim 27 mm, dish bottom 8 mm) would otherwise
     # read below the 10 mm min-dim threshold and flip category to C.
-    # 1st percentile, not min: robust to stray depth returns.
-    dz_mm = (belt_depth_m - float(np.percentile(depth_m[mask], 1.0))) * 1000.0
+    # 1st percentile, not min: robust to stray depth returns. Taken on the
+    # DENOISED patch, because a tail quantile of noisy pixels is biased by
+    # ~2.3 sigma no matter how many pixels it sees: at sigma=3 mm the pen's 9 mm
+    # height read 14 mm, lost the thin trigger and mis-routed C -> B. Only this
+    # statistic is denoised — smoothing the frame itself would move the MASK, and
+    # that erodes thin and soft bodies on clean frames (the pen's 148 mm length
+    # read 142.9 against a 3 mm tolerance, the pouf shrank 11.6 mm).
+    patch = _denoise_depth(depth_m[y0:y1, x0:x1])
+    dz_mm = (belt_depth_m
+             - float(np.percentile(patch[mask[y0:y1, x0:x1]], 1.0))) * 1000.0
     dims = sorted([dx_mm, dy_mm, dz_mm], reverse=True)
     if not _dims_are_sane(dims):
         return None
