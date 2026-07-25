@@ -209,6 +209,26 @@ def test_section_k_lying_cylinder_is_round():
     assert m.k > 0.8, f"lying cylinder must read round (D): K={m.k}"
 
 
+def test_section_k_survives_depth_noise_spikes():
+    # THE noise defect of the one-eye estimator (docs/experiments.md 2026-07-25):
+    # under sigma=3 mm depth noise the lying bottle's section K fell 1.00 -> 0.69
+    # and the item mis-routed D -> B. Cause: the ridge was the per-bin MAX, which is
+    # an EXTREME of ~700 samples, so it rides ~3.4 sigma above the true arc by a
+    # different amount in every bin and destroys the circle. A percentile is a
+    # consistent quantile: it shifts the whole arc by the same ~1.6 sigma, and a
+    # shifted circle is still a circle. On this strip the raw max flips K to 0.37 on
+    # 3 of these 5 seeds; the percentile ridge holds 1.00 on all of them.
+    s = 1.5 / 2000.0
+    base = _section_strip(lambda dy: s * (40 + np.sqrt(max(40**2 - dy**2, 0.0))))
+    item = base < 1.5
+    for seed in range(5):
+        depth = base.copy()
+        rng = np.random.default_rng(seed)
+        depth[item] += rng.normal(0, 3.0 / 1000.0, int(item.sum()))
+        m = measure_item(depth, belt_depth_m=1.5, fx=2000.0, fy=2000.0)
+        assert m.k > 0.8, f"seed {seed}: noise collapsed the section K to {m.k}"
+
+
 def test_section_k_dome_stays_low():
     # Flat-bottomed semicircle section (dome, Шлем analog, ref K=0.78->B): the
     # arc peaks at only ~1 radius (tau~1), not a full circle (tau~2). The tau

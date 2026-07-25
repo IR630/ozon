@@ -114,6 +114,15 @@ SECTION_TAU_HI = 2.6      # below = shallow arc, above = dome cap floating high
 SECTION_TAU_RAMP = 0.15   # trapezoid edge width -> full-strength plateau ~[2.0, 2.45]
 SECTION_RMS_HI = 0.05     # rms/R above this is not a circle (rounded square / soft blob)
 SECTION_RMS_SPAN = 0.03   # saturates to "circle" at rms/R <= HI - SPAN (0.02)
+SECTION_RIDGE_PCTL = 95   # per-bin ridge percentile, not the raw max (= 100): rejects
+                          # depth-noise spikes that wreck the circle fit. Swept on the
+                          # 33-cell offline corpus (docs/experiments.md 2026-07-26):
+                          # 93/95/97 all give 31.9/33 noisy vs 30.1 at raw max, clean
+                          # stays 33/33 and the render<->real gap stays 0.00; 95 is the
+                          # middle of that plateau. Below it the ridge starts cutting
+                          # into the true arc -- at 90 the RENDERED bottle already reads
+                          # K 0.899 against 1.000 on the real frame (breaking the domain
+                          # -gap test), and at 85 the gap is 0.66
 # Elongation gate on the cross-section->D route (day 11, P3). The section route
 # recovers the hidden end-circle of a body of revolution LYING on its side, which
 # is by definition elongated: its footprint long side (the body) far exceeds its
@@ -490,7 +499,14 @@ def _section_roundness_k(xs, ys, heights_m, long_dir, scale_m_per_px):
         if int(sel.sum()) < 3:                # a stable ridge needs a few pixels
             continue
         wc.append(0.5 * (edges[b] + edges[b + 1]))
-        hc.append(float(heights_m[sel].max()))
+        # Robust ridge, NOT the raw max: a single depth-noise spike in a bin lifts
+        # its ridge point off the true arc and wrecks the circle fit, collapsing the
+        # section K of a lying body of revolution (the bottle read K 1.00 clean but
+        # 0.69 under +3 mm noise and mis-routed D->B, docs/experiments.md).
+        # The percentile rejects the spike while a genuine tangent arc keeps its
+        # height (noisy bottle K 0.69 -> 0.93, clean 1.00 untouched); Цилиндр/Шлем/
+        # Тарелка section K is 0 either way, so their pinned verdicts do not move.
+        hc.append(float(np.percentile(heights_m[sel], SECTION_RIDGE_PCTL)))
     if len(wc) < 6:                           # too few bins to fit a circle
         return 0.0
     wc, hc = np.asarray(wc), np.asarray(hc)
