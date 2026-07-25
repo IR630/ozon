@@ -25,6 +25,25 @@ _PERCEPTION_LINE = (
     "item 1: 324x298x284 mm K=0.80 at (1.84, 0.00) heads=3")
 
 
+def _stub_runner(tmp_path, name, body):
+    """A SKELETON stub that runs on ANY host, returned as a `SKELETON` command.
+
+    These stubs used to be bash scripts, and on a Windows host all three seam
+    tests failed at 127: `subprocess` there resolves `bash` to the WSL launcher
+    in System32, not to Git Bash, and WSL cannot open the Windows path pytest
+    hands out -- `C:/Users/...` is not a path inside WSL, in any slash spelling.
+    The seam under test is "run this command with this environment", not "run
+    this shell", so the stub is Python and the dependency disappears. The real
+    runner stays bash; nothing here ever executed it.
+    """
+    script = tmp_path / name
+    script.write_text(body)
+    # run_cell splits SKELETON on whitespace, as the production value
+    # ("bash scripts/run_skeleton.sh") allows; keep the stub command in that shape.
+    assert " " not in sys.executable, f"interpreter path must not contain spaces: {sys.executable}"
+    return f"{sys.executable} {script}"
+
+
 def test_identity_pose_is_the_identity_quaternion():
     assert pose_quat((0.0, 0.0, 1.0), 0) == pytest.approx((0.0, 0.0, 0.0, 1.0))
 
@@ -77,12 +96,14 @@ def test_the_two_rigs_differ_only_in_world_and_bridge():
 
 def test_the_cell_passes_the_pose_and_the_rig_to_the_runner(tmp_path, monkeypatch):
     """The seam a stub runner uses; a cell that ignored WORLD would compare nothing."""
-    stub = tmp_path / "stub.sh"
-    stub.write_text("#!/usr/bin/env bash\n"
-                    'echo "world=$WORLD bridge=$BRIDGE_CONFIG root=$ITEM_MODEL_ROOT"\n'
-                    'echo "quat=$ORIENT_X,$ORIENT_Y,$ORIENT_Z,$ORIENT_W z=$SPAWN_Z"\n'
-                    'echo "args=$*"\n')
-    monkeypatch.setenv("SKELETON", f"bash {stub}")
+    monkeypatch.setenv("SKELETON", _stub_runner(tmp_path, "stub.py", (
+        "import os, sys\n"
+        "e = os.environ\n"
+        "print(f\"world={e['WORLD']} bridge={e['BRIDGE_CONFIG']} "
+        "root={e['ITEM_MODEL_ROOT']}\")\n"
+        "print(f\"quat={e['ORIENT_X']},{e['ORIENT_Y']},{e['ORIENT_Z']},{e['ORIENT_W']} "
+        "z={e['SPAWN_Z']}\")\n"
+        "print('args=' + ' '.join(sys.argv[1:]))\n")))
     text = run_cell("ring", "flat", "sim/worlds/cell_diverter_3cam.sdf", "bridge_3cam.yaml",
                     tmp_path)
     assert "world=sim/worlds/cell_diverter_3cam.sdf" in text
@@ -95,13 +116,12 @@ def test_the_cell_passes_the_pose_and_the_rig_to_the_runner(tmp_path, monkeypatc
 def test_the_measurement_is_recovered_from_the_node_log(tmp_path, monkeypatch):
     """run_skeleton echoes only the last three `item N:` lines, often not the
     perception one — the cell must still find the measurement it exists to read."""
-    stub = tmp_path / "quiet.sh"
-    stub.write_text("#!/usr/bin/env bash\necho 'ring -> D: PASS (pose x=4)'\n")
+    quiet = _stub_runner(tmp_path, "quiet.py", "print('ring -> D: PASS (pose x=4)')\n")
     # The cell's OWN node log, at the path run_cell hands the runner — a real
     # episode writes it there, and reading it back is what this test locks.
     node_log = tmp_path / "ring_flat_cell_diverter.node.log"
     node_log.write_text("[classifier]: item 1: D (k=0.98)\n" + _PERCEPTION_LINE + "\n")
-    monkeypatch.setenv("SKELETON", f"bash {stub}")
+    monkeypatch.setenv("SKELETON", quiet)
     text = run_cell("ring", "flat", "sim/worlds/cell_diverter.sdf", "bridge.yaml", tmp_path)
     dims, _k, heads = parse_measurement(text)
     assert dims == [324.0, 298.0, 284.0]
@@ -112,18 +132,16 @@ def test_the_cell_hands_the_runner_its_own_node_log(tmp_path, monkeypatch):
     """The seam itself: whatever NODE_LOG the environment carries, the runner must
     be given the CELL's path. Concurrent runs sharing one file is how a probe cell
     reported another world's measurement as its own."""
-    stub = tmp_path / "echo_env.sh"
-    stub.write_text("#!/usr/bin/env bash\necho \"node_log=$NODE_LOG\"\n")
-    monkeypatch.setenv("SKELETON", f"bash {stub}")
+    monkeypatch.setenv("SKELETON", _stub_runner(
+        tmp_path, "echo_env.py", "import os\nprint('node_log=' + os.environ['NODE_LOG'])\n"))
     monkeypatch.setenv("NODE_LOG", "/tmp/skeleton_e2e.log")
     text = run_cell("ring", "flat", "sim/worlds/cell_diverter.sdf", "bridge.yaml", tmp_path)
     assert f"node_log={tmp_path / 'ring_flat_cell_diverter.node.log'}" in text
 
 
 def test_a_wedged_episode_is_recorded_instead_of_crashing_the_sweep(tmp_path, monkeypatch):
-    stub = tmp_path / "hang.sh"
-    stub.write_text("#!/usr/bin/env bash\nsleep 30\n")
-    monkeypatch.setenv("SKELETON", f"bash {stub}")
+    monkeypatch.setenv("SKELETON", _stub_runner(
+        tmp_path, "hang.py", "import time\ntime.sleep(30)\n"))
     # No node log is written for this cell, so nothing may be recovered. Before
     # the per-cell NODE_LOG this read the machine-wide /tmp/skeleton_e2e.log and
     # a parallel census made the wedged cell "recover" a measurement it never
