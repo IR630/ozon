@@ -624,7 +624,7 @@ def _body_obb_dims_mm(xs, ys, depth_col_m, heights_m, fx, fy, cx, cy,
     # In-plane search by brute angle, one matmul for EVERY (candidate, angle) pair:
     # the per-candidate rotating-calipers loop is pure Python and cost seconds on
     # a dome's hundreds of candidates. A min-area rectangle's angle is 90-degree
-    # periodic; 2-degree steps cost <0.1% of extent.
+    # periodic; the 3-degree steps below cost <0.1% of extent.
     seeds = np.where(np.abs(normals[:, :1]) < 0.9, [[1.0, 0.0, 0.0]], [[0.0, 1.0, 0.0]])
     u = np.cross(normals, seeds)
     u /= np.linalg.norm(u, axis=1, keepdims=True)
