@@ -57,7 +57,16 @@ ANTAGONISTS = (("u_bracket", "opening_down"), ("u_bracket", "opening_up"),
                ("ring", "flat"), ("ring", "yaw45"))
 
 # (label, world, bridge config). Same contour, same items, different rig.
+# MONOTONIC IN HEAD COUNT, so the table reads 1 -> 2 -> 3 and the marginal value of
+# each head is the difference between adjacent rows. The two-head rig was missing
+# until 25.07, which left the ONE comparison this stand can make honestly — does the
+# THIRD head buy anything the second did not — unmeasured: occlusion is geometry and
+# the renderer computes it exactly, unlike noise, glare and drift, which our worlds
+# do not model at all. The bridge name carries NO `sim/` prefix here: this list is
+# consumed by run_skeleton.sh -> launch/skeleton.launch.py, which prefixes it itself
+# (scripts/dump_item_frame.sh wants the opposite — the prefixed form).
 CONFIGS = (("1 head", "sim/worlds/cell_diverter.sdf", "bridge.yaml"),
+           ("2 heads", "sim/worlds/cell_diverter_2cam.sdf", "bridge_2cam.yaml"),
            ("3 heads", "sim/worlds/cell_diverter_3cam.sdf", "bridge_3cam.yaml"))
 
 # `item 1: 347x299x278 mm K=0.70 at (1.87, 0.08) heads=2` — the production
@@ -184,14 +193,23 @@ def main(argv=None):
     print("\ndelta on the ONE question this probe exists to answer:")
     for slug, pose_name in ANTAGONISTS:
         one = results.get((slug, pose_name, "1 head"))
+        two = results.get((slug, pose_name, "2 heads"))
         three = results.get((slug, pose_name, "3 heads"))
         if one is None or three is None:
             print(f"  {slug} / {pose_name:<14} incomplete — a cell produced no measurement")
             continue
         verdict = "side heads WIN" if three < one - 1.0 else (
             "no gain" if three <= one + 1.0 else "side heads LOSE")
-        print(f"  {slug} / {pose_name:<14} 1 head {one:6.1f} mm -> 3 heads {three:6.1f} mm"
-              f"   {verdict}")
+        # The MARGINAL head, reported separately: the whole rig question is not
+        # "do side heads help" but "does the THIRD one help once the second is
+        # paid for". 1 mm is the reporting floor — below it two runs of the same
+        # rig differ anyway, so a smaller gap is not a gain.
+        two_txt = "  2 heads   n/a" if two is None else f"  2 heads {two:6.1f} mm"
+        marginal = ("unknown" if two is None else
+                    f"3rd head {two - three:+.1f} mm over the 2nd"
+                    + ("" if abs(two - three) > 1.0 else " (within the 1 mm floor)"))
+        print(f"  {slug} / {pose_name:<14} 1 head {one:6.1f} mm ->{two_txt} -> "
+              f"3 heads {three:6.1f} mm   {verdict}; {marginal}")
     return 0
 
 

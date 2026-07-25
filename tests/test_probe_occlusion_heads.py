@@ -68,11 +68,38 @@ def test_every_antagonist_pose_rests_above_the_belt_not_inside_it(slug, pose_nam
     assert abs(spawn_y) < 0.3                  # stays on the belt, not in the rail
 
 
-def test_the_two_rigs_differ_only_in_world_and_bridge():
-    """If both configs named the same world the 'delta' would be pure run-to-run noise."""
+def test_the_rigs_differ_only_in_world_and_bridge():
+    """If two configs named the same world the 'delta' would be pure run-to-run noise."""
     worlds = {world for _label, world, _bridge in CONFIGS}
     bridges = {bridge for _label, _world, bridge in CONFIGS}
     assert len(worlds) == len(bridges) == len(CONFIGS)
+
+
+def test_all_three_rigs_are_compared_not_just_the_extremes():
+    """Without the two-head rig the marginal value of the THIRD head is unmeasurable:
+    the table would only say "side heads help", never "the third one adds this much"."""
+    assert [label for label, _world, _bridge in CONFIGS] == ["1 head", "2 heads", "3 heads"]
+
+
+@pytest.mark.parametrize("label,world,bridge", CONFIGS)
+def test_every_rig_names_files_that_exist(label, world, bridge):
+    """A missing world boots the DEFAULT one and the cell would silently measure the
+    shipped rig while being labelled as another — how three censuses were lost
+    (scripts/run_matrix.sh:41-51). The bridge is stored WITHOUT the `sim/` prefix
+    because launch/skeleton.launch.py adds it, so that is where to look for it."""
+    assert (ROOT / world).is_file()
+    assert (ROOT / "sim" / bridge).is_file()
+
+
+def test_the_rigs_are_ordered_by_head_count():
+    """The table is read as 1 -> 2 -> 3 and the marginal head is a difference between
+    ADJACENT rows; an unordered CONFIGS would make that subtraction meaningless."""
+    heads = [int(label.split()[0]) for label, _world, _bridge in CONFIGS]
+    assert heads == sorted(heads)
+    # And the label is not decoration: the world it names must carry that many heads.
+    for (label, world, _bridge), count in zip(CONFIGS, heads):
+        text = (ROOT / world).read_text(encoding="utf-8")
+        assert text.count('type="rgbd_camera"') == count, label
 
 
 def test_the_cell_passes_the_pose_and_the_rig_to_the_runner(tmp_path, monkeypatch):
