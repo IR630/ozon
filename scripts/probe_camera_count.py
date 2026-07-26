@@ -437,6 +437,23 @@ def main(argv=None):
                         f"/{len(poses)}")
             print(row)
 
+        # WHERE the misroutes land, not just how many. The three destinations
+        # cost different things on a line: C is manual handling and D is
+        # re-packing — both human minutes, item intact — while B is the main
+        # sorter and therefore a jam. A rig that errs more often but only toward
+        # C beats one that errs less often toward B, and no "% in tolerance"
+        # column can show that.
+        print(f"\n### Слияние «{fusion}» — КУДА уезжают мисроуты продового "
+              "правила (B = затор, C = ручная разборка, D = доупаковка)")
+        print(f"\n{'калибровка':30}" + "".join(f"{c:>26}" for c in CONFIGS))
+        for calib_name, *_ in CALIBRATIONS:
+            row = f"{calib_name:30}"
+            for cfg_name in CONFIGS:
+                where = results_cons[(cfg_name, calib_name, fusion)][1]
+                txt = " ".join(f"{k}:{v}" for k, v in sorted(where.items())) or "нет"
+                row += f"{txt:>26}"
+            print(row)
+
         print(f"\n### Слияние «{fusion}» — в допуске организаторов "
               "(больше — лучше), доля прогонов")
         print(f"\n{'калибровка':30}" + "".join(f"{c:>26}" for c in CONFIGS))
