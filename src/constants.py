@@ -17,6 +17,13 @@ ROUND_K_THRESHOLD = 0.8
 
 BELT_SPEED_M_S = 1.0
 
+# Half-width of the belt: goods live at |y| <= this, everything beyond it is
+# structure (the diverter pivots sit at |y| = 0.28, the side heads at |y| = 0.90).
+# The number was already asserted twice in comments here; it becomes a constant
+# because a side head that must find an item WITHOUT a top detection has no crop
+# box and needs the belt itself as its lateral bound.
+BELT_HALF_WIDTH_M = 0.25
+
 # Positional diverter is considered parked only while its complete 0.80 x 0.03 m
 # collision box remains outside the belt edge at |y|=0.25. With pivot |y|=0.28,
 # 0.015 rad leaves about 3 mm geometric clearance (sim/worlds/cell_diverter.sdf).
