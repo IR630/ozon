@@ -82,3 +82,38 @@ def test_the_height_scale_covers_the_tallest_item_drawn():
     for _slug, dims in ITEMS:
         assert max(float(x) for x in dims.split("x")) <= HEIGHT_MAX_MM
     assert np.isfinite(HEIGHT_MAX_MM)
+
+
+def test_no_head_body_appears_in_any_side_frame():
+    """The figure's caption once said a camera housing was visible. It is not.
+
+    Two independent facts, and either one alone settles it: the camera models in
+    the rig world carry a `<sensor>` and no `<visual>`/`<collision>` at all, and
+    the reconstructed side clouds hold ZERO points at the opposite head's own
+    |y|. The pale slab that was mistaken for a housing is the zone C roll cage —
+    model at (3.2, 0.9), wall offset (0, 0.6, 0.4), hence world y = 1.5.
+
+    Locked as a test because a caption is prose and prose drifts back: the
+    "housing in frame" failure mode (`cameras.md` §4) is a GEOMETRIC argument
+    from a datasheet housing, and calling it photographed overstates our evidence
+    to a jury.
+    """
+    pytest.importorskip("cv2")
+    from src.constants import CAMERA_SIDE_NEG_Y_POSE_M, CAMERA_SIDE_POS_Y_POSE_M
+    from src.multiview import world_cloud_from_depth
+    from src.perception import FX, FY
+
+    world = ROOT / "sim" / "worlds" / "cell_diverter_3cam.sdf"
+    text = world.read_text(encoding="utf-8")
+    for name in ("camera", "camera_side_neg_y", "camera_side_pos_y"):
+        block = text.split(f'<model name="{name}">', 1)[1].split("</model>", 1)[0]
+        assert "<visual" not in block, f"{name} grew a visual — re-check the caption"
+        assert "<collision" not in block, f"{name} grew a collision"
+
+    for fname, pose in (("depth_side_neg_y_000.png", CAMERA_SIDE_NEG_Y_POSE_M),
+                        ("depth_side_pos_y_000.png", CAMERA_SIDE_POS_Y_POSE_M)):
+        pts = world_cloud_from_depth(
+            load_depth_png(str(_dump("helmet") / fname)), pose, FX, FY)
+        at_head_y = (np.abs(pts[:, 1]) >= 0.80) & (np.abs(pts[:, 1]) <= 1.00)
+        assert int(at_head_y.sum()) == 0, (
+            f"{fname}: {int(at_head_y.sum())} points where a head stands")

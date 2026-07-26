@@ -13,10 +13,22 @@ are visible in one look and were, until this figure, described only in prose:
     from the belt line at all. A rig does not rescue the item that decides the
     C/B border.
 
-A third thing the picture shows was not put there on purpose — the bright slab on
-the right of every `y=-0.90` panel is the OPPOSITE head's housing in frame. That
-is the failure mode of `cameras.md` §4 and `tests/test_side_head_in_frame.py`,
-photographed rather than computed, and its risk grows with head count.
+A third thing the picture shows was mis-read when this figure was first written,
+and the correction matters more than the original claim did. The pale slab on the
+right of every `y=-0.90` panel is NOT the opposite head's housing: it is the
+roll-cage wall of landing zone C — model at (3.2, 0.9), wall offset (0, 0.6, 0.4),
+i.e. world y = 1.5, z 0.005..0.805, which is exactly where the reconstructed
+points sit (x 1.98..2.93, y 1.47..1.99, z 0.00..0.80). No camera can appear in any
+of these frames at all: the three camera models in `sim/worlds/cell_diverter_3cam.sdf`
+carry a `<sensor>` and NO `<visual>` or `<collision>`, and both side clouds hold
+exactly ZERO points at the opposite head's |y| in [0.80, 1.00]
+(`test_no_head_body_appears_in_any_side_frame`).
+
+The "housing in frame" failure mode of `cameras.md` §4 and
+`tests/test_side_head_in_frame.py` therefore remains what that test always
+honestly said it was — a GEOMETRIC argument from a datasheet 90 mm housing — and
+is not photographed here. It becomes photographable only once the visual props
+for the demo video are spawned, which is why that measurement is taken there.
 
 Requires the rig dumps, which are gitignored (`runs/` is a work dir). Refresh with
 `wsl -d ozon -- bash runs/g_dump_3cam.sh` (~4 min per item, Gazebo).
@@ -95,8 +107,8 @@ def main(argv=None):
 
     for line, txt in enumerate((
             "What each head sees, same item, live Gazebo dumps (runs/frames/*_3cam)",
-            "black = no depth returned;  bright slab right of every y=-0.90 panel ="
-            " the OPPOSITE head's housing in frame",
+            "black = no depth returned;  pale slab right of every y=-0.90 panel ="
+            " zone C roll cage at y=1.5, NOT a camera (cameras have no visual)",
             "side heads add HEIGHT (helmet) and add nothing to the pen — 9 mm does not"
             " separate from the belt line")):
         cv2.putText(canvas, txt, (PAD, 26 + line * 24), FONT, 0.52, (30, 30, 30), 1,
