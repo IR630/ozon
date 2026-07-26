@@ -10,7 +10,9 @@
 
 | Набор | Эпизоды | Товары / проверки | Результат | Сырые каталоги |
 |---|---:|---:|---|---|
-| Однокамерный multi-seed на depth-scale базе (**22.07**, fallback-путь `feat/three-cameras@4581d8d`) | 5/5 census run | **163/165** routed (33/32/33/33/32) | 2 классификационных промаха, execution 0: Шлем oi=1 seed1 и Мешок oi=2 seed4, оба K≈0.8 → D. Двух- и трёхкамерный multi-seed не выполнялся | `runs/a2sweep_20260722_*_seed{0..4}` |
+| Однокамерный multi-seed на depth-scale базе (**22.07**, fallback-путь `feat/three-cameras@4581d8d`) | 5/5 census run | **163/165** routed (33/32/33/33/32) | 2 классификационных промаха, execution 0: Шлем oi=1 seed1 и Мешок oi=2 seed4, оба K≈0.8 → D | `runs/a2sweep_20260722_*_seed{0..4}` |
+| Двухкамерный multi-seed (**24.07**, `feat/three-cameras@d45f42b`) | 5/5 census run | **163/165** routed | 2 классификационных промаха Мешка у K=0.8, execution 0; число камер переставило ячейки, но не итог | `runs/census2cam_seed0..4` |
+| Камеры под модельным шумом σ=3 мм (**25.07**, seed 0) | по 1 census для 1/2/3 камер | **31/33 / 18/33 / 18/33** | текущий fusion бокового облака активно вредит; один seed, реальные dropout и коррелированный шум не моделировались | ветка `work/a2-heads-noise` |
 | Мульти-seed census (**21.07, ядро С E-stop** `bf891af`), seeds 0–4, 11 моделей × 3 ориентации | 5/5 census run | **162/165** routed (33/32/33/33/31) | **3 классификационных промаха** (execution 0), ВСЕ околопороговые по K: Шлем oi=1 seed1 и seed4, Мешок oi=2 seed4 — все K=0.80 → D у порога 0.8; **Pouf 15/15**. Перепрогон Шлема seed1 oi1 ×8 → B 7/8 (недетерм.) | `runs/estop_merge_census_seed0`, `runs/estop_sweep_seed{1,2,3,4}` |
 | Мульти-seed census (20.07, ядро ДО E-stop `c12ba2b`), seeds 0–4 | 5/5 census run | **164/165** routed | 1 промах: Мешок oi=2 seed4 (K=0.8004→D, порог 0.8); execution 0; **Pouf 15/15** | `runs/baseline_main_seed0`, `runs/sweep_main_seed{1,2,3,4}` |
 | Мульти-seed census (19.07), seeds 0–4 — на ядре ДО фикса K (`fa4d30e`, ветка-не-потомок) | 5/5 census all-pass | 165/165 routed (историческое, не текущее ядро) | classification 0, execution 0; **Pouf 15/15** | `runs/sweep_seed{0,1,2,3,4}` |
