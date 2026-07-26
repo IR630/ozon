@@ -458,7 +458,8 @@ def _silhouette_solidity(pts, hull):
     the `pts`/`hull` already built in measure_item.
     """
     hull_area = float(hull.volume)  # 2-D ConvexHull.volume is the enclosed area
-    assert hull_area > 0.0, "degenerate hull"
+    if hull_area <= 0.0:
+        return 0.0
     return float(min(len(pts) / hull_area, 1.0))
 
 

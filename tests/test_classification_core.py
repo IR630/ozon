@@ -88,3 +88,8 @@ class TestSanity:
     def test_wrong_dim_count_raises(self):
         with pytest.raises(ValueError):
             classify([200, 100], k=0.5)
+
+    @pytest.mark.parametrize("bad_dim", [float("nan"), float("inf"), -float("inf")])
+    def test_non_finite_dim_raises(self, bad_dim):
+        with pytest.raises(ValueError):
+            classify([200, 100, bad_dim], k=0.5)

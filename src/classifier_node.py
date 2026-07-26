@@ -29,6 +29,15 @@ class ClassifierNode(Node):
         self.create_subscription(ItemMeasurement, "/item/measurement", self.on_measurement, 10)
 
     def on_measurement(self, msg):
+        try:
+            # Validate before aggregation: a bad frame must not poison the running
+            # median for later valid frames carrying the same item_id.
+            classify_conservative(msg.dims_mm, msg.k)
+        except ValueError as error:
+            self.get_logger().error(
+                f"item {msg.item_id}: skipped bad measurement — {error}")
+            return
+
         est = self.agg.update(msg.item_id, msg.dims_mm, msg.k)
         out = ItemClassification()
         out.header = msg.header
