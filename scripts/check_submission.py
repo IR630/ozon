@@ -103,7 +103,8 @@ def broken_local_links(root: Path) -> list[str]:
             if not path:
                 continue
             if not (doc.parent / path).resolve().is_file():
-                issues.append(f"BROKEN_LINK: {doc.relative_to(root)}: {target}")
+                relative = doc.relative_to(root).as_posix()
+                issues.append(f"BROKEN_LINK: {relative}: {target}")
     return issues
 
 
