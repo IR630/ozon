@@ -52,8 +52,14 @@ HEADS = (("/camera/depth_image", "TOP  z=1.90"),
          ("/camera_side_pos_y/depth_image", "SIDE  y=+0.90"))
 
 
-def _panel(depth_m, label):
-    """One colorized head panel with its label and its live pixel count."""
+def _panel(depth_m, label, is_top):
+    """One colorized head panel with its label and its live pixel count.
+
+    Only the TOP panel reports "over belt". `BELT_DEPTH_M` is the range from the
+    top head to the belt and means nothing along a grazing line of sight — the
+    first cut of this overlay printed 144 640 "over belt" pixels for each side
+    head, a number that reads as a measurement and is not one.
+    """
     if depth_m is None:
         img = np.zeros((PANEL_H, PANEL_W, 3), np.uint8)
         cv2.putText(img, f"{label}: no frame yet", (12, PANEL_H // 2), FONT, 0.5,
@@ -67,10 +73,12 @@ def _panel(depth_m, label):
     else:
         img = np.zeros(depth_m.shape + (3,), np.uint8)
     img = cv2.resize(img, (PANEL_W, PANEL_H), interpolation=cv2.INTER_AREA)
-    over_belt = int((valid & (depth_m < BELT_DEPTH_M)).sum())
+    note = f"{int(valid.sum())} px with depth"
+    if is_top:
+        note += f" / {int((valid & (depth_m < BELT_DEPTH_M)).sum())} over belt"
     cv2.putText(img, label, (10, 24), FONT, 0.6, (255, 255, 255), 2, cv2.LINE_AA)
-    cv2.putText(img, f"{int(valid.sum())} px depth / {over_belt} over belt",
-                (10, PANEL_H - 12), FONT, 0.42, (255, 255, 255), 1, cv2.LINE_AA)
+    cv2.putText(img, note, (10, PANEL_H - 12), FONT, 0.42, (255, 255, 255), 1,
+                cv2.LINE_AA)
     return img
 
 
@@ -81,6 +89,7 @@ class RigVideoSaver(Node):
         self.out_path, self.fps, self.poster = out_path, fps, poster
         self.writer = None
         self.frames = 0
+        self.best_goods_px, self.best_frame = -1, None
         self.depths = {topic: None for topic, _label in HEADS}
         for topic, _label in HEADS:
             self.create_subscription(
@@ -100,7 +109,8 @@ class RigVideoSaver(Node):
         scene = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
         h = int(scene.shape[0] * SCENE_W / scene.shape[1])
         scene = cv2.resize(scene, (SCENE_W, h), interpolation=cv2.INTER_AREA)
-        panels = np.hstack([_panel(self.depths[t], label) for t, label in HEADS])
+        panels = np.hstack([_panel(self.depths[t], label, i == 0)
+                            for i, (t, label) in enumerate(HEADS)])
         strip = np.full((34, SCENE_W, 3), 20, np.uint8)
         cv2.putText(strip, "heads are UNTRIGGERED at 15 Hz - each panel is that "
                     "head's latest frame, up to one period apart", (10, 23), FONT,
@@ -111,10 +121,25 @@ class RigVideoSaver(Node):
             fh, fw = frame.shape[:2]
             self.writer = cv2.VideoWriter(
                 self.out_path, cv2.VideoWriter_fourcc(*"mp4v"), self.fps, (fw, fh))
-            if self.poster:
-                cv2.imwrite(self.poster, frame)
         self.writer.write(frame)
         self.frames += 1
+        # The poster is the presentation thumbnail and is chosen, not taken: the
+        # FIRST composed frame shows three "no frame yet" panels, and the first
+        # frame after that shows an empty belt. Both are honest inside the video
+        # and useless as the cover of a clip whose subject is three heads
+        # measuring goods. So: keep the frame where the top head saw the MOST
+        # over the belt, and write it when the recording ends.
+        if self.poster and all(d is not None for d in self.depths.values()):
+            top = self.depths[HEADS[0][0]]
+            goods_px = int(((top > 0.0) & (top < BELT_DEPTH_M)).sum())
+            if goods_px > self.best_goods_px:
+                self.best_goods_px, self.best_frame = goods_px, frame
+
+    def write_poster(self):
+        """Write the chosen cover frame, if the run ever produced one."""
+        if self.poster and self.best_frame is not None:
+            cv2.imwrite(self.poster, self.best_frame)
+            print(f"poster: frame with {self.best_goods_px} px over the belt", flush=True)
 
 
 def main():
@@ -134,6 +159,7 @@ def main():
     finally:
         if node.writer is not None:
             node.writer.release()
+        node.write_poster()
         print(f"{node.frames} frames -> {args.out}", flush=True)
 
 
