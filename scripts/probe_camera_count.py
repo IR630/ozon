@@ -43,7 +43,11 @@ from analyze_models import analyze_file  # noqa: E402
 from build_item_models import ITEMS, STL_DIR, set_belt_origin  # noqa: E402
 from probe_side_camera import census_resting_quats, cloud_dims_mm, visible_points  # noqa: E402
 
-from src.classification import classify, within_measurement_tolerance  # noqa: E402
+from src.classification import (  # noqa: E402
+    classify,
+    classify_conservative,
+    within_measurement_tolerance,
+)
 from src.constants import MAX_DIMS_MM, MIN_DIMS_MM  # noqa: E402
 from src.perception import BODY_OBB_MIN_RELIEF, _body_obb_dims_mm, _obb_dims_px  # noqa: E402
 from src.perception import BELT_TOP_Z_M, CAMERA_X_M, CAMERA_Y_M, CAMERA_Z_M  # noqa: E402
@@ -344,12 +348,13 @@ def main(argv=None):
         if (i + 1) % 20 == 0:
             print(f"  ... видимость {i + 1}/{len(poses)}", flush=True)
 
-    results = {}
+    results, results_cons = {}, {}
     for cfg_name, cams in CONFIGS.items():
         for calib_name, s_mm, s_deg in CALIBRATIONS:
             seeds = [0] if s_mm == 0.0 and s_deg == 0.0 else CALIB_SEEDS
             for fusion in FUSIONS:
                 mis, tol, total, culprits, errs, bands = 0, 0, 0, {}, [], {}
+                mis_cons = 0
                 # rng is rebuilt per fusion, so every rule sees the IDENTICAL
                 # sequence of misregistration draws: the comparison is between
                 # fusion rules, not between random draws.
@@ -373,6 +378,15 @@ def main(argv=None):
                         tol += within_measurement_tolerance(dims, t_dims)
                         errs.extend(np.asarray(dims) - np.asarray(t_dims))
                         wrong = classify(dims, t_k) != t_cat
+                        # The SHIPPED cell routes on classify_conservative
+                        # (src/classifier_node.py:40), and the mechanism by which
+                        # extra heads hurt is inflation at a size bound — exactly
+                        # what the conservative band absorbs. Scored alongside the
+                        # strict rule rather than instead of it: the strict column
+                        # keeps every earlier number comparable, and the gap
+                        # between the two IS the value of the policy.
+                        if classify_conservative(dims, t_k) != t_cat:
+                            mis_cons += 1
                         if wrong:
                             mis += 1
                             culprits[slug] = culprits.get(slug, 0) + 1
@@ -384,6 +398,11 @@ def main(argv=None):
                             hit[0 if wrong else 1] += 1
                 results[(cfg_name, calib_name, fusion)] = (mis, tol, total, culprits,
                                                            np.asarray(errs), bands)
+                # Kept in its OWN dict rather than appended to the tuple above:
+                # four call sites unpack that tuple positionally, and a silently
+                # shifted field is the classic way a report starts printing the
+                # wrong column.
+                results_cons[(cfg_name, calib_name, fusion)] = mis_cons
                 print(f"готово: {cfg_name:26} | {calib_name:28} | {fusion}", flush=True)
 
     for fusion in FUSIONS:
@@ -396,6 +415,17 @@ def main(argv=None):
                 mis, _tol, total, _c, _e, _b = results[(cfg_name, calib_name, fusion)]
                 n_runs = 1 if calib_name.startswith("идеальная") else len(CALIB_SEEDS)
                 row += f"{mis / n_runs:>21.1f}/{len(poses)}"
+            print(row)
+
+        print(f"\n### Слияние «{fusion}» — мисроуты ПРОДОВЫМ правилом "
+              "(classify_conservative), на прогон из {} поз".format(len(poses)))
+        print(f"\n{'калибровка':30}" + "".join(f"{c:>26}" for c in CONFIGS))
+        for calib_name, *_ in CALIBRATIONS:
+            row = f"{calib_name:30}"
+            for cfg_name in CONFIGS:
+                n_runs = 1 if calib_name.startswith("идеальная") else len(CALIB_SEEDS)
+                row += (f"{results_cons[(cfg_name, calib_name, fusion)] / n_runs:>21.1f}"
+                        f"/{len(poses)}")
             print(row)
 
         print(f"\n### Слияние «{fusion}» — в допуске организаторов "

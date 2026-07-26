@@ -259,3 +259,30 @@ def test_union_prod_still_measures_a_dome():
     dims = fuse_dims(parts, "union-prod")
     assert dims is not None
     assert dims[0] == pytest.approx(280.0, rel=0.15)   # 2R of a 140 mm half-shell
+
+
+def test_the_probe_scores_with_the_rule_the_cell_actually_routes_on():
+    """The strict and conservative columns must genuinely differ, or one is noise.
+
+    The mechanism by which an extra head hurts is inflation at a size bound, and
+    the conservative band exists to absorb exactly that (`src/classification.py`,
+    `classify_conservative`). The shipped cell routes on the conservative rule
+    (`src/classifier_node.py:40`), so a misroute column scored with the strict
+    one overstates the penalty of every configuration above one head.
+
+    The pen is the case that decides it, and it is not hypothetical: the side
+    heads measure it 138x15x11 (`scripts/probe_side_fallback.py`, 26.07) against
+    a true 148x13x9. Strict routing calls the inflated body B and loses it into
+    the main sorter; the conservative band keeps it in C, where the truth is.
+    """
+    from src.classification import classify, classify_conservative
+
+    inflated_pen = [138.0, 15.0, 11.0]
+    assert classify(inflated_pen, 0.0) == "B"
+    assert classify_conservative(inflated_pen, 0.0) == "C"
+
+    # And the band must not simply send everything to C: a body comfortably
+    # inside the sorter window has to stay B under both rules, otherwise the
+    # conservative column would win by refusing to sort at all.
+    roomy = [300.0, 200.0, 200.0]
+    assert classify(roomy, 0.0) == classify_conservative(roomy, 0.0) == "B"
