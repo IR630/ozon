@@ -206,6 +206,20 @@ python scripts/analyze_models.py docs/Stl/*.stl
 Альтернатива для локальной разработки на Windows. Подставьте свои имя дистрибутива
 и путь к репозиторию (`<distro>`, `<repo-path>`).
 
+ROS 2 Humble `rosidl_cmake` может неверно разобрать смонтированный Windows-путь
+с кириллицей: например, из `C:\Users\Максим\...` пропадает часть пути, после чего
+`colcon build` сообщает, что сгенерированный `.idl` не существует. Для WSL-сборки
+используйте checkout с ASCII-путём. Разовый проверочный worktree можно создать из
+PowerShell (работать и коммитить продолжайте в основном checkout):
+
+```powershell
+git worktree add --detach C:\tmp\ozon-wsl HEAD
+```
+
+После проверки: `git worktree remove C:\tmp\ozon-wsl`. Docker-проверка
+`scripts/check_clean_deploy.sh` уже собирает временный checkout в ASCII-пути
+`/tmp` и этой особенности не подвержена.
+
 ```powershell
 wsl --import <distro> <install-dir> <ubuntu-22.04-rootfs>.tar.gz --version 2
 wsl -d <distro> -- bash <repo-path>/scripts/provision_wsl.sh   # ROS 2 + Gazebo + deps

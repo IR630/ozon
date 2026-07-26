@@ -10,6 +10,7 @@
 
 | Набор | Эпизоды | Товары / проверки | Результат | Сырые каталоги |
 |---|---:|---:|---|---|
+| Повтор resource/latency текущего Stage 26 (`main@b079b0d`, 26.07) | 1 худший mixed oi1 + clean deploy | mixed **5/5 PASS**, roster 5/5/5; deploy B + occupied E-stop PASS | peak RSS 960.5 MiB; CPU 3.896 ср. / 6.449 пик ядра; camera→decision 0.056 с median / 0.080 с p95; FAIL/JAM 0. RSS +1.7% к профилю до Stage 26, CPU выше, но сравнение двух одиночных эпизодов не отделяет нагрузку/RTF; exact-organizer gate открыт | `runs/resource_stage26_current_b079b0d`; clean-deploy `/tmp` очищен |
 | Однокамерный multi-seed на depth-scale базе (**22.07**, fallback-путь `feat/three-cameras@4581d8d`) | 5/5 census run | **163/165** routed (33/32/33/33/32) | 2 классификационных промаха, execution 0: Шлем oi=1 seed1 и Мешок oi=2 seed4, оба K≈0.8 → D | `runs/a2sweep_20260722_*_seed{0..4}` |
 | Двухкамерный multi-seed (**24.07**, `feat/three-cameras@d45f42b`) | 5/5 census run | **163/165** routed | 2 классификационных промаха Мешка у K=0.8, execution 0; число камер переставило ячейки, но не итог | `runs/census2cam_seed0..4` |
 | Камеры под модельным шумом σ=3 мм (**25.07**, seed 0) | по 1 census для 1/2/3 камер | **31/33 / 18/33 / 18/33** | текущий fusion бокового облака активно вредит; один seed, реальные dropout и коррелированный шум не моделировались | ветка `work/a2-heads-noise` |
