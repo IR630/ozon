@@ -105,6 +105,49 @@ def test_empty_belt_publishes_nothing():
         rclpy.shutdown()
 
 
+def test_a_side_frame_without_a_top_frame_publishes_nothing():
+    """T3 as a test instead of as a reading of three places in the node.
+
+    `docs/report/cameras.md` §8 names this exact gap: the claim "no redundancy at
+    any head count" rests on reading `on_side_depth` (:80-94), `_side_clouds`
+    (:96-115) and the single publish inside the top-frame handler (:163). Nothing
+    machine-checked it, so an edit that gave a side head its own publish path
+    would silently change the meaning of every number in that section.
+
+    Both halves matter. The frame must be PARKED — the rig is wired and working —
+    and the cell must still say nothing, because parking is not availability.
+    """
+    rclpy.init()
+    try:
+        node = PerceptionNode()
+        probe = rclpy.create_node("probe_side_only")
+        received = []
+        probe.create_subscription(ItemMeasurement, "/item/measurement", received.append, 10)
+        pub = probe.create_publisher(Image, "/camera_side_neg_y/depth_image", 10)
+
+        # A side view carrying goods: belt at ~1 m with a body standing closer.
+        depth = np.full((480, 640), 1.0, dtype=np.float32)
+        depth[200:400, 250:450] = 0.85
+        frame = Image()
+        frame.height, frame.width = depth.shape
+        frame.encoding = "32FC1"
+        frame.step = depth.shape[1] * 4
+        frame.data = depth.tobytes()
+
+        for _ in range(20):
+            pub.publish(frame)
+            rclpy.spin_once(node, timeout_sec=0.05)
+            rclpy.spin_once(probe, timeout_sec=0.05)
+
+        assert node._side_frames, "side frame was not even parked — rig not wired"
+        assert received == [], "a side head published a measurement on its own"
+
+        probe.destroy_node()
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
 def test_dump_dir_writes_only_measured_frames(tmp_path, monkeypatch):
     # Opt-in PERCEPTION_DUMP_DIR freezes the exact frames the node measures (day 11
     # validation set). A frame with an item writes one PNG; an empty belt writes
