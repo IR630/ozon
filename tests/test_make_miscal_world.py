@@ -98,3 +98,39 @@ def test_asking_for_an_absent_head_is_an_error_not_a_no_op():
     clean = TWO_CAM_WORLD.read_text(encoding="utf-8")
     with pytest.raises(ValueError):
         miscalibrate(clean, heads=(("camera_side_pos_y", +1.0),))
+
+
+@pytest.mark.parametrize("axis,index", [("roll", 3), ("pitch", 4), ("yaw", 5)])
+def test_each_calibration_axis_moves_its_own_angle_and_no_other(axis, index):
+    """One axis per world, or the census cannot be attributed to an angle.
+
+    Until 26.07 only pitch was ever perturbed, so `path_to_line.md` #2 honestly
+    read "one angle checked of three". Roll matters most of the three and is the
+    one an offline probe cannot reach at all: `src.multiview.camera_axes` builds
+    the basis as `right = forward x world_up`, so the reconstruction carries five
+    degrees of freedom and a rolled head is unrepresentable rather than merely
+    mis-modelled. It has to be injected into the WORLD, which is what this does.
+    """
+    clean = SRC_WORLD.read_text(encoding="utf-8")
+    dirty = miscalibrate(clean, axes=(axis,))
+    for name, _sign in heads_present(clean):
+        before, after = _pose(clean, name), _pose(dirty, name)
+        for i in (3, 4, 5):
+            moved = after[i] - before[i]
+            if i == index:
+                assert moved == pytest.approx(math.radians(TILT_DEG)), axis
+            else:
+                assert moved == pytest.approx(0.0, abs=1e-12), f"{axis} moved angle {i}"
+
+
+def test_the_default_axis_is_still_pitch_alone():
+    """Every world and census taken before 26.07 used pitch — defaults must not move."""
+    clean = SRC_WORLD.read_text(encoding="utf-8")
+    assert miscalibrate(clean) == miscalibrate(clean, axes=("pitch",))
+
+
+def test_an_unknown_axis_is_loud_instead_of_a_silent_no_op():
+    """A typo'd axis must not produce a world that is quietly NOT miscalibrated."""
+    clean = SRC_WORLD.read_text(encoding="utf-8")
+    with pytest.raises(ValueError, match="unknown calibration axis"):
+        miscalibrate(clean, axes=("tilt",))

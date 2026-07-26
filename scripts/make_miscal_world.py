@@ -20,7 +20,12 @@ This is HARSHER than the offline probe's model, and deliberately so: the probe
 rotates each cloud about its own centroid (~0.5 mm at an item's radius), while a
 real head rotates about its LENS, which is 0.9 m away from what it is looking at.
 
-    python3 scripts/make_miscal_world.py [out.sdf] [src.sdf]
+    python3 scripts/make_miscal_world.py [out.sdf] [src.sdf] [roll|pitch|yaw,...]
+
+Until 26.07 only PITCH was ever perturbed, so `path_to_line.md` #2 counted the
+extrinsic-drift row as "one angle checked of three". The third argument names the
+axis, one world per axis, because a rig tilted on several axes at once yields a
+census that cannot be attributed to any of them.
 
 The two-head rig is miscalibrated the same way, by naming its world:
 
@@ -55,10 +60,30 @@ def heads_present(sdf_text):
                  if '<model name="%s">' % name in sdf_text)
 
 
-def miscalibrate(sdf_text, shift_mm=SHIFT_MM, tilt_deg=TILT_DEG, heads=_SIDE_HEADS):
-    """Return the world with the named side heads displaced by the calibration error."""
+def miscalibrate(sdf_text, shift_mm=SHIFT_MM, tilt_deg=TILT_DEG, heads=_SIDE_HEADS,
+                 axes=("pitch",)):
+    """Return the world with the named side heads displaced by the calibration error.
+
+    `axes` names which of roll/pitch/yaw carries the tilt; the default is pitch
+    alone, which is what every world generated before 26.07 used and what the
+    `census_*_miscal` runs were taken on. One axis per world on purpose — a rig
+    tilted on three axes at once produces a census nobody can attribute to an
+    axis, which is the same reason this script refuses to move heads silently.
+
+    ROLL IS THE ONE THAT CANNOT BE CHECKED ANY OTHER WAY, and that is why it is
+    here rather than in an offline probe. `src.multiview.camera_axes` builds the
+    camera basis as `right = forward x world_up`, so the reconstruction has FIVE
+    degrees of freedom, not six: a rolled head is not merely mis-modelled, it is
+    unrepresentable. Perturbing a pose offline can therefore express yaw and
+    pitch but never roll — only a rolled head in the WORLD renders a rolled
+    frame that the node then reconstructs as if it were level.
+    """
     import math
 
+    unknown = set(axes) - {"roll", "pitch", "yaw"}
+    if unknown:
+        raise ValueError("unknown calibration axis %s (expected roll/pitch/yaw)"
+                         % sorted(unknown))
     out = sdf_text
     for name, sign in heads:
         pattern = re.compile(
@@ -69,7 +94,13 @@ def miscalibrate(sdf_text, shift_mm=SHIFT_MM, tilt_deg=TILT_DEG, heads=_SIDE_HEA
             raise ValueError("side head %r not found in the world" % name)
         x, y, z, roll, pitch, yaw = (float(v) for v in match.group(2).split())
         y += sign * shift_mm / 1000.0
-        pitch += math.radians(tilt_deg)
+        tilt_rad = math.radians(tilt_deg)
+        if "roll" in axes:
+            roll += tilt_rad
+        if "pitch" in axes:
+            pitch += tilt_rad
+        if "yaw" in axes:
+            yaw += tilt_rad
         # 9 significant digits: the tilt is 3.5e-3 rad and a 6-digit round-trip
         # loses a percent of it — the error under test must survive its own file.
         pose = "%.9g %.9g %.9g %.9g %.9g %.9g" % (x, y, z, roll, pitch, yaw)
@@ -80,15 +111,16 @@ def miscalibrate(sdf_text, shift_mm=SHIFT_MM, tilt_deg=TILT_DEG, heads=_SIDE_HEA
 def main(argv):
     out_path = Path(argv[0]) if argv else OUT_WORLD
     src_path = Path(argv[1]) if len(argv) > 1 else SRC_WORLD
+    axes = tuple(argv[2].split(",")) if len(argv) > 2 else ("pitch",)
     src = src_path.read_text(encoding="utf-8")
     heads = heads_present(src)
     if not heads:
         print("ABORT: %s carries no side head to miscalibrate" % src_path)
         return 2
     out_path.write_text(
-        miscalibrate(src, heads=heads), encoding="utf-8")
-    print("miscalibrated world: %s from %s (%+g mm outward, %+g deg pitch, heads: %s)"
-          % (out_path, src_path, SHIFT_MM, TILT_DEG,
+        miscalibrate(src, heads=heads, axes=axes), encoding="utf-8")
+    print("miscalibrated world: %s from %s (%+g mm outward, %+g deg on %s, heads: %s)"
+          % (out_path, src_path, SHIFT_MM, TILT_DEG, "+".join(axes),
              ", ".join(name for name, _sign in heads)))
     return 0
 
