@@ -1,0 +1,70 @@
+<?xml version="1.0"?>
+<!-- Visual-only props for the SIDE heads of the rig (26.07). Same contract as
+     sim/models/camera_gantry/model.sdf, and for the same reason: the three
+     camera models in sim/worlds/cell_diverter_3cam.sdf carry a <sensor> and no
+     <visual> at all, so in any footage the rig is INVISIBLE — a demo of a
+     multi-head cell that shows no heads. These posts put a body and a lens at
+     the real sensor poses (1.5, ±0.90, 0.75) from src/constants.py.
+
+     NOT part of the world, on purpose: spawned into the running world only by
+     scripts/record_rig_video.sh, exactly like the spectator and the gantry, so
+     the frozen worlds and every measurement run never see it. No <collision>
+     anywhere — physics is untouched by construction.
+
+     INVISIBLE TO THE TOP HEAD'S ITEM MASK, and this is arithmetic that was got
+     WRONG on the first draft — the test below caught it. The top head sits at
+     z=1.9 with a half-view of 0.5817·(1.9−z) in y. A post standing at the sensor
+     |y|=0.90 has its near edge at 0.86 and so enters the frame at z=0.415, which
+     is ABOVE the belt top and at a range of 1.485 m — nearer than the mask limit
+     BELT_DEPTH_M − MASK_MARGIN_M = 1.495 m. The cell would have segmented its own
+     tripod as goods. The mount is therefore set BEHIND the camera body at
+     |y|=0.95 (near edge 0.91), which is where a real bracket stands anyway: it
+     now enters the frame only below z = 0.336 m, at a range of 1.564 m, clear of
+     the mask by 69 mm.
+     Locked by tests/test_camera_side_props.py.
+
+     VISIBLE TO THE OPPOSITE SIDE HEAD, and that is the point rather than a
+     defect. The two heads face each other across the belt, so this prop is what
+     finally makes the "housing in the neighbour's frame" failure mode of
+     cameras.md §4 real instead of hypothetical. It is measured there, in the
+     demo world, and never in a measurement world. -->
+<sdf version="1.8">
+  <model name="camera_side_props">
+    <static>true</static>
+    <link name="link">
+      <!-- -y head: post, housing at the sensor pose, lens facing the belt -->
+      <visual name="post_neg_y">
+        <pose>1.5 -0.95 0.34 0 0 0</pose>
+        <geometry><box><size>0.08 0.08 0.68</size></box></geometry>
+        <material><ambient>0.25 0.27 0.30 1</ambient><diffuse>0.25 0.27 0.30 1</diffuse></material>
+      </visual>
+      <visual name="housing_neg_y">
+        <pose>1.5 -0.94 0.75 0 0 0</pose>
+        <geometry><box><size>0.16 0.16 0.14</size></box></geometry>
+        <material><ambient>0.85 0.33 0.10 1</ambient><diffuse>0.85 0.33 0.10 1</diffuse></material>
+      </visual>
+      <visual name="lens_neg_y">
+        <pose>1.5 -0.85 0.73 1.5708 0 0</pose>
+        <geometry><cylinder><radius>0.035</radius><length>0.05</length></cylinder></geometry>
+        <material><ambient>0.05 0.05 0.05 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material>
+      </visual>
+
+      <!-- +y head -->
+      <visual name="post_pos_y">
+        <pose>1.5 0.95 0.34 0 0 0</pose>
+        <geometry><box><size>0.08 0.08 0.68</size></box></geometry>
+        <material><ambient>0.25 0.27 0.30 1</ambient><diffuse>0.25 0.27 0.30 1</diffuse></material>
+      </visual>
+      <visual name="housing_pos_y">
+        <pose>1.5 0.94 0.75 0 0 0</pose>
+        <geometry><box><size>0.16 0.16 0.14</size></box></geometry>
+        <material><ambient>0.85 0.33 0.10 1</ambient><diffuse>0.85 0.33 0.10 1</diffuse></material>
+      </visual>
+      <visual name="lens_pos_y">
+        <pose>1.5 0.85 0.73 1.5708 0 0</pose>
+        <geometry><cylinder><radius>0.035</radius><length>0.05</length></cylinder></geometry>
+        <material><ambient>0.05 0.05 0.05 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material>
+      </visual>
+    </link>
+  </model>
+</sdf>
