@@ -122,8 +122,7 @@ def test_bare_belt_is_not_goods():
     """
     pose = CAMERA_SIDE_NEG_Y_POSE_M
     depth = _rect_scene_frame(pose, [(BELT_TOP_Z_M, (0.5, 2.5), (-0.25, 0.25))])
-    mask, _pts, _index = item_prism_mask(depth, pose, _FX, _FY)
-    assert mask.sum() == 0
+    assert item_prism_mask(depth, pose, _FX, _FY).sum() == 0
     assert find_side_items(depth, pose, _FX, _FY) == []
 
 
@@ -164,7 +163,7 @@ def test_a_component_touching_the_frame_border_is_rejected():
     # frame — an item mid-passage rather than one standing fully in view.
     at_border = _rect_scene_frame(pose, [belt, (BELT_TOP_Z_M + 0.08, (0.0, 3.0),
                                                 (-0.10, 0.10))])
-    assert item_prism_mask(at_border, pose, _FX, _FY)[0].sum() > _MIN_ITEM_PX
+    assert item_prism_mask(at_border, pose, _FX, _FY).sum() > _MIN_ITEM_PX
     assert find_side_items(at_border, pose, _FX, _FY) == []
 
 
@@ -175,7 +174,7 @@ def test_specks_below_the_pixel_floor_are_not_items():
         (BELT_TOP_Z_M, (0.5, 2.5), (-0.25, 0.25)),
         (BELT_TOP_Z_M + 0.08, (1.48, 1.52), (-0.02, 0.02)),
     ])
-    speck = item_prism_mask(depth, pose, _FX, _FY)[0].sum()
+    speck = item_prism_mask(depth, pose, _FX, _FY).sum()
     assert 0 < speck < _MIN_ITEM_PX
     assert find_side_items(depth, pose, _FX, _FY) == []
 
@@ -238,4 +237,73 @@ def test_the_prism_excludes_structure_beyond_the_belt_edge():
 
     depth = _rect_scene_frame(pose, [(BELT_TOP_Z_M, (0.5, 2.5), (-0.25, 0.25)),
                                      structure])
-    assert item_prism_mask(depth, pose, _FX, _FY)[0].sum() == 0
+    assert item_prism_mask(depth, pose, _FX, _FY).sum() == 0
+
+
+def test_backprojecting_selected_pixels_matches_the_production_cloud():
+    """The corridor optimisation must not become a second projection.
+
+    `backproject_pixels` is the body of `src.multiview.world_cloud_from_depth`
+    restricted to a pixel list, so that only the pixels that survived the prism
+    ever become world points. Duplicated domain maths is a bug by project rule;
+    what makes it legitimate is this equality, checked rather than asserted in a
+    comment. If the production projection changes, this fails.
+    """
+    from probe_side_fallback import MAX_RANGE_M, backproject_pixels
+
+    from src.multiview import world_cloud_from_depth
+
+    pose = CAMERA_SIDE_NEG_Y_POSE_M
+    depth = _rect_scene_frame(pose, [
+        (BELT_TOP_Z_M, (0.5, 2.5), (-0.25, 0.25)),
+        (BELT_TOP_Z_M + 0.08, (1.40, 1.60), (-0.10, 0.10)),
+    ])
+    valid = np.isfinite(depth) & (depth > 0.0) & (depth < MAX_RANGE_M)
+    vs, us = np.nonzero(valid)
+    reference = world_cloud_from_depth(depth, pose, _FX, _FY, max_range_m=MAX_RANGE_M)
+    assert np.allclose(backproject_pixels(depth, vs, us, pose, _FX, _FY), reference)
+
+
+def test_the_depth_corridor_selects_exactly_what_backprojection_would():
+    """The fast path and the obvious path must disagree on ZERO pixels.
+
+    The corridor exists only because it is cheaper: the prism is an intersection
+    of three slabs, each linear in depth, so it collapses to a per-pixel depth
+    interval that depends on the pose alone. An optimisation that quietly changes
+    WHICH pixels are goods would move every measured number in this probe, so the
+    equivalence is checked against the definition it replaced.
+    """
+    from probe_side_fallback import (
+        BELT_HALF_WIDTH_M,
+        CAMERA_X_M,
+        ITEM_CEILING_M,
+        SIDE_BELT_MARGIN_M,
+        TOP_VIEW_HALF_X_M,
+    )
+
+    pose = CAMERA_SIDE_NEG_Y_POSE_M
+    belt = (BELT_TOP_Z_M, (0.5, 2.5), (-0.25, 0.25))
+    goods = (BELT_TOP_Z_M + 0.08, (1.40, 1.60), (-0.10, 0.10))
+    # Structure on the head's OWN side of the belt: it occludes rather than
+    # merely sitting out of bounds, so the second scene exercises the corridor
+    # where there is nothing to find as well as where there is.
+    structure = (BELT_TOP_Z_M + 0.21, (1.2, 1.8), (-0.50, -0.35))
+
+    def _slow_mask(depth):
+        pts, vs, us = side_world_points(depth, pose, _FX, _FY)
+        height = pts[:, 2] - BELT_TOP_Z_M
+        inside = ((height >= SIDE_BELT_MARGIN_M) & (height <= ITEM_CEILING_M)
+                  & (np.abs(pts[:, 1]) <= BELT_HALF_WIDTH_M)
+                  & (np.abs(pts[:, 0] - CAMERA_X_M) <= TOP_VIEW_HALF_X_M))
+        out = np.zeros(depth.shape, dtype=bool)
+        out[vs[inside], us[inside]] = True
+        return out
+
+    with_goods = _rect_scene_frame(pose, [belt, goods])
+    fast = item_prism_mask(with_goods, pose, _FX, _FY)
+    assert fast.sum() > _MIN_ITEM_PX, "fixture stopped exercising the prism"
+    assert np.array_equal(fast, _slow_mask(with_goods)), "goods scene disagrees"
+
+    occluded = _rect_scene_frame(pose, [belt, goods, structure])
+    assert np.array_equal(item_prism_mask(occluded, pose, _FX, _FY),
+                          _slow_mask(occluded)), "occluded scene disagrees"

@@ -113,7 +113,7 @@ from src.constants import (  # noqa: E402
     MAX_DIMS_MM,
     SIDE_BELT_MARGIN_M,
 )
-from src.multiview import world_cloud_from_depth  # noqa: E402
+from src.multiview import camera_axes, world_cloud_from_depth  # noqa: E402
 from src.perception import (  # noqa: E402
     BELT_DEPTH_M,
     BELT_TOP_Z_M,
@@ -187,26 +187,102 @@ def side_world_points(depth_m, pose, fx=FX, fy=FY, cx=None, cy=None):
     return pts, vs, us
 
 
-def item_prism_mask(depth_m, pose, fx=FX, fy=FY, cx=None, cy=None):
-    """(raster mask of goods pixels, world points, raster->point index).
+def _slab(c, k, lo, hi):
+    """Depth interval where `c + d*k` stays inside [lo, hi], per pixel.
 
-    A pixel is goods if its world point stands in the prism over the belt:
-    between SIDE_BELT_MARGIN_M and the sorter's tallest admissible item, inside
-    the belt edges, and inside the along-belt window the top head works in.
+    Empty is encoded as (+inf, -inf) so an intersection by max/min propagates it.
     """
-    pts, vs, us = side_world_points(depth_m, pose, fx, fy, cx, cy)
-    mask = np.zeros(depth_m.shape, dtype=bool)
-    index = np.full(depth_m.shape, -1, dtype=np.int64)
-    if not len(pts):
-        return mask, pts, index
-    index[vs, us] = np.arange(len(pts))
-    height_m = pts[:, 2] - BELT_TOP_Z_M
-    inside = ((height_m >= SIDE_BELT_MARGIN_M)
-              & (height_m <= ITEM_CEILING_M)
-              & (np.abs(pts[:, 1]) <= BELT_HALF_WIDTH_M)
-              & (np.abs(pts[:, 0] - CAMERA_X_M) <= TOP_VIEW_HALF_X_M))
-    mask[vs[inside], us[inside]] = True
-    return mask, pts, index
+    with np.errstate(divide="ignore", invalid="ignore"):
+        at_lo, at_hi = (lo - c) / k, (hi - c) / k
+    d_lo = np.where(k > 0.0, at_lo, at_hi)
+    d_hi = np.where(k > 0.0, at_hi, at_lo)
+    # A ray parallel to the slab either lies inside it at every depth or at none.
+    flat = np.abs(k) < 1e-12
+    inside = lo <= c <= hi
+    d_lo = np.where(flat, 0.0 if inside else np.inf, d_lo)
+    d_hi = np.where(flat, np.inf if inside else -np.inf, d_hi)
+    return d_lo, d_hi
+
+
+_CORRIDOR_CACHE = {}
+
+
+def depth_corridor(shape, pose, fx=FX, fy=FY, cx=None, cy=None):
+    """(d_lo, d_hi) images: the depth range in which a pixel's point is goods.
+
+    THE WHOLE POINT OF THIS FUNCTION IS THAT IT DOES NOT BACKPROJECT. The prism
+    is an intersection of three slabs — height over the belt, the belt edges, the
+    along-belt window the top head works in — and a pixel's ray is a fixed
+    direction, so each slab is LINEAR in depth and collapses to an interval. The
+    intersection depends only on the pose and the intrinsics, never on the frame,
+    so it is computed once per head and reused for every frame afterwards.
+
+    That is the difference between 20-37 ms and a pair of comparisons: the first
+    cut of this probe backprojected all ~200 000 valid pixels to world metres
+    just to discover which of them were goods, and the design pass of 25.07 had
+    already predicted 5-8.5 ms for the raster route.
+    """
+    h, w = shape
+    if cx is None:
+        cx = w / 2.0
+    if cy is None:
+        cy = h / 2.0
+    key = (h, w, pose, fx, fy, cx, cy)
+    if key in _CORRIDOR_CACHE:
+        return _CORRIDOR_CACHE[key]
+
+    right, down, forward = camera_axes(pose)
+    us, vs = np.meshgrid(np.arange(w, dtype=np.float64),
+                         np.arange(h, dtype=np.float64))
+    # point(d) = cam + d * ray, with the ray as world_cloud_from_depth builds it:
+    # depth is the component along `forward`, so the ray is not unit length.
+    ray = (np.multiply.outer((us - cx) / fx, right)
+           + np.multiply.outer((vs - cy) / fy, down)
+           + forward)
+    cam = np.asarray(pose[0], dtype=float)
+
+    lo_hi = [
+        _slab(cam[2], ray[..., 2], BELT_TOP_Z_M + SIDE_BELT_MARGIN_M,
+              BELT_TOP_Z_M + ITEM_CEILING_M),
+        _slab(cam[1], ray[..., 1], -BELT_HALF_WIDTH_M, BELT_HALF_WIDTH_M),
+        _slab(cam[0], ray[..., 0], CAMERA_X_M - TOP_VIEW_HALF_X_M,
+              CAMERA_X_M + TOP_VIEW_HALF_X_M),
+    ]
+    d_lo = np.maximum.reduce([lo for lo, _hi in lo_hi] + [np.zeros((h, w))])
+    d_hi = np.minimum.reduce([hi for _lo, hi in lo_hi]
+                             + [np.full((h, w), MAX_RANGE_M)])
+    _CORRIDOR_CACHE[key] = (d_lo, d_hi)
+    return d_lo, d_hi
+
+
+def item_prism_mask(depth_m, pose, fx=FX, fy=FY, cx=None, cy=None):
+    """Raster mask of the pixels whose point stands in the prism over the belt."""
+    depth_m = np.asarray(depth_m, dtype=np.float64)
+    d_lo, d_hi = depth_corridor(depth_m.shape, pose, fx, fy, cx, cy)
+    return (np.isfinite(depth_m) & (depth_m > 0.0)
+            & (depth_m >= d_lo) & (depth_m <= d_hi))
+
+
+def backproject_pixels(depth_m, vs, us, pose, fx=FX, fy=FY, cx=None, cy=None):
+    """World metres of the named pixels only — the same geometry, fewer points.
+
+    Deliberately NOT a second implementation of the projection: it is the body of
+    `src.multiview.world_cloud_from_depth` restricted to a pixel list, and the
+    equality of the two is asserted in
+    `test_backprojecting_selected_pixels_matches_the_production_cloud`. Without
+    that test this would be duplicated domain maths, which the project forbids.
+    """
+    depth_m = np.asarray(depth_m, dtype=np.float64)
+    if cx is None:
+        cx = depth_m.shape[1] / 2.0
+    if cy is None:
+        cy = depth_m.shape[0] / 2.0
+    right, down, forward = camera_axes(pose)
+    d = depth_m[vs, us]
+    xc = (us - cx) * d / fx
+    yc = (vs - cy) * d / fy
+    return (np.asarray(pose[0], dtype=float) + np.outer(xc, right)
+            + np.outer(yc, down) + np.outer(d, forward))
 
 
 def side_dims_mm(points_m):
@@ -239,7 +315,7 @@ def find_side_items(depth_m, pose, fx=FX, fy=FY, cx=None, cy=None):
     """
     from scipy.ndimage import label
 
-    mask, pts, index = item_prism_mask(depth_m, pose, fx, fy, cx, cy)
+    mask = item_prism_mask(depth_m, pose, fx, fy, cx, cy)
     labels, count = label(mask, structure=np.ones((3, 3), dtype=int))
     h, w = depth_m.shape
     found = []
@@ -251,10 +327,13 @@ def find_side_items(depth_m, pose, fx=FX, fy=FY, cx=None, cy=None):
         ys, xs = np.nonzero(component)
         if xs.min() == 0 or ys.min() == 0 or xs.max() == w - 1 or ys.max() == h - 1:
             continue
-        dims = side_dims_mm(pts[index[component]])
+        # Backprojected HERE and not before: only the pixels that survived the
+        # prism and both rejections ever become world points.
+        pts = backproject_pixels(depth_m, ys, xs, pose, fx, fy, cx, cy)
+        dims = side_dims_mm(pts)
         if dims is None:
             continue
-        found.append(SideDetection(dims, n_px, pts[index[component]]))
+        found.append(SideDetection(dims, n_px, pts))
     return sorted(found, key=lambda d: d.n_pixels, reverse=True)
 
 
@@ -367,8 +446,7 @@ def phantoms_on_a_belt_without_goods(side_frames):
         # Erase the WHOLE prism, not just the components that survived the size and
         # border filters: a fair empty-belt frame must carry no goods returns at
         # all, including the ones the detector rejected.
-        mask, _pts, _index = item_prism_mask(blanked, pose)
-        blanked[mask] = 0.0
+        blanked[item_prism_mask(blanked, pose)] = 0.0
         out.append((name, find_side_items(blanked, pose)))
     return out
 
