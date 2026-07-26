@@ -354,7 +354,7 @@ def main(argv=None):
             seeds = [0] if s_mm == 0.0 and s_deg == 0.0 else CALIB_SEEDS
             for fusion in FUSIONS:
                 mis, tol, total, culprits, errs, bands = 0, 0, 0, {}, [], {}
-                mis_cons = 0
+                mis_cons, cost = 0, {}
                 # rng is rebuilt per fusion, so every rule sees the IDENTICAL
                 # sequence of misregistration draws: the comparison is between
                 # fusion rules, not between random draws.
@@ -385,8 +385,17 @@ def main(argv=None):
                         # strict rule rather than instead of it: the strict column
                         # keeps every earlier number comparable, and the gap
                         # between the two IS the value of the policy.
-                        if classify_conservative(dims, t_k) != t_cat:
+                        got = classify_conservative(dims, t_k)
+                        if got != t_cat:
                             mis_cons += 1
+                            # WHERE a misroute lands, not just that it happened.
+                            # The three destinations cost different things on a
+                            # line: C is manual handling (we pay minutes), D is
+                            # re-packing (also a human step), B is the main
+                            # sorter and therefore a jam. A rig that errs more
+                            # often but only toward C beats one that errs less
+                            # often toward B, and no "% in tolerance" shows that.
+                            cost[got] = cost.get(got, 0) + 1
                         if wrong:
                             mis += 1
                             culprits[slug] = culprits.get(slug, 0) + 1
@@ -402,7 +411,7 @@ def main(argv=None):
                 # four call sites unpack that tuple positionally, and a silently
                 # shifted field is the classic way a report starts printing the
                 # wrong column.
-                results_cons[(cfg_name, calib_name, fusion)] = mis_cons
+                results_cons[(cfg_name, calib_name, fusion)] = (mis_cons, cost)
                 print(f"готово: {cfg_name:26} | {calib_name:28} | {fusion}", flush=True)
 
     for fusion in FUSIONS:
@@ -424,7 +433,7 @@ def main(argv=None):
             row = f"{calib_name:30}"
             for cfg_name in CONFIGS:
                 n_runs = 1 if calib_name.startswith("идеальная") else len(CALIB_SEEDS)
-                row += (f"{results_cons[(cfg_name, calib_name, fusion)] / n_runs:>21.1f}"
+                row += (f"{results_cons[(cfg_name, calib_name, fusion)][0] / n_runs:>21.1f}"
                         f"/{len(poses)}")
             print(row)
 
