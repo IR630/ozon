@@ -118,6 +118,12 @@
 
 #### Аудит планов незамёрженных веток (24.07)
 
+> **Квота CI, уточнение 26.07:** ручной workflow уже есть в `main`,
+> `feat/line-readiness`, `feat/three-cameras`, `fix/robustness-audit` и
+> `cv/round-body-to-d`. В `work/a2-heads-noise`, `feat/two-cameras` и старых
+> fix-ветках ещё есть автоматические push/PR-триггеры — до их перевода на
+> `workflow_dispatch` новые коммиты туда не отправлять.
+
 | Ветка / пункт | Статус относительно `main` | Действие |
 |---|---|---|
 | `codex/cv-helmet-id-occlusion`, `cv/section-k-geometric`, `int/estop-engaged-recovery` | уже поглощены последующей историей `main` | не возвращаться |
