@@ -82,6 +82,39 @@ def test_millimetre_noise_is_reported_but_not_counted_as_a_moved_cell(tmp_path):
     assert dims_rows[0][3] == 3
 
 
+def test_dims_are_compared_on_the_median_frame_not_the_last_one(tmp_path):
+    """Routing uses the median over frames, so the comparison must too.
+
+    `ItemAggregator` routes on the median of the frames it saw; the last line in
+    a log is just the last one that happened to flush. Where several lines
+    survived the truncation, comparing medians removes a tail that comparing last
+    lines would report as a regression.
+    """
+    before, after = tmp_path / "before", tmp_path / "after"
+    write_cell(before, "bottle", 2, [
+        verdict("bottle", "D", "PASS"),
+        PERCEPTION.format(dims="303x90x88", k="0.25", tail=""),
+        PERCEPTION.format(dims="302x90x87", k="0.25", tail=""),
+        PERCEPTION.format(dims="200x90x87", k="0.44", tail=""),  # truncated, last
+        CLASSIFIER.format(cat="D", k="0.250"),
+    ])
+    write_cell(after, "bottle", 2, [
+        verdict("bottle", "D", "PASS"),
+        PERCEPTION.format(dims="303x89x88", k="0.25", tail=" heads=1"),
+        PERCEPTION.format(dims="302x90x87", k="0.25", tail=" heads=1"),
+        PERCEPTION.format(dims="303x89x88", k="0.25", tail=" heads=1"),  # whole, last
+        CLASSIFIER.format(cat="D", k="0.248500"),
+    ])
+
+    moved, dims_rows, _ = compare(str(before), str(after))
+
+    assert moved == []
+    # Last-frame comparison would have said 103 mm; the medians differ by 1.
+    assert dims_rows[0][1] == (302, 90, 87)
+    assert dims_rows[0][2] == (303, 89, 88)
+    assert dims_rows[0][3] == 1
+
+
 def test_a_cell_missing_from_one_side_is_named_instead_of_silently_dropped(tmp_path):
     """An interrupted sweep must not pass the gate by comparing fewer cells."""
     before, after = tmp_path / "before", tmp_path / "after"

@@ -26,19 +26,48 @@ from __future__ import annotations
 import argparse
 import glob
 import os
+import statistics
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from triage_matrix import parse_cell  # noqa: E402
+from triage_matrix import PERCEPTION_RE, parse_cell  # noqa: E402
+
+
+def median_dims_mm(path):
+    """Per-axis MEDIAN of every perception line in one cell log, or None.
+
+    NOT the last line, which is an arbitrary late frame rather than a summary.
+
+    READ THIS BEFORE TRUSTING ANY DIMS NUMBER OUT OF A CENSUS LOG. The episode
+    log does not contain the frames the routing was computed from.
+    `run_skeleton.sh` kills the launch the moment the verdict is in, which
+    truncates the nodes' stdout, so a cell whose classifier line reports `n=16`
+    can leave exactly ONE perception line behind — and which one survived is a
+    flush artefact. Measured case, `bottle` oi=2 on seed 3: baseline kept a
+    single 200x90x87 line, the branch a single 303x89x88 one, both with the item
+    at x~2.0 and both routed D. That 103 mm is a difference between two
+    arbitrarily surviving frames, NOT between two measurements of the same thing.
+
+    The median is still the right reduction — it is what `ItemAggregator` applies
+    to route the item, and on cells where several lines did survive it removes
+    the tail. It cannot repair a cell that flushed only one line, which is
+    precisely why dims are reported here and never gated.
+    """
+    with open(path, encoding="utf-8", errors="replace") as handle:
+        text = handle.read()
+    dims = [(int(m["w"]), int(m["h"]), int(m["d"])) for m in PERCEPTION_RE.finditer(text)]
+    if not dims:
+        return None
+    return tuple(int(statistics.median(axis)) for axis in zip(*dims))
 
 
 def read_census(logdir):
-    """{(slug, orient): Cell} for every episode log in one census dir."""
+    """{(slug, orient): (Cell, median dims)} for every episode log in one dir."""
     cells = {}
     for path in sorted(glob.glob(os.path.join(logdir, "matrix_*.log"))):
         cell = parse_cell(path)
-        cells[(cell.slug, cell.orient)] = cell
+        cells[(cell.slug, cell.orient)] = (cell, median_dims_mm(path))
     return cells
 
 
@@ -56,15 +85,17 @@ def compare(baseline_dir, candidate_dir):
 
     moved, dims_rows, missing = [], [], []
     for key in sorted(baseline.keys() | candidate.keys()):
-        before, after = baseline.get(key), candidate.get(key)
-        if before is None or after is None:
-            missing.append((key, "candidate" if after is None else "baseline"))
+        before_entry, after_entry = baseline.get(key), candidate.get(key)
+        if before_entry is None or after_entry is None:
+            missing.append((key, "candidate" if after_entry is None else "baseline"))
             continue
+        before, before_dims = before_entry
+        after, after_dims = after_entry
         if before.verdict != after.verdict or before.category != after.category:
             moved.append((key, before, after))
-        delta = _dims_delta_mm(before.dims_mm, after.dims_mm)
+        delta = _dims_delta_mm(before_dims, after_dims)
         if delta is not None:
-            dims_rows.append((key, before.dims_mm, after.dims_mm, delta))
+            dims_rows.append((key, before_dims, after_dims, delta))
     return moved, dims_rows, missing
 
 
@@ -91,8 +122,10 @@ def main() -> int:
     if dims_rows:
         worst = max(dims_rows, key=lambda row: row[3])
         (slug, oi), before_dims, after_dims, delta = worst
-        print(f"  dims compared on {len(dims_rows)} cells; "
-              f"largest per-axis delta {delta} mm on {slug} oi={oi} "
+        deltas = sorted(row[3] for row in dims_rows)
+        print(f"  dims (per-cell MEDIAN over frames) compared on {len(dims_rows)} cells; "
+              f"median delta {deltas[len(deltas) // 2]} mm, "
+              f"largest {delta} mm on {slug} oi={oi} "
               f"({'x'.join(map(str, before_dims))} -> {'x'.join(map(str, after_dims))})")
     else:
         print("  dims compared on 0 cells (no perception line on either side)")
