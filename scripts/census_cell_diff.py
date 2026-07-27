@@ -40,19 +40,24 @@ def median_dims_mm(path):
     NOT the last line, which is an arbitrary late frame rather than a summary.
 
     READ THIS BEFORE TRUSTING ANY DIMS NUMBER OUT OF A CENSUS LOG. The episode
-    log does not contain the frames the routing was computed from.
-    `run_skeleton.sh` kills the launch the moment the verdict is in, which
-    truncates the nodes' stdout, so a cell whose classifier line reports `n=16`
-    can leave exactly ONE perception line behind — and which one survived is a
-    flush artefact. Measured case, `bottle` oi=2 on seed 3: baseline kept a
-    single 200x90x87 line, the branch a single 303x89x88 one, both with the item
-    at x~2.0 and both routed D. That 103 mm is a difference between two
-    arbitrarily surviving frames, NOT between two measurements of the same thing.
+    log does not contain the frames the routing was computed from, and not by
+    accident: `run_skeleton.sh:282` ends the cell with
 
-    The median is still the right reduction — it is what `ItemAggregator` applies
-    to route the item, and on cells where several lines did survive it removes
-    the tail. It cannot repair a cell that flushed only one line, which is
-    precisely why dims are reported here and never gated.
+        grep -E "item [0-9]+:" "$NODE_LOG" | tail -3
+
+    so a cell whose classifier reports `n=16` deliberately keeps at most the last
+    three matching lines, perception and classifier lines sharing that budget.
+    The dims visible in a census log are therefore the LAST frames of the
+    episode, when the item is leaving the camera window — never a summary of it.
+    Measured case, `bottle` oi=2 on seed 3: baseline kept one 200x90x87 line, the
+    branch one 303x89x88 line, both with the item at x~2.0 and both routed D.
+    That 103 mm is a gap between two late frames, not between two measurements of
+    the same thing.
+
+    The median is the right reduction anyway — it is what `ItemAggregator`
+    applies to route the item, and where several lines survived the tail it
+    removes a spurious outlier. On a cell that kept a single line it can do
+    nothing, which is precisely why dims are reported here and never gated.
     """
     with open(path, encoding="utf-8", errors="replace") as handle:
         text = handle.read()

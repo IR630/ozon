@@ -44,9 +44,12 @@ def timings(logdir):
             text = handle.read()
         stages = STAGES_RE.search(text)
         cycle = CYCLE_RE.search(text)
-        if not stages:
+        # `stages:` is instrumentation this branch added; main does not print it.
+        # Requiring it silently dropped EVERY main cell and reported "no cells",
+        # which reads exactly like a failed control. The cycle line is on both.
+        if not stages and not cycle:
             continue
-        row = {k: float(v) for k, v in stages.groupdict().items()}
+        row = {k: float(v) for k, v in stages.groupdict().items()} if stages else {}
         if cycle:
             row["cycle"] = float(cycle["cycle"])
         out[(m["slug"], int(m["oi"]))] = row
