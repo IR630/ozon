@@ -28,10 +28,17 @@ MORE belt leaking into the item mask than with no fit at all. Hence: capture a
 narrow strip around where the belt is expected, fit, trim by MAD, refit.
 
 Measured on the live rig dumps (`runs/frames/*_3cam`, `docs/experiments.md` 26.07):
-trimming takes the side heads from 3.8-4.3 mm rms to 0.44-1.02 mm, and the top
-head reads the belt at 398.8 mm against the side heads' 400.9 mm — a 2.1 mm
-disagreement between heads about one physical plane, which is the number a
-calibration procedure exists to remove.
+trimming takes the side heads from 3.8-4.3 mm rms to 0.44-1.02 mm.
+
+A WARNING ABOUT `offset_m`, WHICH ALREADY COST ONE WRONG NUMBER IN THE REPORT.
+`offset_m` is the plane's distance from the WORLD ORIGIN along its normal — it is
+not the belt's height under the rig, and the two differ by the tilt times the
+lever arm. The top head sits 1.5 m along +x with a 0.066 deg tilt, so its
+`offset_m` reads 398.8 mm where the belt under it is at 400.5 mm. Comparing raw
+`offset_m` between heads produced a claimed 2.1 mm head-to-head disagreement that
+does not exist; evaluated where the heads actually look the spread is 0.48 mm
+(`src/calibration.py`, `docs/experiments.md` 27.07). Compare planes at a point
+ON the belt, never at the origin.
 """
 from __future__ import annotations
 
