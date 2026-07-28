@@ -42,3 +42,17 @@ def test_the_budgets_stay_overridable():
     for name in ("SOFT_START_TRIES", "CELL_TIMEOUT"):
         assert f"export {name}=${{{name}:-" in TEXT, (
             f"{name} must keep the :- form so a run can pin its own budget")
+
+
+def test_the_stream_path_honours_the_same_soft_start_knob():
+    """run_stream.sh must not hardcode the one-head wait.
+
+    It did, as a literal `seq 1 60`, and the three-head stream suite therefore
+    reported 0/6 episodes with "belt never reached full speed" while the rig was
+    fine — the same failure the census hit, on the path that measures THROUGHPUT,
+    which is the number the jury actually scores.
+    """
+    stream = (SCRIPT.parent / "run_stream.sh").read_text(encoding="utf-8")
+    assert 'seq 1 "${SOFT_START_TRIES:-' in stream, (
+        "run_stream.sh must take SOFT_START_TRIES; a hardcoded wait cannot measure "
+        "a rig that boots slower than the shipped one")

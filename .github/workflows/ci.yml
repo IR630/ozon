@@ -1,8 +1,16 @@
 name: CI
 
-# CI is temporarily manual-only to conserve the mirror owner's Actions minutes.
-# Restore push and pull_request triggers before the final acceptance run.
+# Automatic again (28.07): the acceptance run is close and a bundle that is only
+# checked when someone remembers to press a button is not checked.
+#
+# Scoped to main and pull requests rather than every branch push — that is what the
+# manual-only period was protecting (Actions minutes on the personal mirror), and an
+# experimental branch does not need a full Gazebo e2e on every commit. A branch that
+# wants the full gate can still ask for it: workflow_dispatch stays.
 on:
+  push:
+    branches: [main]
+  pull_request:
   workflow_dispatch:
 
 jobs:

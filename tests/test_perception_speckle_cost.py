@@ -19,11 +19,14 @@ import numpy as np
 
 from src.perception import BELT_DEPTH_M, MASK_MARGIN_M, measure_items
 
-# Measured on this fixture, not guessed: the old per-component full-frame mask took
-# 1062 ms and the bincount+bbox pass takes 7 ms. A 500 ms bound therefore fails the
-# old implementation by 2x and passes the new one with ~70x of headroom — wide enough
-# that it is a cost contract, not a stopwatch on one machine's mood.
-_SEGMENTATION_BUDGET_S = 0.5
+# RELATIVE, not absolute: an absolute millisecond bound is a stopwatch on whatever
+# machine happens to run it, and a shared CI runner is exactly where that misfires.
+# The contract is that speckles the size gate throws away cost almost nothing, so the
+# speckled frame is compared against the SAME frame without them. Measured: the old
+# per-component full-frame mask cost ~35x the clean frame, the bincount+bbox pass
+# costs ~1.2x. A 5x bound fails the old implementation by 7x and passes the new one
+# with 4x of headroom.
+_MAX_SPECKLE_COST_RATIO = 5.0
 _SPECKLES = 4000
 
 
@@ -64,15 +67,23 @@ def test_speckle_components_do_not_change_what_is_found():
     assert found_speckled[0].k == found_clean[0].k
 
 
+def _median_seconds(frame, repeats=3):
+    measure_items(frame)                 # warm scipy/numpy import paths
+    runs = []
+    for _ in range(repeats):
+        start = time.perf_counter()
+        measure_items(frame)
+        runs.append(time.perf_counter() - start)
+    return sorted(runs)[len(runs) // 2]
+
+
 def test_segmentation_cost_does_not_scale_with_discarded_speckles():
     rng = np.random.default_rng(0)
-    speckled = _add_speckles(_belt_with_plate(), _SPECKLES, rng)
+    clean = _belt_with_plate()
+    speckled = _add_speckles(clean, _SPECKLES, rng)
 
-    measure_items(speckled)              # warm scipy/numpy import paths
-    start = time.perf_counter()
-    measure_items(speckled)
-    elapsed = time.perf_counter() - start
+    ratio = _median_seconds(speckled) / _median_seconds(clean)
 
-    assert elapsed < _SEGMENTATION_BUDGET_S, (
-        f"segmenting one item out of {_SPECKLES} speckles took {elapsed:.2f}s; "
-        "the per-component full-frame mask is back")
+    assert ratio < _MAX_SPECKLE_COST_RATIO, (
+        f"{_SPECKLES} sub-gate speckles made segmentation {ratio:.1f}x more "
+        "expensive; the per-component full-frame mask is back")

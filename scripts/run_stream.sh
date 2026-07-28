@@ -171,7 +171,13 @@ LAUNCH=$!
 # Feed only once the belt is at full speed: the controller soft-starts it (a 0->1
 # m/s step launches round items), and until the ramp is done a feed delay in
 # seconds would not be the gap in metres the plan promised.
-for _ in $(seq 1 60); do
+#
+# SOFT_START_TRIES x 0.5 s, same knob and same default as run_skeleton.sh. It used
+# to be a hardcoded 60, and a three-head world boots ~40 s against that 30 s: the
+# whole 3-head stream suite reported 0/6 episodes with "belt never reached full
+# speed" while the rig itself was fine. A harness constant that cannot be raised
+# does not measure the rig, it measures the constant.
+for _ in $(seq 1 "${SOFT_START_TRIES:-60}"); do
     grep -q "soft-start done" "$LOGDIR/skeleton.log" && break
     sleep 0.5
 done
