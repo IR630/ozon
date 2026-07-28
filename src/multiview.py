@@ -75,8 +75,18 @@ def world_cloud_from_depth(depth_m, pose, fx, fy, cx=None, cy=None, max_range_m=
     right, down, forward = camera_axes(pose)
     xc = (us - cx) * d / fx
     yc = (vs - cy) * d / fy
-    return np.asarray(pose[0], float) + np.outer(xc, right) + np.outer(yc, down) \
-        + np.outer(d, forward)
+    # Per-axis, not three np.outer products. The outer form allocated four N x 3
+    # temporaries (~19 MB per head on a 196k-point frame) and summed them; a rig at
+    # 15 Hz pays that per side head per frame. Three heads came to 88.6 ms against a
+    # 66.7 ms period — the node fell behind and the verdict for a moving item arrived
+    # after the diverter (bottle oi=1 rode to the end of the belt in 2 of 3 draws).
+    # Same arithmetic per component, in the same order, so the result is unchanged;
+    # `tests/test_multiview.py` pins that against the previous formulation.
+    origin = np.asarray(pose[0], float)
+    out = np.empty((d.size, 3))
+    for axis in range(3):
+        out[:, axis] = origin[axis] + xc * right[axis] + yc * down[axis] + d * forward[axis]
+    return out
 
 
 def compensate_belt_travel(pts_m, dt_s, belt_speed_m_s=BELT_SPEED_M_S):
