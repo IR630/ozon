@@ -219,6 +219,19 @@ def test_a_side_frame_is_backprojected_once_per_frame_not_once_per_body(monkeypa
         assert len(calls) == 1, (
             f"one side head and one top frame must cost ONE backprojection, "
             f"got {len(calls)} — the call is back inside the per-item loop")
+
+        # ...and an EMPTY belt must cost none at all. Hoisting the call out of the
+        # per-item loop made it unconditional, so idle frames — which is most frames
+        # between items — paid a full-frame backprojection per side head forever.
+        calls.clear()
+        empty = _depth_image_msg()
+        empty_depth = np.full((480, 640), BELT_DEPTH_M, dtype=np.float32)
+        empty.data = empty_depth.tobytes()
+        empty.header.stamp.sec = 0
+        empty.header.stamp.nanosec = 0
+        node.on_depth(empty)
+        assert calls == [], (
+            f"an empty belt must not backproject any side frame, got {len(calls)}")
         node.destroy_node()
     finally:
         rclpy.shutdown()

@@ -150,8 +150,13 @@ class PerceptionNode(Node):
         t_top = self._stamp_s(msg.header)
         fx = self.fx if self.fx is not None else FX
         fy = self.fy if self.fy is not None else FY
+        # `and measurements` is not a micro-optimisation. Hoisting the backprojection
+        # out of the per-item loop made it unconditional, and the belt is EMPTY most
+        # of the time between items — so every idle frame paid one full-frame
+        # backprojection PER SIDE HEAD (~45 ms each, 15 Hz, forever), and a 3-head rig
+        # paid it twice. Nothing to fuse into means nothing to backproject.
         side_world = (self._side_world_clouds(t_top, fx, fy, self.cx, self.cy)
-                      if self._side_frames else [])
+                      if self._side_frames and measurements else [])
         for item_id, measurement in zip(item_ids, measurements):
             dims_mm = measurement.dims_mm
             n_side = 0
