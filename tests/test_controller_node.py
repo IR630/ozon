@@ -37,6 +37,26 @@ def _spin_both(a, b, seconds):
         rclpy.spin_once(b, timeout_sec=0.05)
 
 
+def _spin_until(a, b, predicate, timeout=12.0):
+    """Spin both nodes until `predicate()` holds; returns its final value.
+
+    Replaces `_spin_both(a, b, <fixed seconds>)` wherever the test then asserts a
+    TERMINAL state. A fixed wall-clock wait asserts that THIS machine finished the
+    work within that many seconds — which is why the belt ramp read 0.875 instead of
+    its final 1.0 under load. The contract is "the ramp completes", not "it completes
+    in 3.5 s".
+    """
+    import time
+
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        if predicate():
+            return True
+        rclpy.spin_once(a, timeout_sec=0.02)
+        rclpy.spin_once(b, timeout_sec=0.02)
+    return predicate()
+
+
 def _joint_state(node, position, *, stamp=None):
     """Joint sample carrying the same clock as the controller under test."""
     msg = JointState(position=[position])
@@ -98,7 +118,12 @@ def test_soft_start_and_c_routing_fire_once():
         msg = _classification(node, 7, "C", PUSHER_X_M["C"] - 0.15)
         pub.publish(msg)
         pub.publish(msg)
-        _spin_both(node, probe, 3.5)
+        # Wait for the two terminal states this test asserts — the ramp at full speed
+        # and the stroke back to rest — instead of betting 3.5 s covers both.
+        _spin_until(node, probe, lambda: (
+            belt_cmds and belt_cmds[-1] == pytest.approx(BELT_SPEED_M_S)
+            and pusher_c_cmds and pusher_c_cmds[-1] == 0.0
+            and pusher_c_cmds.count(-_PUSH_SPEED_M_S) == 1))
 
         # soft start: monotonic ramp ending at BELT_SPEED_M_S, never a step to full
         assert belt_cmds, "no belt commands seen"
