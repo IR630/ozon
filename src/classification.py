@@ -71,6 +71,8 @@ def classify(dims_mm, k):
     d = np.sort(np.asarray(dims_mm, dtype=float))[::-1]
     if d.shape != (3,):
         raise ValueError(f"expected 3 dimensions, got {dims_mm!r}")
+    if not np.all(np.isfinite(d)):
+        raise ValueError(f"dimensions must be finite: {d}")
     if np.any(d < SANE_DIM_MM_MIN) or np.any(d > SANE_DIM_MM_MAX):
         raise ValueError(f"dims out of physical range [{SANE_DIM_MM_MIN}, {SANE_DIM_MM_MAX}] mm: {d}")
     if not 0.0 <= k <= 1.0:

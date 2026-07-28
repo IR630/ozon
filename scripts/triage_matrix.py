@@ -32,7 +32,7 @@ from zone_verdict import FLOOR_Z, in_zone
 # whose final pose never crossed this line never reached the camera at all — it
 # jammed on the infeed, which is an EXECUTION failure, not a perception one.
 CAMERA_REACH_X = 1.0
-# Belt surface sits at z~0.45; the floor patches are at z<0.25 (run_skeleton.sh).
+# Belt surface sits at z~0.40; the floor patches are at z<0.05 (zone_verdict.py).
 BELT_Z_MIN = 0.35
 
 VERDICT_RE = re.compile(

@@ -215,8 +215,8 @@
          the pushers.
          PIVOT X IS CAMERA-CONSTRAINED, not PUSHER_X_M-aligned: the top-down
          camera (x=1.5, z=1.9, hfov 1.05) sees world x up to
-         1.5 + tan(0.525)*(1.9 - z); at the blade's bottom (z=0.35) that is
-         x=2.40. A parked blade inside the frame stands above the belt plane,
+         1.5 + tan(0.525)*(1.9 - z); at the blade's bottom (z=0.402) that is
+         x=2.37. A parked blade inside the frame stands above the belt plane,
          its mask blob touches the frame border and perception returns None on
          EVERY frame (the day-5 full-loop blocker: box_400 rode to B with zero
          "item N:" lines). So the parked blade (pivot - 0.8 m) must start at
@@ -374,8 +374,8 @@
          diverter's trace is the LANDING (109 m/s^2), not the wall contact
          (68-77) — so the chute buys routing and manipulation quality at once.
          Geometry: top edge at y=+-0.25 (the belt edge) but z=0.34 — deliberately
-         BELOW the blade's bottom edge (z=0.35, blade box 0.80x0.03x0.30 pivoted
-         at z=0.5). The first cut ran the chute up to belt height (z=0.4) and it
+         BELOW the blade's bottom edge (z=0.402, blade box 0.80x0.03x0.30 pivoted
+         at z=0.552). The first cut ran the chute up to belt height (z=0.4) and it
          WEDGED the blade: parked at y=+-0.28 the blade sits inside the chute's
          y-span, so at z=0.4 the plate cut straight through it and the diverter
          could not swing at all (bottle rode the belt to the end, FAIL). The item

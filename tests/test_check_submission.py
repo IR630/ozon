@@ -2,6 +2,7 @@ from pathlib import Path
 
 from scripts.check_submission import (
     MAX_TRACKED_BINARY_BYTES,
+    broken_local_links,
     has_https_video_link,
     submission_issues,
 )
@@ -50,3 +51,22 @@ def test_preflight_rejects_non_https_video_reference(tmp_path):
     issues = submission_issues(tmp_path, tracked=[])
 
     assert "CLOUD_LINK: README.md: missing HTTPS video URL" in issues
+
+
+def test_broken_local_links_flags_dead_crossrefs(tmp_path):
+    (tmp_path / "docs" / "report").mkdir(parents=True)
+    (tmp_path / "docs" / "report" / "a.md").write_text(
+        "ok [b](b.md), external [x](https://e), anchor [h](#h)", encoding="utf-8")
+    (tmp_path / "docs" / "report" / "b.md").write_text("hi", encoding="utf-8")
+    (tmp_path / "docs" / "report" / "dead.md").write_text(
+        "see [gone](nope.md)", encoding="utf-8")
+
+    issues = broken_local_links(tmp_path)
+
+    assert "BROKEN_LINK: docs/report/dead.md: nope.md" in issues
+    assert not any("a.md" in issue for issue in issues)
+
+
+def test_current_docs_have_no_broken_links():
+    # Regression guard: the shipped kit's cross-references all resolve.
+    assert broken_local_links(ROOT) == []

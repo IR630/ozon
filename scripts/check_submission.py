@@ -7,6 +7,7 @@ known placeholders and accidentally tracked large binaries.
 """
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -55,6 +56,12 @@ ALLOWED_LARGE_FILES = {
 ALLOWED_LARGE_PREFIXES = ("docs/Step/", "docs/Stl/")
 VIDEO_LABEL = "**Видеодемонстрация:**"
 
+# Local markdown cross-references in the submission docs must resolve — a
+# navigable kit (criteria section 7) cannot have dead links after a file is
+# renamed or moved. External and pure-anchor links are out of scope here.
+_MD_LINK = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
+_LINK_SCAN_DIRS = ("docs/report", "docs/defense")
+
 
 def tracked_files(root: Path) -> list[str]:
     result = subprocess.run(
@@ -73,6 +80,32 @@ def has_https_video_link(readme: str) -> bool:
         return False
     paragraph = remainder.split("\n\n", maxsplit=1)[0]
     return "https://" in paragraph
+
+
+def broken_local_links(root: Path) -> list[str]:
+    """Local markdown links in the submission docs that do not resolve to a file.
+
+    Catches a renamed or moved artifact leaving a dead cross-reference behind,
+    before the trial upload does. README plus every doc under docs/report and
+    docs/defense is scanned; http(s), mailto and pure-anchor targets are skipped.
+    """
+    docs = [root / "README.md"]
+    for sub in _LINK_SCAN_DIRS:
+        docs.extend(sorted((root / sub).glob("*.md")))
+    issues = []
+    for doc in docs:
+        if not doc.is_file():
+            continue
+        for target in _MD_LINK.findall(doc.read_text(encoding="utf-8", errors="replace")):
+            if target.startswith(("http://", "https://", "#", "mailto:")):
+                continue
+            path = target.split("#", 1)[0].strip()
+            if not path:
+                continue
+            if not (doc.parent / path).resolve().is_file():
+                relative = doc.relative_to(root).as_posix()
+                issues.append(f"BROKEN_LINK: {relative}: {target}")
+    return issues
 
 
 def submission_issues(root: Path, tracked: list[str] | None = None) -> list[str]:
@@ -109,6 +142,8 @@ def submission_issues(root: Path, tracked: list[str] | None = None) -> list[str]
                 and path.stat().st_size > MAX_TRACKED_BINARY_BYTES):
             size_mib = path.stat().st_size / (1024 * 1024)
             issues.append(f"LARGE: {relative}: {size_mib:.1f} MiB")
+
+    issues.extend(broken_local_links(root))
     return issues
 
 

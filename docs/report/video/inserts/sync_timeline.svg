@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" font-family="'Segoe UI','Helvetica Neue',Arial,sans-serif">
+  <!-- Video insert (segment 4/7, video_script.md): "Упреждение работает с запасом".
+       Numbers from calc_vs_sim.md / src/performance model: transit camera(x=1.5)->C pivot
+       (x=3.25) = 1.75 s @ 1 m/s; decision 5/15=0.33 s; fire_lead 0.5 s; margin 0.92 s.
+       Scale: x 200..1720 px = 1.75 s (868.6 px/s). 1920x1080. -->
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0a0e1a"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#bg2)"/>
+  <rect x="0" y="0" width="1920" height="10" fill="#005BFF"/>
+
+  <text x="150" y="170" fill="#ffffff" font-size="72" font-weight="700">Упреждение работает с запасом</text>
+  <rect x="152" y="200" width="120" height="6" fill="#005BFF"/>
+
+  <text x="960" y="400" text-anchor="middle" fill="#9aa4b2" font-size="40">транзит камера → лопасть&#160;C:&#160;&#160;1.75&#160;с&#160;&#160;(лента 1&#160;м/с)</text>
+
+  <!-- endpoint ticks -->
+  <line x1="200" y1="470" x2="200" y2="650" stroke="#3a4763" stroke-width="3"/>
+  <line x1="1720" y1="470" x2="1720" y2="650" stroke="#3a4763" stroke-width="3"/>
+  <text x="200" y="455" text-anchor="middle" fill="#c7d0dd" font-size="34">камера · x=1.5 м</text>
+  <text x="1720" y="455" text-anchor="middle" fill="#c7d0dd" font-size="34">актуатор · x=3.25 м</text>
+
+  <!-- the transit bar, split into decision | margin | fire_lead -->
+  <g>
+    <rect x="200"  y="510" width="287" height="90" fill="#334155"/>
+    <rect x="487"  y="510" width="799" height="90" fill="#00d1b2"/>
+    <rect x="1286" y="510" width="434" height="90" fill="#005BFF"/>
+    <rect x="200"  y="510" width="1520" height="90" fill="none" stroke="#1e2636" stroke-width="2"/>
+  </g>
+
+  <!-- segment labels -->
+  <g text-anchor="middle" font-size="36">
+    <text x="343"  y="700" fill="#c7d0dd">решение</text>
+    <text x="343"  y="746" fill="#ffffff" font-weight="700">0.33 с</text>
+    <text x="886"  y="700" fill="#00d1b2" font-weight="700">запас 0.92 с</text>
+    <text x="886"  y="746" fill="#8b97a7" font-size="30">(вердикт готов задолго до выстрела)</text>
+    <text x="1503" y="700" fill="#c7d0dd">упреждение</text>
+    <text x="1503" y="746" fill="#ffffff" font-weight="700">0.5 с</text>
+  </g>
+
+  <text x="150" y="945" fill="#6b7688" font-size="34">Решение готово задолго до выстрела → за все census ни одного no_fire.</text>
+  <text x="150" y="995" fill="#6b7688" font-size="34">Для зоны D (пивот 3.75 м) запас ещё больше: +1.42 с.</text>
+</svg>

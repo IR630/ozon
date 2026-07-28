@@ -69,3 +69,4 @@ datasets/
 # re-include не работает, если исключён сам каталог.
 docs/report/video/*
 !docs/report/video/hero_stream_mixed_cd.mp4
+!docs/report/video/inserts/

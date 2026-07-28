@@ -1,8 +1,9 @@
 name: CI
 
+# CI is temporarily manual-only to conserve the mirror owner's Actions minutes.
+# Restore push and pull_request triggers before the final acceptance run.
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   lint-and-test:

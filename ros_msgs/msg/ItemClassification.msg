@@ -6,5 +6,7 @@ uint32 item_id                # tracking id, unique within a simulation run
 string category               # "B" | "C" | "D" — values from src/constants.py
 float32[3] dims_mm            # linear dimensions sorted descending, millimeters
 float32 k                     # r_inscribed / R_circumscribed of best section, [0..1]
-float32 confidence            # [0..1]; below threshold -> conservative routing (C/D)
+float32 confidence            # [0..1] aggregate frame agreement; diagnostic (overlay/log).
+# Routing uses the median dims/K over frames + a size margin to C
+# (classify_conservative), NOT a confidence threshold — this field does not gate.
 geometry_msgs/Point position  # item position at header.stamp, meters, world frame
