@@ -356,19 +356,29 @@ def _denoise_depth(depth_m):
 
 def _find_items(depth_m, belt_depth_m, margin_m):
     """Valid item masks and bboxes in one frame; touching items are split."""
-    from scipy.ndimage import label
+    from scipy.ndimage import find_objects, label
 
     foreground = _item_mask(depth_m, belt_depth_m, margin_m)
     labels, count = label(foreground, structure=np.ones((3, 3), dtype=int))
     h, w = depth_m.shape
+    # Size every component in ONE pass and touch only the survivors. Sensor noise
+    # shatters a frame into thousands of speckle components (4255 at sigma 3 mm on
+    # the plate dump, of which exactly ONE clears the gate below), and building a
+    # full 640x480 mask per component before sizing it cost 2.8 s per frame against
+    # a 66.7 ms frame period — enough to push a rig past the census cell cap. Same
+    # components, same order, same masks: this is arithmetic, not a policy change.
+    sizes = np.bincount(labels.ravel(), minlength=count + 1)
+    boxes = find_objects(labels)
     found = []
     for component_id in range(1, count + 1):
-        component = labels == component_id
         # Preserve the pre-split contract: noise below _MIN_ITEM_PX never reaches
         # ConvexHull. The seed-1 stream exposed this when a tiny speck raised
         # QhullError before the old size filter had a chance to discard it.
-        if int(component.sum()) < _MIN_ITEM_PX:
+        if int(sizes[component_id]) < _MIN_ITEM_PX:
             continue
+        box = boxes[component_id - 1]
+        component = np.zeros_like(foreground)
+        component[box] = labels[box] == component_id
         for mask in _split_touching(component):
             ys, xs = np.where(mask)
             if xs.size < _MIN_ITEM_PX:
