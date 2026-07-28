@@ -2,13 +2,32 @@ from pathlib import Path
 
 from scripts.check_submission import (
     MAX_TRACKED_BINARY_BYTES,
+    MIN_DECK_VIDEOS,
+    SHIPPED_DECK,
     broken_local_links,
+    deck_media_issues,
     has_https_video_link,
     submission_issues,
 )
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _deck(root: Path, name: str, sources: list[str]) -> Path:
+    deck = root / "docs" / "report" / "slides" / name
+    deck.parent.mkdir(parents=True, exist_ok=True)
+    tags = "".join(f'<video src="{src}"></video>' for src in sources)
+    deck.write_text(f"<section>{tags}</section>", encoding="utf-8")
+    return deck
+
+
+def _clip(root: Path, name: str, *, playable: bool) -> None:
+    path = root / "docs" / "report" / "video" / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Only the sample entry fourcc matters: avc1 is H.264, mp4v is the MPEG-4
+    # part 2 that browsers refuse to decode.
+    path.write_bytes(b"\x00\x00\x00\x18ftypisom" + (b"avc1" if playable else b"mp4v"))
 
 
 def test_current_package_has_only_the_known_human_placeholder():
@@ -70,3 +89,36 @@ def test_broken_local_links_flags_dead_crossrefs(tmp_path):
 def test_current_docs_have_no_broken_links():
     # Regression guard: the shipped kit's cross-references all resolve.
     assert broken_local_links(ROOT) == []
+
+
+def test_deck_media_flags_absent_and_unplayable_clips(tmp_path):
+    name = Path(SHIPPED_DECK).name
+    _clip(tmp_path, "good.mp4", playable=True)
+    _clip(tmp_path, "mpeg4.mp4", playable=False)
+    _deck(tmp_path, name, ["../video/good.mp4", "../video/mpeg4.mp4", "../video/gone.mp4"])
+
+    issues = deck_media_issues(tmp_path)
+
+    assert f"MISSING_MEDIA: {SHIPPED_DECK}: ../video/gone.mp4" in issues
+    assert f"UNPLAYABLE_MEDIA: {SHIPPED_DECK}: ../video/mpeg4.mp4: not H.264" in issues
+
+
+def test_shipped_deck_must_carry_the_demo_gallery(tmp_path):
+    name = Path(SHIPPED_DECK).name
+    _clip(tmp_path, "hero.mp4", playable=True)
+    _deck(tmp_path, name, ["../video/hero.mp4"])
+    # An alternate style deck with a single clip is fine; only the presented one
+    # has to reach the video count.
+    _deck(tmp_path, "deck-a-swiss-modern.html", ["../video/hero.mp4"])
+
+    issues = deck_media_issues(tmp_path)
+
+    assert issues == [
+        f"DECK_VIDEOS: {SHIPPED_DECK}: 1 playable clips, need {MIN_DECK_VIDEOS}",
+    ]
+
+
+def test_current_decks_render_from_a_clean_clone():
+    # Regression guard: every clip the decks reference is in the repository and
+    # in a codec a browser will actually play.
+    assert deck_media_issues(ROOT) == []

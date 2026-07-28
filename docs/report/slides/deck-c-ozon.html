@@ -294,9 +294,10 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
 .tiles .tile .cmd { margin-top:11px; font-family:var(--font-mono); font-size:14px; font-weight:300; color:var(--faint); }
 
 /* --- video (slide 6) --- */
-/* The clip is revealed only once it actually decodes. docs/report/video/ is
-   gitignored and the clips are currently mp4v-encoded, which browsers refuse —
-   so without this the slide would silently render a black rectangle. */
+/* The clip is revealed only once it actually decodes, so a missing or
+   undecodable file leaves the caption standing instead of a black rectangle.
+   The five clips of this slide ship in the repository in H.264 (28.07); the
+   guard stays because docs/report/video/ is otherwise gitignored. */
 .video-wrap { position:absolute; left:var(--edge); top:300px; width:1136px; height:640px; border:1px solid rgba(255,255,255,.34); background:var(--panel-solid); }
 .video-wrap video { width:100%; height:100%; object-fit:cover; display:block; opacity:0; transition:opacity .4s ease; }
 .video-wrap.ready video { opacity:1; }
@@ -309,8 +310,8 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
 /* Слайд-галерея: hero-клип отдаёт высоту, чтобы под ним встали четыре ролика
    отгружаемой трёхкамерной стойки. Один клип на исход — правило убеждает только
    когда жюри видит D, B, C и тонкое тело рядом, а не один удачный случай.
-   Постеры лежат в репозитории, поэтому из чистого клона слайд выглядит готовым
-   даже без mp4 (они в облаке организаторов, GIT.md). */
+   Клипы и постеры лежат в репозитории (2,8 МБ на пять роликов), поэтому слайд
+   играет из чистого клона без сети; полные записи прогонов — в Nextcloud. */
 .slide-gallery .video-wrap { height:424px; }
 .video-gallery { position:absolute; left:var(--edge); top:758px; width:1136px; display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
 .video-gallery figure { margin:0; border:1px solid rgba(255,255,255,.28); background:var(--panel-solid); overflow:hidden; }
@@ -379,7 +380,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
     <div class="telemetry reveal">
       <div><div class="v">33/33</div><div class="k">census ×3</div></div>
       <div><div class="v teal">0,030 с</div><div class="k">камера → решение</div></div>
-      <div><div class="v">10 шт/мин</div><div class="k">sustained</div></div>
+      <div><div class="v">8 шт/мин</div><div class="k">отгружаемая стойка</div></div>
     </div>
 
     <div class="gauge">
@@ -569,8 +570,8 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
     <div class="video-wrap reveal d1">
       <div class="vfallback">
         <div class="big">▶ hero_stream_mixed_cd.mp4</div>
-        docs/report/video/ — крупные mp4 в облаке организаторов<br>
-        клип подхватится автоматически, если он на месте и в H.264
+        docs/report/video/ — клип идёт вместе с репозиторием<br>
+        полные записи прогонов — в Nextcloud организаторов
       </div>
       <video src="../video/hero_stream_mixed_cd.mp4" muted loop playsinline preload="metadata"></video>
     </div>
@@ -626,7 +627,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
       <div class="tiles reveal d1">
         <div class="tile"><div class="v">33/33</div><div class="k">Маршрутизация, отгружаемая стойка<br>под шумом 3 мм — 32/33</div><div class="cmd">run_matrix.sh 0 3</div></div>
         <div class="tile"><div class="v teal">5/6</div><div class="k">Потоковая матрица 11 моделей<br>3 камеры, 28.07</div><div class="cmd">run_stream_suite.sh 0 0 2</div></div>
-        <div class="tile"><div class="v">6 шт/мин</div><div class="k">Производительность стойки<br>против 9 у одной головки</div><div class="cmd">measure_throughput.py</div></div>
+        <div class="tile"><div class="v">8 шт/мин</div><div class="k">Отгружаемая стойка, настенные<br>у одной головки 9 — третья стоит одного</div><div class="cmd">measure_throughput.py</div></div>
         <div class="tile"><div class="v teal">0,030 с</div><div class="k">Синхронизация камера → решение<br>общий sim-clock</div><div class="cmd">measure_throughput.py</div></div>
         <div class="tile"><div class="v">5 из 5</div><div class="k">Расчёт ↔ симуляция<br>величины из первых принципов</div><div class="cmd">calc_vs_sim.md</div></div>
         <div class="tile"><div class="v bone">CV 4 × Исп. 4</div><div class="k">Уровень готовности<br>исполнение 4 обосновано сведением</div><div class="cmd">самооценка команды</div></div>
@@ -689,7 +690,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
         <div class="col reveal d1">
           <h3><span class="mark">Границы</span>Названы прямо</h3>
           <ul class="bullets">
-            <li><b>10 шт/мин — sustained</b>, 18 — пиковый короткий поток. За заявку выдаём меньшую цифру</li>
+            <li><b>8 шт/мин — отгружаемая стойка</b>; 9 у одной головки, 18 — пиковый короткий поток. За заявку выдаём меньшую цифру</li>
             <li>Плотный <b>same-zone</b> поток деградирует: насыщается ход ленты</li>
             <li>Физика — <b>инженерные допущения</b>: массы, ODE-трение, rigid-body. Ткань и реальный привод не моделируются</li>
             <li>Физический прототип — <b>осознанный NO-GO</b>: постановка допускает целостный ПАК в симуляции</li>

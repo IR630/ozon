@@ -37,6 +37,7 @@ REQUIRED_FILES = (
     "docs/report/criteria_coverage.md",
     "docs/report/presentation_outline.md",
     "docs/report/video/hero_stream_mixed_cd.mp4",
+    "docs/report/slides/deck-c-ozon.html",
     "docs/defense/cad/out/cell_sideview.step",
     "docs/defense/cad/out/cell_sideview.stl",
     "docker/Dockerfile",
@@ -65,6 +66,51 @@ VIDEO_LABEL = "**Видеодемонстрация:**"
 # renamed or moved. External and pure-anchor links are out of scope here.
 _MD_LINK = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 _LINK_SCAN_DIRS = ("docs/report", "docs/defense")
+
+# The deck is the presentation the jury opens; it has to work from a clean clone
+# with no network. Two ways it silently degrades to placeholders, both seen in
+# this repository: a clip that is gitignored (file absent) and a clip written by
+# OpenCV in MPEG-4 part 2, which every browser refuses to decode. An mp4 whose
+# sample entry is ``avc1`` is H.264; ``mp4v`` is the unplayable kind.
+_HTML_MEDIA = re.compile(r'(?:src|poster)="([^"]+)"')
+_DECK_GLOB = "docs/report/slides/deck-*.html"
+_H264_SAMPLE_ENTRY = b"avc1"
+# The four decks are one deck in four styles; only the one named here is
+# presented, so only it must carry the demo gallery. The other three keep the
+# single hero clip and are checked for broken media only.
+SHIPPED_DECK = "docs/report/slides/deck-c-ozon.html"
+MIN_DECK_VIDEOS = 3
+
+
+def deck_media_issues(root: Path) -> list[str]:
+    """Local media referenced by the decks that would not render.
+
+    Missing files, mp4s in a codec browsers refuse, and a shipped deck carrying
+    fewer than ``MIN_DECK_VIDEOS`` playable clips.
+    """
+    issues = []
+    for deck in sorted(root.glob(_DECK_GLOB)):
+        playable = 0
+        for target in _HTML_MEDIA.findall(deck.read_text(encoding="utf-8", errors="replace")):
+            if target.startswith(("http://", "https://", "data:", "#")):
+                continue
+            path = (deck.parent / target.split("#", 1)[0]).resolve()
+            name = f"{deck.relative_to(root).as_posix()}: {target}"
+            if not path.is_file():
+                issues.append(f"MISSING_MEDIA: {name}")
+                continue
+            if path.suffix.lower() == ".mp4":
+                if _H264_SAMPLE_ENTRY in path.read_bytes():
+                    playable += 1
+                else:
+                    issues.append(f"UNPLAYABLE_MEDIA: {name}: not H.264")
+        relative = deck.relative_to(root).as_posix()
+        if relative == SHIPPED_DECK and playable < MIN_DECK_VIDEOS:
+            issues.append(
+                f"DECK_VIDEOS: {relative}: "
+                f"{playable} playable clips, need {MIN_DECK_VIDEOS}"
+            )
+    return issues
 
 
 def tracked_files(root: Path) -> list[str]:
@@ -148,6 +194,7 @@ def submission_issues(root: Path, tracked: list[str] | None = None) -> list[str]
             issues.append(f"LARGE: {relative}: {size_mib:.1f} MiB")
 
     issues.extend(broken_local_links(root))
+    issues.extend(deck_media_issues(root))
     return issues
 
 
