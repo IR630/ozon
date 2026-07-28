@@ -33,9 +33,14 @@ def generate_launch_description():
         name="camera_bridge",
         # BRIDGE_CONFIG lets the three-head world bridge its extra depth streams
         # without the shipped single-camera census bridging topics it does not have.
+        # PRODUCTION IS THE THREE-HEAD RIG (28.07, owner's call). The default moved
+        # from bridge.yaml so the shipped entry points bridge the rig they run.
+        # A one-head world with this config simply never publishes the side topics
+        # and perception degrades to the top view bit-exactly (src/multiview.py),
+        # so the fallback is `BRIDGE_CONFIG=bridge.yaml` — one variable, no code.
         parameters=[{"config_file": os.path.join(
                          REPO_ROOT, "sim",
-                         os.environ.get("BRIDGE_CONFIG", "bridge.yaml")),
+                         os.environ.get("BRIDGE_CONFIG", "bridge_3cam.yaml")),
                      "use_sim_time": True}],
         output="screen",
     )

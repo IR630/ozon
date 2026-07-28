@@ -23,6 +23,10 @@ REQUIRED_FILES = (
     "ros_msgs/msg/ItemClassification.msg",
     "launch/skeleton.launch.py",
     "sim/worlds/cell_diverter.sdf",
+    # The shipped rig since 28.07 is the three-head one; the preflight has to guard
+    # the configuration that actually runs, not only the single-head fallback.
+    "sim/worlds/cell_diverter_3cam.sdf",
+    "sim/bridge_3cam.yaml",
     "scripts/run_skeleton.sh",
     "docs/report/final_report.md",
     "docs/report/one_pager.md",
