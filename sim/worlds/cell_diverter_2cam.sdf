@@ -232,12 +232,18 @@
              cloud fifteen times a second are pure render cost. A depth_camera
              publishes exactly its <topic>, where an rgbd_camera appends
              /depth_image — hence the full name here. -->
+        <!-- 320x240 at 10 Hz, same reasoning and same values as the three-head
+             world: the side head supplies one resolution-insensitive scalar, and
+             the rays are what the rig pays for on software GL. Kept in step with
+             cell_diverter_3cam.sdf on purpose — the two worlds must differ by the
+             deleted head and nothing else, or a camera comparison silently becomes
+             a comparison of two different cells. -->
         <sensor name="depth" type="depth_camera">
-          <update_rate>15</update_rate>
+          <update_rate>10</update_rate>
           <topic>camera_side_neg_y/depth_image</topic>
           <camera>
             <horizontal_fov>1.05</horizontal_fov>
-            <image><width>640</width><height>480</height></image>
+            <image><width>320</width><height>240</height></image>
             <clip><near>0.1</near><far>5.0</far></clip>
           </camera>
         </sensor>
