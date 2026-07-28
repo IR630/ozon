@@ -8,6 +8,9 @@
 #
 #   bash scripts/record_stream_video.sh <out.mp4> [slug:zone:gap_m ...]
 #   # no specs -> run_stream.sh's default 3-item stream on cell_diverter.sdf
+#   SPECTATOR_POSE="x y z r p yaw" bash scripts/record_stream_video.sh ...
+#   # close-up instead of the committed overview pose; preview it first with
+#   # scripts/frame_spectator.sh, which costs seconds instead of a render
 #
 # The mp4 is NOT committed (GIT.md). errexit first + workspace guard before the
 # source: same contract as run_skeleton.sh (see its header for the full story).
@@ -37,9 +40,20 @@ for _ in $(seq 1 40); do
     sleep 0.5
 done
 sleep 1
+# Default framing is the committed overview pose (all three zones in frame). Set
+# SPECTATOR_POSE to shoot the same episode close-up instead — a 9 mm item is a few
+# pixels wide from the overview, so the clip that proves "габарит бьёт форму"
+# proves it only in the caption. Same temp-copy trick as frame_spectator.sh, which
+# is where a pose is previewed before it costs a full render.
+SPECTATOR_MODEL="$PWD/sim/models/spectator/model.sdf"
+if [ -n "${SPECTATOR_POSE:-}" ]; then
+    sed -E "s|<pose>[^<]*</pose>|<pose>$SPECTATOR_POSE</pose>|" \
+        "$SPECTATOR_MODEL" > /tmp/spectator_stream.sdf
+    SPECTATOR_MODEL=/tmp/spectator_stream.sdf
+fi
 ign service -s /world/cell/create --reqtype ignition.msgs.EntityFactory \
     --reptype ignition.msgs.Boolean --timeout 5000 \
-    --req "sdf_filename: \"$PWD/sim/models/spectator/model.sdf\", name: \"spectator\"" > /dev/null
+    --req "sdf_filename: \"$SPECTATOR_MODEL\", name: \"spectator\"" > /dev/null
 # visual-only prop: make the production camera visible in footage (see model.sdf)
 ign service -s /world/cell/create --reqtype ignition.msgs.EntityFactory \
     --reptype ignition.msgs.Boolean --timeout 5000 \

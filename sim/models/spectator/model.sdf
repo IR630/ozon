@@ -8,9 +8,23 @@
      cell.sdf geometry and previewed with scripts/frame_spectator.sh (week 5,
      candidate b3) — the earlier D-side pose framed half the frame as empty
      floor with the action off to one side. This overview pose frames all three
-     zones for ANY item; for a tighter D-side close-up where the divert fills the
-     frame, use the "action" pose "0.8 -2.6 2.2 0 0.544 0.880" (previewed the same
-     way) — kept out of the committed default because it clips zone C. -->
+     zones for ANY item.
+
+     CLOSE-UP, added 29.07: "1.5 -1.7 1.35 0 0.42 0.95". Use it for small items —
+     from the overview a 9 mm pen is a few pixels and the clip proves the rule only
+     in its caption. Frame width is ~1.15 x distance at this 1.3 rad FOV, so the
+     130 mm pen goes from ~32 px at the overview's 2.9 m to ~47 px at 1.95 m; both
+     blades and the C chute stay in shot, the gantry post sits at the left edge.
+
+     The pose previously recommended here for close-ups, "0.8 -2.6 2.2 0 0.544
+     0.880", was framed against the bare cell.sdf and is NOT usable on the diverter
+     rig: the gantry post stands across the middle of the frame. Preview a pose in
+     the world you will actually film — `WORLD=... scripts/frame_spectator.sh` now
+     takes the world and spawns the gantry prop for exactly this reason. Note the
+     preview still lacks the belt pre-roll the episode does, so framing shifts a
+     little between preview and footage. -->
+
+<!-- Overview pose kept as the committed default: it is the one that suits any item. -->
 <sdf version="1.8">
   <model name="spectator">
     <static>true</static>

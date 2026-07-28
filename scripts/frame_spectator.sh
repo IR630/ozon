@@ -4,6 +4,12 @@
 # episode. Iterating on the spectator pose costs seconds instead of a full render.
 #
 #   SPECTATOR_POSE="x y z r p yaw" bash scripts/frame_spectator.sh runs/frames/a.png
+#   WORLD=sim/worlds/cell_diverter_3cam.sdf ... # preview the rig that is filmed
+#
+# WORLD defaults to the bare belt, which is what the first hero pose was framed
+# against — and that is exactly how the documented "action" pose turned out to be
+# unusable: in the diverter world the camera gantry post stands in front of it.
+# The gantry is a visual-only prop the recorders spawn, so preview it too.
 #
 # Reuses the proven spawn/bridge/poster sequence from record_skeleton_video.sh.
 # For the final hero footage (item in motion) use record_skeleton_video.sh; this
@@ -24,9 +30,10 @@ OUT=${1:?usage: SPECTATOR_POSE="x y z r p yaw" frame_spectator.sh out.png}
 POSE=${SPECTATOR_POSE:?set SPECTATOR_POSE="x y z r p yaw"}
 mkdir -p "$(dirname "$OUT")"
 
+WORLD=${WORLD:-sim/worlds/cell.sdf}
 pkill -f 'ign gazebo' 2>/dev/null || true
 sleep 1
-ign gazebo -s -r -v 0 sim/worlds/cell.sdf > /tmp/frame_gz.log 2>&1 &
+ign gazebo -s -r -v 0 "$WORLD" > /tmp/frame_gz.log 2>&1 &
 GZ=$!
 for _ in $(seq 1 40); do
     ign topic -l 2>/dev/null | grep -q "^/world/cell" && break
@@ -42,6 +49,11 @@ sed -E "s|<pose>[^<]*</pose>|<pose>$POSE</pose>|" \
 ign service -s /world/cell/create --reqtype ignition.msgs.EntityFactory \
     --reptype ignition.msgs.Boolean --timeout 5000 \
     --req "sdf_filename: \"/tmp/spectator_frame.sdf\", name: \"spectator\"" > /dev/null
+# The same visual-only prop the recorders add, so the preview shows the occlusion
+# the footage will actually have.
+ign service -s /world/cell/create --reqtype ignition.msgs.EntityFactory \
+    --reptype ignition.msgs.Boolean --timeout 5000 \
+    --req "sdf_filename: \"$PWD/sim/models/camera_gantry/model.sdf\", name: \"camera_gantry\"" > /dev/null
 
 ros2 run ros_gz_bridge parameter_bridge \
     "/spectator/image@sensor_msgs/msg/Image[ignition.msgs.Image" > /tmp/frame_bridge.log 2>&1 &
