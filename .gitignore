@@ -70,3 +70,7 @@ datasets/
 docs/report/video/*
 !docs/report/video/hero_stream_mixed_cd.mp4
 !docs/report/video/inserts/
+# Постеры трёхкамерной стойки (~85 КБ каждый) — ПЛАКАТЫ, не видео. Слайд-галерея
+# показывает их как первый кадр, поэтому дека из чистого клона выглядит готовой,
+# а не набором заглушек; сами mp4 по-прежнему уходят в облако (GIT.md).
+!docs/report/video/rig3_*_poster.png

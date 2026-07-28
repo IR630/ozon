@@ -306,6 +306,19 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
 .video-side .cue .t { font-family:var(--font-mono); font-size:16px; letter-spacing:.18em; text-transform:uppercase; color:var(--near); }
 .video-side .cue .x { margin-top:14px; font-size:25px; line-height:1.36; color:var(--dim); }
 .video-side .cue .x b { color:var(--bone); font-weight:600; }
+/* Слайд-галерея: hero-клип отдаёт высоту, чтобы под ним встали четыре ролика
+   отгружаемой трёхкамерной стойки. Один клип на исход — правило убеждает только
+   когда жюри видит D, B, C и тонкое тело рядом, а не один удачный случай.
+   Постеры лежат в репозитории, поэтому из чистого клона слайд выглядит готовым
+   даже без mp4 (они в облаке организаторов, GIT.md). */
+.slide-gallery .video-wrap { height:424px; }
+.video-gallery { position:absolute; left:var(--edge); top:758px; width:1136px; display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+.video-gallery figure { margin:0; border:1px solid rgba(255,255,255,.28); background:var(--panel-solid); overflow:hidden; }
+.video-gallery video { width:100%; height:112px; object-fit:cover; display:block; cursor:pointer; background:#000; }
+.video-gallery figcaption { padding:9px 11px 11px; font-family:var(--font-mono); font-size:13px; line-height:1.4; }
+.video-gallery figcaption b { display:block; color:var(--bone); font-weight:600; letter-spacing:.04em; }
+.video-gallery figcaption span { color:var(--faint); }
+.video-gallery figure.playing { border-color:var(--accent, #F91155); }
 .vfallback { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:60px; font-family:var(--font-mono); font-size:19px; line-height:1.8; color:var(--faint); transition:opacity .3s ease; }
 .vfallback .big { font-size:26px; color:var(--near); letter-spacing:.06em; margin-bottom:18px; }
 
@@ -406,7 +419,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
     <div class="body">
       <div class="chain">
         <div class="node reveal d1"><div class="n">01</div><div class="t">Подача</div><div class="d">лента 1 м/с,<br>без остановок</div></div>
-        <div class="node cool reveal d2"><div class="n">02</div><div class="t">Depth-камера</div><div class="d">геометрия глубины,<br>RGB не читается</div></div>
+        <div class="node cool reveal d2"><div class="n">02</div><div class="t">Стойка 3 камеры</div><div class="d">верх + два борта,<br>RGB не читается</div></div>
         <div class="node cool reveal d3"><div class="n">03</div><div class="t">Перцепция</div><div class="d">item_id, габариты,<br>коэффициент K</div></div>
         <div class="node reveal d4"><div class="n">04</div><div class="t">Классификатор</div><div class="d">B / C / D,<br>габариты → форма</div></div>
         <div class="node hot reveal d5"><div class="n">05</div><div class="t">Контроллер</div><div class="d">упреждение 0,5 с<br>до входа товара</div></div>
@@ -416,7 +429,9 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
       <p class="lede chain-cap reveal d6" style="max-width:1400px">
         Ошибка на любом звене обесценивает всё решение, поэтому контур замкнут целиком
         в Gazebo: <b>ROS 2 Humble + Fortress</b>. Ядро перцепции и классификации при этом
-        тестируется отдельно от ROS, а механизм — это сменный мир, а не ветка кода.
+        тестируется отдельно от ROS, а <b>и механизм, и число камер — это сменный мир и
+        одна переменная окружения</b>, а не ветка кода: стойка деградирует к верхней
+        головке бит-в-бит, если боковые молчат.
       </p>
     </div>
 
@@ -543,7 +558,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
   <!-- =====================================================
        SLIDE 6 — VIDEO DEMO (core of the defence)
        ===================================================== -->
-  <section class="slide">
+  <section class="slide slide-gallery">
     <div class="field"></div>
     <div class="chrome"><span class="live">Демонстрация</span><span>Сквозной поток на финальном диверторе</span><span>06</span></div>
 
@@ -554,7 +569,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
     <div class="video-wrap reveal d1">
       <div class="vfallback">
         <div class="big">▶ hero_stream_mixed_cd.mp4</div>
-        docs/report/video/ — каталог вне репозитория<br>
+        docs/report/video/ — крупные mp4 в облаке организаторов<br>
         клип подхватится автоматически, если он на месте и в H.264
       </div>
       <video src="../video/hero_stream_mixed_cd.mp4" muted loop playsinline preload="metadata"></video>
@@ -562,14 +577,37 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
 
     <div class="video-side">
       <div class="cue reveal d2"><div class="t">Что происходит в кадре</div>
-        <div class="x">Камера увидела → классифицировала → шибер сформировал стенку → товар ушёл в зону. <b>5 из 5</b> непрерывной сортировки.</div></div>
-      <div class="cue reveal d3"><div class="t">Второй клип</div>
-        <div class="x"><b>Цилиндр проходит нетронутым в B.</b> Визуальное доказательство K-правила: округлый на вид товар не круглый по критерию.</div></div>
+        <div class="x">Стойка увидела → классифицировала → шибер сформировал стенку → товар ушёл в зону. <b>5 из 5</b> непрерывной сортировки.</div></div>
+      <div class="cue reveal d3"><div class="t">Правило целиком, по клипу на каждый исход</div>
+        <div class="x">Галерея ниже — <b>отгружаемая трёхкамерная стойка</b>, записана 28.07: круг в сечении, габарит в норме, габарит вне нормы и тонкое тело.</div></div>
       <div class="cue reveal d4"><div class="t">В резерве</div>
-        <div class="x">bottle → D, box400 → C, plate → D, helmet → B — по запросу жюри.</div></div>
+        <div class="x">plate → D, helmet → B, cylinder → B — по запросу жюри.</div></div>
     </div>
 
-    <div class="foot"><span>Пробел — пуск и пауза клипа</span><span>0 FAIL / 0 JAM</span></div>
+    <div class="video-gallery reveal d3">
+      <figure>
+        <video src="../video/rig3_bottle_D.mp4" poster="../video/rig3_bottle_D_poster.png"
+               muted loop playsinline preload="none"></video>
+        <figcaption><b>Бутылка → D</b><span>круг в сечении, K = 0,996</span></figcaption>
+      </figure>
+      <figure>
+        <video src="../video/rig3_box_300x200x200_B.mp4" poster="../video/rig3_box_300x200x200_B_poster.png"
+               muted loop playsinline preload="none"></video>
+        <figcaption><b>Короб 300 → B</b><span>в габарите, идёт как есть</span></figcaption>
+      </figure>
+      <figure>
+        <video src="../video/rig3_box_400x400x300_C.mp4" poster="../video/rig3_box_400x400x300_C_poster.png"
+               muted loop playsinline preload="none"></video>
+        <figcaption><b>Короб 400 → C</b><span>400 мм против ворот 320</span></figcaption>
+      </figure>
+      <figure>
+        <video src="../video/rig3_pen_C.mp4" poster="../video/rig3_pen_C_poster.png"
+               muted loop playsinline preload="none"></video>
+        <figcaption><b>Ручка → C</b><span>9 мм: габарит бьёт форму</span></figcaption>
+      </figure>
+    </div>
+
+    <div class="foot"><span>Пробел — пуск и пауза; клик по плитке — её клип</span><span>0 FAIL / 0 JAM</span></div>
   </section>
 
   <!-- =====================================================
@@ -586,9 +624,9 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
 
     <div class="body">
       <div class="tiles reveal d1">
-        <div class="tile"><div class="v">33/33 ×3</div><div class="k">Классификация и маршрутизация</div><div class="cmd">run_matrix.sh 0 3</div></div>
-        <div class="tile"><div class="v teal">6/6 all-pass</div><div class="k">Потоковая матрица 11 моделей<br>0 FAIL · 0 JAM</div><div class="cmd">run_stream_suite.sh 0 0 2</div></div>
-        <div class="tile"><div class="v">10 шт/мин</div><div class="k">Устойчивая производительность<br>медиана, диапазон 4–15</div><div class="cmd">measure_throughput.py</div></div>
+        <div class="tile"><div class="v">33/33</div><div class="k">Маршрутизация, отгружаемая стойка<br>под шумом 3 мм — 32/33</div><div class="cmd">run_matrix.sh 0 3</div></div>
+        <div class="tile"><div class="v teal">5/6</div><div class="k">Потоковая матрица 11 моделей<br>3 камеры, 28.07</div><div class="cmd">run_stream_suite.sh 0 0 2</div></div>
+        <div class="tile"><div class="v">6 шт/мин</div><div class="k">Производительность стойки<br>против 9 у одной головки</div><div class="cmd">measure_throughput.py</div></div>
         <div class="tile"><div class="v teal">0,030 с</div><div class="k">Синхронизация камера → решение<br>общий sim-clock</div><div class="cmd">measure_throughput.py</div></div>
         <div class="tile"><div class="v">5 из 5</div><div class="k">Расчёт ↔ симуляция<br>величины из первых принципов</div><div class="cmd">calc_vs_sim.md</div></div>
         <div class="tile"><div class="v bone">CV 4 × Исп. 4</div><div class="k">Уровень готовности<br>исполнение 4 обосновано сведением</div><div class="cmd">самооценка команды</div></div>
@@ -786,6 +824,19 @@ document.querySelectorAll('.video-wrap video').forEach(v => {
   // fired and would never be heard: check the state first, then subscribe.
   if (v.readyState >= 2) reveal();
   v.addEventListener('loadeddata', reveal);
+});
+
+/* Gallery tiles play on click, one at a time. `preload="none"` keeps four extra
+   clips from competing with the hero clip for bandwidth on a cold open, and the
+   poster carries the slide until someone actually asks for motion. */
+document.querySelectorAll('.video-gallery video').forEach(v => {
+  v.addEventListener('click', () => {
+    document.querySelectorAll('.video-gallery video').forEach(other => {
+      if (other !== v) { other.pause(); other.closest('figure').classList.remove('playing'); }
+    });
+    if (v.paused) { v.play().catch(() => {}); v.closest('figure').classList.add('playing'); }
+    else { v.pause(); v.closest('figure').classList.remove('playing'); }
+  });
 });
 
 /* ===========================================
