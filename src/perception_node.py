@@ -93,8 +93,16 @@ class PerceptionNode(Node):
                                    np.nan_to_num(depth, nan=0.0, posinf=0.0,
                                                  neginf=0.0).astype(np.float64))
 
-    def _side_clouds(self, t_top, measurement, fx, fy, cx, cy):
-        """World clouds of the side heads, belt-travel compensated and cropped.
+    def _side_world_clouds(self, t_top, fx, fy, cx, cy):
+        """World clouds of the side heads, belt-travel compensated. ONCE PER FRAME.
+
+        Backprojection and travel compensation depend on the head and the frame,
+        never on which body we are about to measure, so they are hoisted out of the
+        per-item loop. They used to sit inside it, and the cost was (bodies x full
+        frame): with one body that is 46 ms, but sensor noise is exactly what makes
+        the body count explode — 249 bodies at sigma 10 mm turned a 42 ms
+        backprojection into 10.5 s per frame, on the rig with side heads only. The
+        cropping that DOES depend on the item stays per item, below.
 
         A head that has gone quiet for more than STALE_FRAMES periods is dropped
         rather than extrapolated: at 1 m/s a stale frame is not slightly wrong, it
@@ -110,8 +118,7 @@ class PerceptionNode(Node):
                     throttle_duration_sec=5.0)
                 continue
             pts = world_cloud_from_depth(depth, pose, fx, fy, cx, cy)
-            pts = compensate_belt_travel(pts, dt)
-            clouds.append(crop_to_item(pts, measurement.position_m, measurement.dims_mm))
+            clouds.append(compensate_belt_travel(pts, dt))
         return clouds
 
     def on_classification(self, msg):
@@ -143,11 +150,14 @@ class PerceptionNode(Node):
         t_top = self._stamp_s(msg.header)
         fx = self.fx if self.fx is not None else FX
         fy = self.fy if self.fy is not None else FY
+        side_world = (self._side_world_clouds(t_top, fx, fy, self.cx, self.cy)
+                      if self._side_frames else [])
         for item_id, measurement in zip(item_ids, measurements):
             dims_mm = measurement.dims_mm
             n_side = 0
-            if self._side_frames:
-                clouds = self._side_clouds(t_top, measurement, fx, fy, self.cx, self.cy)
+            if side_world:
+                clouds = [crop_to_item(pts, measurement.position_m, measurement.dims_mm)
+                          for pts in side_world]
                 n_side = sum(1 for c in clouds if c is not None and len(c) >= 4)
                 dims_mm = fuse_dims_mm(dims_mm, clouds, measurement.position_m)
             out = ItemMeasurement()

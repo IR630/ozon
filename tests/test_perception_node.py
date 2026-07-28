@@ -180,3 +180,45 @@ def test_two_disconnected_items_get_distinct_ids():
         node.destroy_node()
     finally:
         rclpy.shutdown()
+
+
+def test_a_side_frame_is_backprojected_once_per_frame_not_once_per_body(monkeypatch):
+    """The rig's cost must scale with HEADS, not with how many bodies noise invents.
+
+    Backprojection depends on the head and the frame, never on the body, but it used
+    to sit inside the per-item loop. Sensor noise is exactly what multiplies bodies
+    (249 at sigma 10 mm on a dump), so that loop turned a 42 ms backprojection into
+    10.5 s per frame — on the multi-head rig only, which is how a two-head census
+    lost 15 cells to the cell cap while measuring correctly.
+    """
+    import src.perception_node as node_mod
+    from src.constants import CAMERA_SIDE_NEG_Y_POSE_M
+
+    calls = []
+    real = node_mod.world_cloud_from_depth
+
+    def counting(depth_m, pose, *args, **kwargs):
+        calls.append(pose)
+        return real(depth_m, pose, *args, **kwargs)
+
+    monkeypatch.setattr(node_mod, "world_cloud_from_depth", counting)
+
+    rclpy.init()
+    try:
+        node = PerceptionNode()
+        # Park one side frame the way on_side_depth would, stamped with the top
+        # frame's time so the staleness gate keeps it.
+        side = np.full((480, 640), 1.2, dtype=np.float64)
+        node._side_frames[CAMERA_SIDE_NEG_Y_POSE_M] = (0.0, side)
+
+        msg = _two_item_depth_image_msg()
+        msg.header.stamp.sec = 0
+        msg.header.stamp.nanosec = 0
+        node.on_depth(msg)
+
+        assert len(calls) == 1, (
+            f"one side head and one top frame must cost ONE backprojection, "
+            f"got {len(calls)} — the call is back inside the per-item loop")
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
