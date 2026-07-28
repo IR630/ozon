@@ -27,6 +27,19 @@ CONFIGS=(
     "3cam_noisy sim/worlds/cell_diverter_3cam_noisy.sdf  bridge_3cam.yaml"
 )
 
+# HARNESS BUDGETS, not physical limits — and a rig census is exactly where the
+# shipped defaults lie. run_skeleton.sh waits SOFT_START_TRIES x 0.5 s (30 s) for
+# the controller and run_matrix.sh caps a cell at CELL_TIMEOUT (180 s); both are
+# sized for the ONE-head world. Bring-up measured on one tree: 1 head ~18 s,
+# 2 heads ~29 s, 3 heads ~40 s, and the three-head cycle runs 74-94 s against the
+# one-head world's ~23 s. At the defaults EVERY three-head cell aborts with
+# "belt never reached full speed" before it measures anything, which reads as a
+# broken rig and is really a stopwatch — the same mistake that produced the false
+# "18/33, the extra head harms" (docs/decisions.md 28.07). Give each rig enough
+# time and compare ROUTING; the cycle seconds are the cost and are reported apart.
+export SOFT_START_TRIES=${SOFT_START_TRIES:-240}
+export CELL_TIMEOUT=${CELL_TIMEOUT:-400}
+
 for cfg in "${CONFIGS[@]}"; do
     read -r tag world bridge <<< "$cfg"
     echo "=== $tag ($world / $bridge) $(date -u +%H:%M:%SZ) ==="
