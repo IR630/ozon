@@ -90,6 +90,11 @@ ROS_LINE = re.compile(
     r"item\s+(?P<id>\d+):\s+(?P<rest>.*)"
 )
 FIRED_LINE = re.compile(r"^pusher_(?P<zone>[cd])\s+FIRED\b")
+# The SIM-time token inside the same line. The ROS log prefix that `t` above carries
+# is the node's wall-clock emission time; this one is the controller's own clock,
+# which runs on /clock with use_sim_time. Comparing the two spans over one episode
+# gives the simulator's real-time factor — see the REAL-TIME FACTOR section.
+FIRED_SIM = re.compile(r"FIRED at t=(?P<sim>[\d.]+)s")
 # run_stream.sh's result line. PASS carries a landing time; FAIL deliberately
 # does not. Throughput uses only PASS arrivals, while week-3 long-horizon
 # reliability must retain BOTH outcomes instead of silently dropping failures.
@@ -121,6 +126,7 @@ class Stages:
     classify: float | None = None     # first [classifier] line — first ItemClassification
     commit: float | None = None       # latest compatible [controller] route plan
     fire: float | None = None         # [controller] pusher_x FIRED — command issued
+    fire_sim: float | None = None     # same event on the controller's SIM clock
     cam_to_decision: float | None = None  # controller's single-clock token at that commit
 
 
@@ -204,6 +210,9 @@ def parse_skeleton(path: Path) -> dict[int, Stages]:
             if fired:
                 if s.fire is None:
                     s.fire = t
+                    sim = FIRED_SIM.search(rest)
+                    if sim:
+                        s.fire_sim = float(sim["sim"])
                     active = active_routes.get(iid)
                     if active and active[0] == fired["zone"].upper():
                         s.commit, s.cam_to_decision = active[1], active[2]
@@ -504,6 +513,9 @@ def main() -> int:
     noair_takts: list[float] = []    # nose to tail, or a B item riding through (floor 0)
     n_runs_timed = 0
     unresolved_arrival_gaps = 0
+    # (sim span, wall span) per run — the simulator's real-time factor. See the
+    # REAL-TIME FACTOR section below for why the takt alone cannot be quoted.
+    rtf_spans: list[tuple[float, float]] = []
     reliability_episodes: list[StreamEpisode] = []
     planned_change_gaps: list[float] = []
     planned_change_margins: list[float] = []
@@ -554,6 +566,14 @@ def main() -> int:
             all_takts.extend(gaps)
             for g in typed_gaps:
                 (change_takts if g.feed_floor_s > 0 else noair_takts).append(g.gap_s)
+            # Same window in both clocks: arrivals are wall (run_stream.sh writes
+            # them with `date`), the controller's FIRED is sim on the shared /clock.
+            if skel.exists() and len(arrivals) >= 2:
+                fires = [s.fire_sim for s in parse_skeleton(skel).values()
+                         if s.fire_sim is not None]
+                wall_span = max(a.t for a in arrivals) - min(a.t for a in arrivals)
+                if len(fires) >= 2 and wall_span > 0:
+                    rtf_spans.append((max(fires) - min(fires), wall_span))
         else:
             print(f"  {run.name}: no stream.log (skeleton latencies only)")
 
@@ -595,6 +615,29 @@ def main() -> int:
         print(f"\n  steady-state throughput: median {thr_med:.0f} items/min "
               f"(p95-slow takt: {thr_p95:.0f} items/min), "
               f"over {n_runs_timed} timed run(s)")
+
+        # REAL-TIME FACTOR — read this before quoting the line above anywhere.
+        #
+        # The arrival stamps are WALL CLOCK, so that number is "items per minute of
+        # THIS MACHINE'S time while it also rendered the scene". Gazebo on software
+        # GL runs well below real time here, and the render cost grows with the rig:
+        # measured 28.07, RTF 0.47 with one head and 0.36 with three. The whole
+        # 9 -> 6 items/min gap between those rigs tracks that ratio (0.70 vs 0.77)
+        # and disappears in sim time, where the cell sorts 25 and 22 items/min.
+        #
+        # A real conveyor does not slow down when a camera is added, so the wall
+        # number is a property of the bench and the sim number is the property of
+        # the cell. Both are printed; neither is quoted alone.
+        if rtf_spans:
+            rtfs = [sim / wall for sim, wall in rtf_spans]
+            rtf = median(rtfs)
+            print(f"  simulator real-time factor: {rtf:.2f} "
+                  f"(median over {len(rtfs)} run(s))")
+            print(f"  cell throughput in SIM time: median {thr_med / rtf:.0f} items/min")
+            print("      (wall-clock rate divided by the RTF above: what the cell "
+                  "sorts when\n       the simulator is not the bottleneck. The wall "
+                  "line measures this machine's\n       render budget as much as the "
+                  "solution — see the comment at this print.)")
 
     # Calc vs accepted input schedule. Arrival takt remains a throughput observation:
     # destination-specific transit and settling make it incomparable with a feed floor.

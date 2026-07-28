@@ -220,9 +220,17 @@
       <static>true</static>
       <pose>1.5 -0.9 0.75 0 0.2709 1.5708</pose>
       <link name="link">
-        <sensor name="rgbd" type="rgbd_camera">
+        <!-- DEPTH ONLY, not rgbd. sim/bridge_3cam.yaml bridges exactly one stream
+             from each side head — /camera_side_*/depth_image — so an rgbd_camera
+             here rendered an RGB frame and a point cloud 15 times a second that
+             nothing ever read. On software GL that render is the dominant cost of
+             the third head, and it is what made the wall-clock takt 9.45 s against
+             the one-head 6.65 s while the SIM-time takt barely moved (2.69 vs 2.38).
+             The depth data the pipeline consumes is unchanged: same pose, same FOV,
+             same resolution, same rate. -->
+        <sensor name="depth" type="depth_camera">
           <update_rate>15</update_rate>
-          <topic>camera_side_neg_y</topic>
+          <topic>camera_side_neg_y/depth_image</topic>
           <camera>
             <horizontal_fov>1.05</horizontal_fov>
             <image><width>640</width><height>480</height></image>
@@ -236,9 +244,10 @@
       <static>true</static>
       <pose>1.5 0.9 0.75 0 0.2709 -1.5708</pose>
       <link name="link">
-        <sensor name="rgbd" type="rgbd_camera">
+        <!-- Depth only — see the neg_y head above for why. -->
+        <sensor name="depth" type="depth_camera">
           <update_rate>15</update_rate>
-          <topic>camera_side_pos_y</topic>
+          <topic>camera_side_pos_y/depth_image</topic>
           <camera>
             <horizontal_fov>1.05</horizontal_fov>
             <image><width>640</width><height>480</height></image>

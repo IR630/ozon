@@ -80,9 +80,14 @@ SPAWN_Z=${SPAWN_Z:-0.5}
 # instead of the belt carrying it (the helmet's stable census failure). run_matrix.sh
 # takes this per cell from spawn_orientations.spawn_offset_y_m.
 SPAWN_Y=${SPAWN_Y:-0}
-# Mechanism seam: default = ballistic pusher (cell.sdf). scripts/compare_mechanisms.sh
-# swaps in the diverter world; the command topics are identical so nodes are unchanged.
-WORLD=${WORLD:-sim/worlds/cell.sdf}
+# Mechanism seam. The default is the SHIPPED cell: diverter mechanism, three-head
+# rig (28.07). It used to be cell.sdf — the day-3 ballistic pusher with one camera —
+# which every caller overrode with WORLD, so a bare `run_skeleton.sh` silently
+# measured neither the shipped mechanism nor the shipped rig. That gap cost one
+# false "heads=1" diagnosis while verifying the rig itself.
+# scripts/compare_mechanisms.sh still swaps in the pusher world on purpose; the
+# command topics are identical so the nodes are unchanged either way.
+WORLD=${WORLD:-sim/worlds/cell_diverter_3cam.sdf}
 # Generated organizer models are intentionally gitignored. CI points this seam
 # at a text-only geometric fixture with the same domain dimensions and mass.
 ITEM_MODEL_ROOT=${ITEM_MODEL_ROOT:-sim/models/items}
