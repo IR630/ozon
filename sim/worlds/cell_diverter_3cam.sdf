@@ -228,12 +228,19 @@
              the one-head 6.65 s while the SIM-time takt barely moved (2.69 vs 2.38).
              The depth data the pipeline consumes is unchanged: same pose, same FOV,
              same resolution, same rate. -->
+        <!-- 320x240 at 10 Hz, NOT the top head's 640x480 at 15. A side head supplies
+             exactly one scalar — the item's height, as a high percentile of z over
+             the cropped cloud — and that scalar is insensitive to this: decimating
+             real dumps 2x and 4x moved the fused height by 0.0 mm on bag, bottle,
+             helmet and plate. The rays are what the rig pays for on software GL, so
+             this is render cost that buys nothing. 10 Hz keeps the worst-case frame
+             age at 100 ms, inside CAMERA_SIDE_STALE_FRAMES x period = 133 ms. -->
         <sensor name="depth" type="depth_camera">
-          <update_rate>15</update_rate>
+          <update_rate>10</update_rate>
           <topic>camera_side_neg_y/depth_image</topic>
           <camera>
             <horizontal_fov>1.05</horizontal_fov>
-            <image><width>640</width><height>480</height></image>
+            <image><width>320</width><height>240</height></image>
             <clip><near>0.1</near><far>5.0</far></clip>
           </camera>
         </sensor>
@@ -245,12 +252,13 @@
       <pose>1.5 0.9 0.75 0 0.2709 -1.5708</pose>
       <link name="link">
         <!-- Depth only — see the neg_y head above for why. -->
+        <!-- 320x240 at 10 Hz — same reasoning as the neg_y head above. -->
         <sensor name="depth" type="depth_camera">
-          <update_rate>15</update_rate>
+          <update_rate>10</update_rate>
           <topic>camera_side_pos_y/depth_image</topic>
           <camera>
             <horizontal_fov>1.05</horizontal_fov>
-            <image><width>640</width><height>480</height></image>
+            <image><width>320</width><height>240</height></image>
             <clip><near>0.1</near><far>5.0</far></clip>
           </camera>
         </sensor>

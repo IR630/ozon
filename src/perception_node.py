@@ -14,6 +14,7 @@ tracker keeps item_id stable across frames and short detection gaps.
 Runs inside the ROS 2 environment (needs rclpy and the built ros_msgs overlay):
     python3 -m src.perception_node
 """
+import math
 import os
 
 import numpy as np
@@ -36,7 +37,7 @@ from src.multiview import (
     fuse_dims_mm,
     world_cloud_from_depth,
 )
-from src.perception import FX, FY, measure_items, save_items_overlay
+from src.perception import FX, FY, HFOV_RAD, measure_items, save_items_overlay
 
 # Aggregation states remembered for the debug overlay; same spirit as
 # aggregation.MAX_TRACKED_ITEMS — bounded, ample for a sequential belt.
@@ -117,7 +118,19 @@ class PerceptionNode(Node):
                     f"side head {pose[0]} stale by {dt * 1000:.0f} ms, dropped",
                     throttle_duration_sec=5.0)
                 continue
-            pts = world_cloud_from_depth(depth, pose, fx, fy, cx, cy)
+            # EACH HEAD'S OWN INTRINSICS, derived from ITS frame. This used to pass
+            # the TOP head's fx/fy/cx/cy to every side frame, which was silently
+            # correct only while all three heads were 640x480. The moment the side
+            # heads dropped to 320x240 the same box read 348x300x201 instead of
+            # 301x200x200 — the side cloud was backprojected at twice its true focal
+            # length. All heads share horizontal_fov (1.05 rad in every cell world),
+            # so the focal length follows from the width alone and needs no extra
+            # CameraInfo subscription; if a head ever gets its own FOV, this is the
+            # line that has to start reading /camera_side_*/camera_info.
+            h_side, w_side = depth.shape
+            fx_side = fy_side = (w_side / 2.0) / math.tan(HFOV_RAD / 2.0)
+            pts = world_cloud_from_depth(depth, pose, fx_side, fy_side,
+                                         w_side / 2.0, h_side / 2.0)
             clouds.append(compensate_belt_travel(pts, dt))
         return clouds
 

@@ -235,3 +235,51 @@ def test_a_side_frame_is_backprojected_once_per_frame_not_once_per_body(monkeypa
         node.destroy_node()
     finally:
         rclpy.shutdown()
+
+
+def test_a_side_head_is_backprojected_with_its_own_focal_length(monkeypatch):
+    """A side head at a different resolution must not borrow the top head's optics.
+
+    The node used to pass the TOP head's fx/fy/cx/cy to every side frame. That was
+    silently correct only while all three heads were 640x480; when the side heads
+    dropped to 320x240 the same 301x200x200 box read 348x300x201, because the side
+    cloud was backprojected at twice its true focal length. All heads share
+    horizontal_fov, so the focal length follows from the frame width.
+    """
+    import math
+
+    import src.perception_node as node_mod
+    from src.constants import CAMERA_SIDE_NEG_Y_POSE_M
+    from src.perception import HFOV_RAD
+
+    seen = []
+    real = node_mod.world_cloud_from_depth
+
+    def capture(depth_m, pose, fx, fy, cx=None, cy=None, **kwargs):
+        seen.append((depth_m.shape, fx, fy, cx, cy))
+        return real(depth_m, pose, fx, fy, cx, cy, **kwargs)
+
+    monkeypatch.setattr(node_mod, "world_cloud_from_depth", capture)
+
+    rclpy.init()
+    try:
+        node = PerceptionNode()
+        node.fx, node.fy, node.cx, node.cy = 500.0, 500.0, 320.0, 240.0   # top head
+        half = np.full((240, 320), 1.2, dtype=np.float64)                  # side head
+        node._side_frames[CAMERA_SIDE_NEG_Y_POSE_M] = (0.0, half)
+
+        msg = _two_item_depth_image_msg()
+        msg.header.stamp.sec = 0
+        msg.header.stamp.nanosec = 0
+        node.on_depth(msg)
+
+        assert seen, "the side frame was never backprojected"
+        shape, fx, fy, cx, cy = seen[0]
+        expected = (320 / 2.0) / math.tan(HFOV_RAD / 2.0)
+        assert shape == (240, 320)
+        assert fx == pytest.approx(expected) and fy == pytest.approx(expected), (
+            f"side head backprojected at fx={fx}, expected {expected} from its own width")
+        assert (cx, cy) == (160.0, 120.0), "principal point must be the SIDE frame's centre"
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
