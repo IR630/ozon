@@ -42,7 +42,7 @@
 
 | Критерий | Балл | Артефакт | Статус |
 |---|---|---|---|
-| Cycle time и производительность | 0–10 | `scripts/measure_throughput.py`, sustained медиана **10 шт/мин** на полной матрице 33/33 (`runs/stream_suite_*`), `calc_vs_sim.md`, `soak.md` | ✅ честная sustained-цифра, заявка переписана вниз |
+| Cycle time и производительность | 0–10 | `scripts/measure_throughput.py`: отгружаемая трёхкамерная стойка **8 шт/мин** (`runs/rig_throughput_20260728/3cam`, 28.07), одноголовая 9 там же и **10** на полной матрице 17.07 (`runs/stream_suite_*`), `calc_vs_sim.md`, `soak.md` | ✅ заявка снята с отгружаемой конфигурации, а не с лучшей |
 | Синхронизация по времени | 0–5 | камера→решение median 0.030 с на полной suite (прямой замер на общем sim-clock), `docs/report/methodology_and_limitations.md`, FIRE_LEAD упреждение | ✅ |
 | Устойчивость к нештатным ситуациям | 0–5 | E-stop + recovery смоки, feed watchdog/jam detection (`src/controller_node.py`), плотный поток `docs/report/failure_scenarios.md` | ✅ |
 
