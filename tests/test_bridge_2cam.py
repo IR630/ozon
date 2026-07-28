@@ -38,7 +38,9 @@ def test_the_world_carries_the_minus_y_head_and_only_it():
     does not describe it.
     """
     world = (ROOT / "sim" / "worlds" / "cell_diverter_2cam.sdf").read_text(encoding="utf-8")
-    assert "<topic>camera_side_neg_y</topic>" in world
+    # Full topic name: the head is a depth_camera, which publishes exactly its
+    # <topic>, where the rgbd_camera it replaced appended /depth_image.
+    assert "<topic>camera_side_neg_y/depth_image</topic>" in world
     assert "camera_side_pos_y" not in world
 
 

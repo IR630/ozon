@@ -43,9 +43,32 @@ def test_the_frame_dumper_looks_at_the_same_side_topics_as_the_node():
 
 def test_side_topics_match_what_the_node_subscribes_to():
     """The world, the bridge and the node all name these topics; a typo in any
-    one of them shows up as a head that never arrives."""
+    one of them shows up as a head that never arrives.
+
+    The world declares the FULL topic because the side heads are `depth_camera`
+    sensors, which publish exactly what `<topic>` says. An `rgbd_camera` instead
+    appends `/depth_image` to it, so the two sensor types need different declarations
+    and swapping one for the other silently costs a head — which is how this test
+    earned its keep on 28.07.
+    """
     node = (ROOT / "src" / "perception_node.py").read_text(encoding="utf-8")
     world = (ROOT / "sim" / "worlds" / "cell_diverter_3cam.sdf").read_text(encoding="utf-8")
     for topic in ("/camera_side_neg_y/depth_image", "/camera_side_pos_y/depth_image"):
         assert topic in node, f"node does not subscribe to {topic}"
-        assert f"<topic>{topic.split('/')[1]}</topic>" in world, f"world lacks {topic}"
+        assert f"<topic>{topic.lstrip('/')}</topic>" in world, f"world lacks {topic}"
+
+
+def test_side_heads_render_depth_only():
+    """No side head may be an rgbd_camera: its RGB and point cloud are never bridged.
+
+    sim/bridge_3cam.yaml takes exactly one stream from each side head. An
+    rgbd_camera rendered a colour frame and a point cloud fifteen times a second
+    that nothing read, and on software GL that render is what the rig pays for.
+    """
+    world = (ROOT / "sim" / "worlds" / "cell_diverter_3cam.sdf").read_text(encoding="utf-8")
+    for head in ("camera_side_neg_y", "camera_side_pos_y"):
+        block = world.split(f'<model name="{head}">', 1)[1].split("</model>", 1)[0]
+        assert 'type="depth_camera"' in block, f"{head} must render depth only"
+        # The DECLARATION, not the bare word: the block also explains in prose why
+        # an rgbd_camera does not belong here.
+        assert 'type="rgbd_camera"' not in block, f"{head} still renders RGB nobody reads"

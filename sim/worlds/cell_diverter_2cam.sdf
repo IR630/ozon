@@ -227,9 +227,14 @@
       <static>true</static>
       <pose>1.5 -0.9 0.75 0 0.2709 1.5708</pose>
       <link name="link">
-        <sensor name="rgbd" type="rgbd_camera">
+        <!-- Depth only, same reasoning as the three-head world: sim/bridge_2cam.yaml
+             takes exactly one stream from this head, so a colour frame and a point
+             cloud fifteen times a second are pure render cost. A depth_camera
+             publishes exactly its <topic>, where an rgbd_camera appends
+             /depth_image — hence the full name here. -->
+        <sensor name="depth" type="depth_camera">
           <update_rate>15</update_rate>
-          <topic>camera_side_neg_y</topic>
+          <topic>camera_side_neg_y/depth_image</topic>
           <camera>
             <horizontal_fov>1.05</horizontal_fov>
             <image><width>640</width><height>480</height></image>
