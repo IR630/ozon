@@ -20,7 +20,16 @@
 # "the belt never reached full speed" — a false diagnosis pointing at conveyor physics.
 set -e
 cd "$(dirname "$0")/.."
-export LIBGL_ALWAYS_SOFTWARE=1
+# Software GL is the SAFE default, not a preference: the stands this ran on (WSL,
+# CI, headless servers) have no usable GPU, and llvmpipe is the only renderer that
+# works everywhere. It is also a MEASUREMENT choice with consequences — every
+# per-frame cost in docs/cameras-under-noise-brief.md was taken under llvmpipe, so
+# the rig's render competes with perception for the same cores. On a box with a
+# real GPU that competition is an artefact of the stand, so the renderer is a seam:
+#   LIBGL_ALWAYS_SOFTWARE=0 bash scripts/run_skeleton.sh ...
+# Verify it took (nvidia-smi under load, or `glxinfo | grep renderer`): an override
+# that silently fell back to llvmpipe would report a GPU number that is not one.
+export LIBGL_ALWAYS_SOFTWARE=${LIBGL_ALWAYS_SOFTWARE:-1}
 # install/ is a gitignored BUILD artifact, so a fresh clone has no setup.bash. Checked
 # before sourcing ROS: this is the one failure we can name exactly, so name it loudly
 # (same principle as zone_verdict.py) instead of leaving bash's "No such file".
@@ -288,6 +297,14 @@ python3 scripts/body_pose.py "$SLUG" "$X" "$Y" "$Z" "$RR" "$PP" "$YY" 2>/dev/nul
 # moved, which show up as a cell differing between two runs (scripts/census_ruler_diff.py).
 echo "  legacy origin-scored verdict: $LEGACY (body-scored: $VERDICT)"
 grep -E "item [0-9]+:" "$NODE_LOG" | tail -3 || true
+# ...and the MEASUREMENT line explicitly, because the tail above silently drops it.
+# The classifier and controller lines are also "item N:" and, being later, always win
+# the last three slots — so the one line carrying the DIMENSIONS and heads=N never
+# reaches the cell log. Two checks depend on it and both fail quietly without it:
+# scripts/census_tolerance.py finds no measurement to score against mesh truth, and
+# heads=N cannot be confirmed per cell — the check that distinguishes a fused rig
+# from one that quietly lost a side head (docs/cameras-under-noise-brief.md).
+grep -E "\[perception\]: item [0-9]+:" "$NODE_LOG" | tail -1 || true
 
 if [ -n "$DYN_PID" ]; then
     kill "$DYN_PID" 2>/dev/null || true

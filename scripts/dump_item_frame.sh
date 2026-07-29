@@ -13,7 +13,9 @@
 # defect/fix as run_skeleton.sh (see that file's header for the full story).
 set -e
 cd "$(dirname "$0")/.."
-export LIBGL_ALWAYS_SOFTWARE=1
+# Renderer seam — see run_skeleton.sh. The dumped frames are the input to every
+# offline per-frame cost measurement, so which renderer produced them matters.
+export LIBGL_ALWAYS_SOFTWARE=${LIBGL_ALWAYS_SOFTWARE:-1}
 ROS_INSTALL_ROOT=${ROS_INSTALL_ROOT:-install}
 if [ ! -f "$ROS_INSTALL_ROOT/setup.bash" ]; then
     echo "ABORT: ROS workspace is not built ($ROS_INSTALL_ROOT/setup.bash is missing) — run:" >&2

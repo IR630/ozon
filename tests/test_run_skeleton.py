@@ -140,3 +140,29 @@ def test_the_episode_does_not_block_on_a_simulator_query_it_cannot_afford():
 
     assert "ign topic -e -t /world/cell/stats" not in text
     assert "real_time_factor" not in text
+
+
+def test_the_measurement_line_reaches_the_cell_log():
+    """The dimensions + heads=N line must be printed EXPLICITLY, not via the tail.
+
+    The episode ends with `grep "item N:" | tail -3`, and the classifier and
+    controller lines match that pattern too. Being logged later they always take
+    the last three slots, so the perception line — the only one carrying the
+    measured dimensions and heads=N — never reached the cell log. Both failures
+    are silent: census_tolerance.py scores nothing, and a rig that quietly lost a
+    side head looks exactly like one that fused correctly.
+    """
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert r'grep -E "\[perception\]: item [0-9]+:" "$NODE_LOG" | tail -1' in text, (
+        "the perception measurement line must be greped for on its own")
+
+
+def test_the_renderer_is_a_seam_and_still_defaults_to_software():
+    """Software GL everywhere is the portable default; a GPU box must be able to opt out.
+
+    The default must NOT change: every stand this project runs on (WSL, CI, the
+    organizers' headless check) has no usable GPU, and a bare `=0` would break them.
+    """
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "export LIBGL_ALWAYS_SOFTWARE=${LIBGL_ALWAYS_SOFTWARE:-1}" in text, (
+        "the renderer must stay overridable AND default to software")

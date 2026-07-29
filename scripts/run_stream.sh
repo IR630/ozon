@@ -25,7 +25,9 @@
 # defect/fix as run_skeleton.sh (see that file's header for the full story).
 set -e
 cd "$(dirname "$0")/.."
-export LIBGL_ALWAYS_SOFTWARE=1
+# Renderer seam — see run_skeleton.sh for why this is a measurement choice and not
+# a preference. Throughput is exactly the metric llvmpipe distorts most.
+export LIBGL_ALWAYS_SOFTWARE=${LIBGL_ALWAYS_SOFTWARE:-1}
 ROS_INSTALL_ROOT=${ROS_INSTALL_ROOT:-install}
 if [ ! -f "$ROS_INSTALL_ROOT/setup.bash" ]; then
     echo "ABORT: ROS workspace is not built ($ROS_INSTALL_ROOT/setup.bash is missing) — run:" >&2
