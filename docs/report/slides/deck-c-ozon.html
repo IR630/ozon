@@ -431,7 +431,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
     <div class="body">
       <div class="chain">
         <div class="node reveal d1"><div class="n">01</div><div class="t">Подача</div><div class="d">лента 1 м/с,<br>без остановок</div></div>
-        <div class="node cool reveal d2"><div class="n">02</div><div class="t">Стойка 3 камеры</div><div class="d">верх + два борта,<br>RGB не читается</div></div>
+        <div class="node cool reveal d2"><div class="n">02</div><div class="t">Стойка 2 камеры</div><div class="d">верх + борт,<br>RGB не читается</div></div>
         <div class="node cool reveal d3"><div class="n">03</div><div class="t">Перцепция</div><div class="d">item_id, габариты,<br>коэффициент K</div></div>
         <div class="node reveal d4"><div class="n">04</div><div class="t">Классификатор</div><div class="d">B / C / D,<br>габариты → форма</div></div>
         <div class="node hot reveal d5"><div class="n">05</div><div class="t">Контроллер</div><div class="d">упреждение 0,5 с<br>до входа товара</div></div>
@@ -443,7 +443,9 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
         в Gazebo: <b>ROS 2 Humble + Fortress</b>. Ядро перцепции и классификации при этом
         тестируется отдельно от ROS, а <b>и механизм, и число камер — это сменный мир и
         одна переменная окружения</b>, а не ветка кода: стойка деградирует к верхней
-        головке бит-в-бит, если боковые молчат.
+        головке бит-в-бит, если боковые молчат. Роли головок <b>асимметричны</b>:
+        верхняя владеет следом и K, боковая добавляет только скрытую высоту — и только
+        когда прибавка выше её собственного разрешения.
       </p>
     </div>
 
@@ -485,7 +487,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
         <div class="row hdr"><span>Пограничный случай</span><span>Измерено</span><span>Почему это ловушка</span><span style="text-align:right">Зона</span></div>
         <div class="row"><span class="name">Цилиндр</span><span>K = 0,75</span><span>выглядит круглым — стяжки ломают сечение</span><span class="verdict b">B</span></div>
         <div class="row"><span class="name">Шлем</span><span>K = 0,78</span><span>округлый силуэт, но ниже порога 0,8</span><span class="verdict b">B</span></div>
-        <div class="row"><span class="name">Ручка</span><span>9 мм</span><span>не дотягивает до минимума 10 мм</span><span class="verdict c">C</span></div>
+        <div class="row"><span class="name">Ручка</span><span>9 мм</span><span>9 &lt; 10 мм — и слияние камер само чуть не подняло её выше порога</span><span class="verdict c">C</span></div>
         <div class="row"><span class="name">Бутылка лёжа</span><span>торцевой круг</span><span>сверху силуэт не круглый — K по проекциям</span><span class="verdict d">D</span></div>
       </div>
     </div>
@@ -703,6 +705,11 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
           <ul class="bullets">
             <li><b>8 шт/мин — отгружаемая стойка</b>; 9 у одной головки, 18 — пиковый короткий поток. За заявку выдаём меньшую цифру</li>
             <li>Плотный <b>same-zone</b> поток деградирует: насыщается ход ленты</li>
+            <li><b>Свой же дефект, найденный мульти-seed и закрытый расчётом:</b> слияние
+              брало высоту как максимум по головкам, а максимум по шумной оценке смещён
+              вверх — и поднимал 9 мм Ручки до 11, выводя её из-под габаритного правила.
+              Порог прибавки = разрешение боковой головки (1 пиксель = 3,4 мм расчётом,
+              4,2 мм по дампу кадра)</li>
             <li>Физика — <b>инженерные допущения</b>: массы, ODE-трение, rigid-body. Ткань и реальный привод не моделируются</li>
             <li>Физический прототип — <b>осознанный NO-GO</b>: постановка допускает целостный ПАК в симуляции</li>
           </ul>
