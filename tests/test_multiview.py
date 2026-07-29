@@ -113,10 +113,15 @@ def test_the_belt_a_miscalibrated_head_reconstructs_is_rejected():
 
 
 def test_the_margin_still_leaves_the_thinnest_item_visible_to_the_side_heads():
-    """And the other side of the trade: the 9 mm pen is WHY the heads are there.
+    """The belt floor must not swallow the thinnest item's points.
 
-    A floor set above the pen would make the rig degrade to one camera on exactly
-    the item that motivated the third.
+    HISTORICAL NOTE, because this docstring used to claim the opposite and the
+    claim was wrong: it read "the 9 mm pen is WHY the heads are there". It is not.
+    The top head measures the Pen correctly at 9 mm; a side head resolves only
+    3-4 mm per pixel at this range and is the head that gets it wrong (see
+    SIDE_HEIGHT_MIN_GAIN_MM and the two tests below). What this test still pins is
+    narrower and true: the grazing floor is a BELT filter, so it must sit under
+    the thinnest item rather than clipping it away.
     """
     from src.constants import MIN_DIMS_MM, SIDE_BELT_MARGIN_M
 
@@ -189,6 +194,107 @@ def test_a_degenerate_side_cloud_falls_back_to_the_top_measurement():
     line = np.array([[1.5, 0.0, 0.45], [1.5, 0.001, 0.45], [1.5, 0.002, 0.45],
                      [1.5, 0.003, 0.45]])
     assert fuse_dims_mm(top, [line], (1.5, 0.0, 0.45)) == top
+
+
+def _pen_side_cloud(height_above_belt_m, n=400, seed=0):
+    """A side head's view of the Pen's flank: plenty of points, almost no height.
+
+    148 mm long and 9-11 mm tall, which is the whole trap — the point COUNT clears
+    SIDE_MIN_POINTS easily while the height is 2-3 pixels for this head.
+    """
+    rng = np.random.default_rng(seed)
+    return np.column_stack([
+        rng.uniform(1.426, 1.574, n),                       # 148 mm of length
+        rng.uniform(-0.0065, 0.0065, n),                    # 13 mm of width
+        BELT_TOP_Z_M + rng.uniform(0.0, height_above_belt_m, n),
+    ])
+
+
+def test_the_pen_keeps_its_size_protection_when_a_side_head_noises_upward():
+    """The measured regression, pinned where it actually happened.
+
+    Identical cell, seed 1: one head read 147x11x9 and the 9 mm under MIN_DIMS_MM
+    made the item "small" -> C, correct. The rig with side heads read 147x11x11,
+    the item stopped being small, and SHAPE then decided the verdict -> D, a miss.
+    The fusion measured nothing worse: it lifted the item out from under the size
+    rule, and 2 mm of lift is 0.6 of a pixel for this head.
+
+    The pre-existing pin for this item feeds classify() a ready 9 mm, so it passes
+    either way and could not catch this. This one starts from the DIMS.
+    """
+    from src.classification import CATEGORY_C, classify
+    from src.constants import MIN_DIMS_MM
+
+    top = [147.0, 11.0, 9.0]
+    top_z = BELT_TOP_Z_M + 0.0045                           # top_height = 9 mm
+    side = _pen_side_cloud(0.011)                           # side would read ~11 mm
+    assert len(side) > 30, "the point-count guard must NOT be what saves this"
+
+    fused = fuse_dims_mm(top, [side], (1.5, 0.0, top_z))
+    assert min(fused) == pytest.approx(9.0), f"the 9 mm was inflated to {min(fused)}"
+    assert min(fused) < MIN_DIMS_MM[0], "the item lost its size protection"
+    assert classify(fused, 1.0) == CATEGORY_C, "shape decided a verdict size owned"
+
+
+def test_fusion_never_lifts_a_dimension_across_the_small_item_threshold():
+    """The structural invariant behind that miss, stated once for any item.
+
+    `fuse_dims_mm` raises height and never lowers it, so without a gate it can walk
+    a sub-threshold dimension over MIN_DIMS_MM and silently move the verdict from
+    the size rule to the shape rule. Swept across the whole approach to the
+    threshold so a future change to the gate cannot re-open it at one value.
+    """
+    from src.constants import MIN_DIMS_MM
+
+    floor_mm = MIN_DIMS_MM[0]
+    for true_h_mm in (5.0, 6.0, 7.0, 8.0, 9.0, 9.5):
+        top = [147.0, 11.0, true_h_mm]
+        top_z = BELT_TOP_Z_M + true_h_mm / 2000.0
+        # A side head reading anywhere up to just over the threshold
+        for side_h_mm in (true_h_mm + 0.5, true_h_mm + 2.0, floor_mm + 0.5):
+            fused = fuse_dims_mm(top, [_pen_side_cloud(side_h_mm / 1000.0)],
+                                 (1.5, 0.0, top_z))
+            assert min(fused) < floor_mm, (
+                f"true {true_h_mm} mm + side {side_h_mm} mm -> {min(fused)} mm, "
+                "over the small-item floor")
+
+
+def test_the_boundary_refusal_costs_a_genuinely_taller_item_and_that_is_chosen():
+    """The price of the refusal above, pinned so it stays visible rather than lost.
+
+    An item truly ~10.5 mm tall that the top head under-read to 5 mm keeps its
+    "small" classification and routes C. That is a real misroute on a catalogue
+    that contained such an item. Ours does not: the Pen at 9 mm is the only body
+    near the floor and the next thinnest is 91 mm. The trade is deliberate —
+    protecting the Pen is worth an error no item in this catalogue can commit.
+    """
+    from src.constants import MIN_DIMS_MM
+
+    top = [147.0, 11.0, 5.0]
+    top_z = BELT_TOP_Z_M + 0.0025
+    fused = fuse_dims_mm(top, [_pen_side_cloud(0.0105)], (1.5, 0.0, top_z))
+    assert fused == top, "the refusal is not in force"
+    assert min(fused) < MIN_DIMS_MM[0]
+
+
+def test_a_gain_below_the_head_resolution_is_not_evidence_of_hidden_height():
+    """The gate itself: one pixel is 3.4 mm by geometry, 4.2 mm on a real frame.
+
+    A gain under that is noise, not a hidden dome, and must degrade BIT-EXACT to
+    the top reading. The Helmet's real gain is tens of mm and is pinned above.
+    """
+    from src.constants import SIDE_HEIGHT_MIN_GAIN_MM
+
+    assert SIDE_HEIGHT_MIN_GAIN_MM >= 4.2, "below the measured pixel size"
+    top = [300.0, 200.0, 100.0]
+    top_z = BELT_TOP_Z_M + 0.050                            # top_height = 100 mm
+    rng = np.random.default_rng(1)
+    n = 2000
+    barely = np.column_stack([
+        np.full(n, 1.5), rng.uniform(-0.05, 0.05, n),
+        BELT_TOP_Z_M + rng.uniform(0.0, 0.100 + (SIDE_HEIGHT_MIN_GAIN_MM - 1.0) / 1000.0, n),
+    ])
+    assert fuse_dims_mm(top, [barely], (1.5, 0.0, top_z)) == top
 
 
 def test_side_heads_may_only_add_hidden_extent_never_carve_the_top_view_away():

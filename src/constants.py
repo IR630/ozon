@@ -100,6 +100,45 @@ CAMERA_FRAME_PERIOD_S = 1.0 / 15.0
 # own unoccluded view anyway.
 SIDE_BELT_MARGIN_M = 0.008
 
+# How much TALLER a side head must read before it may override the top head's
+# height. Not a preference — without it the arbitration has a positive bias by
+# construction and cannot be conservative.
+#
+# THE DEFECT THIS CLOSES. `fuse_dims_mm` takes height = max(top, side_99.5) and
+# degraded to the top only when the side read was <= the top's, i.e. a threshold
+# of ZERO. A maximum over a noisy estimator can only ever inflate: any positive
+# noise excursion wins and nothing pulls back. Measured cost, on the identical
+# cell (pen, seed 1, same pose, same K = 1.0): one head reads 147x11x9, where the
+# 9 mm sits under MIN_DIMS_MM and the item is correctly "small" -> C; the rig with
+# side heads reads 147x11x11, the item stops being small, and the verdict is then
+# decided by SHAPE -> D. The fusion did not measure worse; it lifted the item out
+# from under the size rule, and the Pen is the one catalogue item whose correct
+# verdict rests on a dimension being SMALL.
+#
+# WHY THE EXISTING GUARD DID NOT CATCH IT. multiview.SIDE_MIN_POINTS = 30 exists
+# for exactly this ("a thin item edge-on ... its z-spread is noise") but counts
+# POINTS, and the Pen is 148 mm long: its flank returns points in quantity while
+# its 9 mm height is below what the head resolves.
+#
+# THE BOUND IS THE HEAD'S OWN VERTICAL RESOLUTION, and it is why this is a
+# calculation and not a tuned number. Side head at |y| = 0.90 m, z = 0.75 aimed at
+# the belt, 320x240, hfov 1.05 rad -> vfov 0.820 rad; range to an item on the belt
+# 0.93 m, so ONE PIXEL subtends 3.4 mm vertically. Checked against a real dumped
+# side frame rather than trusted: the 200 mm flank of Box 300x200x200 spans 48
+# rows = 4.2 mm per row. So a 9 mm item is 2-3 pixels tall and its observed 9->11
+# inflation is 0.6 of a pixel. 5 mm is the smallest value above that floor, and it
+# is still OPTIMISTIC against the sensor: our sim noise is sigma 3 mm while a
+# D435-class datasheet is 1-2 % of range, i.e. 10-20 mm at this distance.
+#
+# WHAT IT REVERSES, stated plainly because the tree says the opposite in two
+# places: SIDE_BELT_MARGIN_M above and tests/test_multiview.py both record that
+# "the 9 mm pen is why the heads are there". That was an untested assumption. The
+# top head measures the Pen correctly at 9 mm; the side head is the one that gets
+# it wrong, because 9 mm is under its resolution. The heads keep their real job —
+# the Helmet dome and any hidden vertical extent, gains of TENS of mm, which clear
+# this threshold by an order of magnitude.
+SIDE_HEIGHT_MIN_GAIN_MM = 5.0
+
 # How many frame periods a side head may lag before its frame is discarded rather
 # than compensated. Compensation corrects the belt TRANSLATION; it cannot correct
 # what rotated or settled in between, so a badly lagged frame is not slightly

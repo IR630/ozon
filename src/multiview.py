@@ -22,7 +22,13 @@ they are meaningless.
 """
 import numpy as np
 
-from src.constants import BELT_SPEED_M_S, MAX_DIMS_MM, SIDE_BELT_MARGIN_M
+from src.constants import (
+    BELT_SPEED_M_S,
+    MAX_DIMS_MM,
+    MIN_DIMS_MM,
+    SIDE_BELT_MARGIN_M,
+    SIDE_HEIGHT_MIN_GAIN_MM,
+)
 from src.perception import BELT_TOP_Z_M
 
 # How far outside the top head's own box a side head's points may still belong to
@@ -140,6 +146,14 @@ def fuse_dims_mm(top_dims_mm, side_clouds_m, position_m):
     the top measurement — a rig sorts on the heads it still has. This is the structural
     estimator that measured 30/33 (docs/experiments.md 2026-07-21), rebuilt on the
     robust top footprint and generalised to any number of side clouds.
+
+    THE OVERRIDE IS NOT FREE AND IS GATED. A plain max() over a noisy estimator can
+    only inflate, so a side head that merely NOISES upward would keep winning. The
+    gain must therefore clear SIDE_HEIGHT_MIN_GAIN_MM — the head's own vertical
+    resolution — or the reading is not evidence of hidden height. Without that gate
+    the rig lifts the 9 mm Pen to 11 mm, out from under MIN_DIMS_MM, and the size
+    rule that made its verdict correct stops applying (derivation and the measured
+    cell are with the constant).
     """
     clouds = [c for c in side_clouds_m if c is not None and len(c) >= SIDE_MIN_POINTS]
     if not clouds:
@@ -149,8 +163,31 @@ def fuse_dims_mm(top_dims_mm, side_clouds_m, position_m):
     # The top head's own height, recovered from where measure_item centred the item:
     # world_z = BELT_TOP_Z_M + dz_mm / 2, so dz_mm = (world_z - belt) * 2.
     top_height_mm = (float(position_m[2]) - BELT_TOP_Z_M) * 2000.0
-    if side_height_mm <= top_height_mm:
-        return list(top_dims_mm)              # side reveals no hidden height: degrade
+    if side_height_mm - top_height_mm < SIDE_HEIGHT_MIN_GAIN_MM:
+        return list(top_dims_mm)              # no gain above the head's resolution: degrade
+    # BOUNDARY POLICY, and the resolution gate above is NOT enough on its own. The
+    # gate scales with the head's optics; the noise does not. At sigma 3 mm the
+    # 99.5th percentile of a 9 mm flank can clear 5 mm of gain by itself, so a
+    # larger sigma re-opens exactly the Pen defect the gate was added to close
+    # (found by the sweep in tests/test_multiview.py, not reasoned about after).
+    #
+    # So the size boundary gets an explicit refusal: a dimension the TOP head
+    # placed under the small-item floor is never carried over that floor by a side
+    # head. This is the same conservative stance classification.classify_conservative
+    # already takes at the sorter's size bounds, applied one stage earlier, and it
+    # is directional on purpose — crossing the floor DOWNWARD is impossible here
+    # (height only rises), and crossing it upward hands the verdict from the size
+    # rule to the shape rule, which is how the Pen became D.
+    #
+    # WHAT IT COSTS, stated because it is a real trade and not a free win: an item
+    # whose true height is just OVER the floor and which the top head under-read to
+    # just under it will stay "small" and route C. Our catalogue has no such item —
+    # the Pen at 9 mm is the only body anywhere near the floor and the next thinnest
+    # is 91 mm — so on this catalogue the refusal costs nothing and protects the one
+    # item whose correct verdict depends on being small. A catalogue with bodies in
+    # the 10-15 mm band would need this revisited.
+    if top_height_mm < min(MIN_DIMS_MM) <= side_height_mm:
+        return list(top_dims_mm)
     # Raise the height component (the dim the top set closest to its own height) to the
     # taller reading. Increasing one element and re-sorting only lifts each order
     # statistic, so the result never carves a dimension the top saw directly.
