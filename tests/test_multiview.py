@@ -263,10 +263,10 @@ def test_the_boundary_refusal_costs_a_genuinely_taller_item_and_that_is_chosen()
     """The price of the refusal above, pinned so it stays visible rather than lost.
 
     An item truly ~10.5 mm tall that the top head under-read to 5 mm keeps its
-    "small" classification and routes C. That is a real misroute on a catalogue
-    that contained such an item. Ours does not: the Pen at 9 mm is the only body
-    near the floor and the next thinnest is 91 mm. The trade is deliberate —
-    protecting the Pen is worth an error no item in this catalogue can commit.
+    "small" classification and routes C. That is a real misroute — but it is a
+    MARGINAL call: 10.5 mm is under one resolution band above the 10 mm floor, so
+    this head cannot tell "just over" from "just under" and the conservative side
+    of the size rule is the defensible one.
     """
     from src.constants import MIN_DIMS_MM
 
@@ -275,6 +275,34 @@ def test_the_boundary_refusal_costs_a_genuinely_taller_item_and_that_is_chosen()
     fused = fuse_dims_mm(top, [_pen_side_cloud(0.0105)], (1.5, 0.0, top_z))
     assert fused == top, "the refusal is not in force"
     assert min(fused) < MIN_DIMS_MM[0]
+
+
+def test_the_refusal_does_not_veto_overwhelming_evidence_of_hidden_height():
+    """The bound on the refusal, and the regression it exists to prevent.
+
+    An unbounded "top under the floor, side over it -> refuse" was the first cut,
+    and it turned a gross top-view failure into a misroute: a 300 mm body whose
+    centroid the top head placed 4 mm above the belt would have been frozen as
+    "small" and routed C, even though the side head reported 300 mm. A 296 mm gain
+    is not a marginal call, and vetoing it is not conservatism.
+
+    It also matters WHY the bound is drawn where it is: without it the refusal
+    would rest on "this catalogue has no body between 10 and 15 mm", which is the
+    catalogue-luck argument that disqualified perhead-median on 21.07.
+    """
+    from src.constants import MIN_DIMS_MM
+
+    top = [300.0, 200.0, 4.0]                               # gross top under-read
+    top_z = BELT_TOP_Z_M + 0.002
+    rng = np.random.default_rng(3)
+    n = 2000
+    tall = np.column_stack([
+        np.full(n, 1.5), rng.uniform(-0.05, 0.05, n),
+        BELT_TOP_Z_M + rng.uniform(0.0, 0.300, n),
+    ])
+    fused = fuse_dims_mm(top, [tall], (1.5, 0.0, top_z))
+    assert max(fused) == pytest.approx(300.0, abs=6.0)
+    assert min(fused) > MIN_DIMS_MM[0], "overwhelming side evidence was vetoed"
 
 
 def test_a_gain_below_the_head_resolution_is_not_evidence_of_hidden_height():

@@ -179,14 +179,22 @@ def fuse_dims_mm(top_dims_mm, side_clouds_m, position_m):
     # (height only rises), and crossing it upward hands the verdict from the size
     # rule to the shape rule, which is how the Pen became D.
     #
-    # WHAT IT COSTS, stated because it is a real trade and not a free win: an item
-    # whose true height is just OVER the floor and which the top head under-read to
-    # just under it will stay "small" and route C. Our catalogue has no such item —
-    # the Pen at 9 mm is the only body anywhere near the floor and the next thinnest
-    # is 91 mm — so on this catalogue the refusal costs nothing and protects the one
-    # item whose correct verdict depends on being small. A catalogue with bodies in
-    # the 10-15 mm band would need this revisited.
-    if top_height_mm < min(MIN_DIMS_MM) <= side_height_mm:
+    # THE REFUSAL IS BOUNDED BY THE SAME RESOLUTION ARGUMENT, not by what happens to
+    # be in the catalogue. It applies only while the side reading is itself within one
+    # resolution band ABOVE the floor — that is, exactly where "over the threshold" and
+    # "under the threshold" are indistinguishable to this head. A side head that reports
+    # a height far above the floor is not making a marginal call and is allowed through:
+    # if the top view under-read a 300 mm body to 4 mm, a 296 mm gain is overwhelming
+    # evidence, and vetoing it would turn a segmentation failure into a misroute.
+    #
+    # An unbounded veto (refuse whenever top < floor <= side) was written first and is
+    # wrong for a reason this project already paid for: it would be justified only by
+    # "our catalogue has no body between 10 and 15 mm", which is the catalogue-luck
+    # reasoning that disqualified the perhead-median fusion rule on 21.07 (docs/
+    # decisions.md: "это везение каталога, не свойство метода"). Same yardstick applies
+    # to our own fix.
+    floor_mm = min(MIN_DIMS_MM)
+    if top_height_mm < floor_mm <= side_height_mm < floor_mm + SIDE_HEIGHT_MIN_GAIN_MM:
         return list(top_dims_mm)
     # Raise the height component (the dim the top set closest to its own height) to the
     # taller reading. Increasing one element and re-sorting only lifts each order
