@@ -185,6 +185,12 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
 .telemetry .v { font-size:52px; font-weight:600; color:var(--near); letter-spacing:-.02em; line-height:1; }
 .telemetry .v.teal { color:var(--mid); }
 .telemetry .k { margin-top:12px; font-size:16px; font-weight:300; letter-spacing:.19em; text-transform:uppercase; color:var(--faint); }
+/* "О команде" is item 1 of the structure the organizers recommend, and the only
+   one the deck used to miss — the team name lived in the chrome strip, where it
+   reads as a watermark rather than as an answer to "кто вы". One line under the
+   telemetry: the cover is where a jury looks for it, and it costs no slide time. */
+.cover-team { position:absolute; left:var(--edge); top:966px; width:1140px; font-family:var(--font-mono); font-size:19px; font-weight:300; line-height:1.6; color:var(--faint); }
+.cover-team b { color:var(--bone); font-weight:600; letter-spacing:.04em; }
 
 /* K-gauge — the criterion drawn as the machine sees it */
 .gauge { position:absolute; right:132px; top:48%; transform:translateY(-50%); width:592px; height:592px; }
@@ -381,6 +387,11 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
       <div><div class="v">33/33</div><div class="k">census ×3</div></div>
       <div><div class="v teal">0,030 с</div><div class="k">камера → решение</div></div>
       <div><div class="v">8 шт/мин</div><div class="k">отгружаемая стойка</div></div>
+    </div>
+
+    <div class="cover-team reveal">
+      <b>Команда «ИИ в массы»</b><br>
+      Иван Пушкин · Иван Резников · Максим Седов · Михаил Анцев · Владимир Зайцев
     </div>
 
     <div class="gauge">

@@ -64,12 +64,19 @@ class Still:
 # The reel follows the jury's checklist in order, so a reviewer can tick items
 # off as they watch instead of hunting for them.
 SEGMENTS: tuple[Card | Clip | Still, ...] = (
+    # "О команде" is item 1 of the recommended structure, so it belongs on the
+    # title card. Names are split across two lines on purpose: one line of five
+    # would run past the frame at this size, and drawtext does not wrap.
     Card((
         "Роботизированная сортировка товаров",
         "Трек 3 · виртуальная ячейка пресортировки",
         "",
+        "Команда «ИИ в массы»",
+        "Иван Пушкин · Иван Резников · Максим Седов",
+        "Михаил Анцев · Владимир Зайцев",
+        "",
         "Видеодемонстрация работы решения",
-    ), 9.0, size=48),
+    ), 9.0, size=40),
 
     Card((
         "Задача",
