@@ -51,9 +51,13 @@ sim/models/probe_items/
 # генератор, а не производный мир: иначе два мира разъедутся молча
 sim/worlds/cell_diverter_3cam_miscal.sdf
 sim/worlds/cell_diverter_2cam_miscal.sdf
+# Второй бюджет дрейфа ("посредственная" 3 мм / 0.3°, scripts/census_miscal.sh):
+# тот же генератор, другой параметр — производный мир так же не коммитим
+sim/worlds/*_miscal_worst.sdf
 # То же для scripts/make_noisy_world.py: сигма — параметр эксперимента, и мир
 # с зашитым в файл числом разъехался бы с тем, чем его на самом деле гоняли
 sim/worlds/*_noisy.sdf
+sim/worlds/*_s10.sdf
 
 # Крупные артефакты — в облако организаторов, не в гит
 *.onnx
