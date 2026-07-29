@@ -59,7 +59,7 @@
 |---|---|---|---|
 | Полнота и качество отчёта | 0–5 | Единый `docs/report/final_report.md`, профильные разделы, `experiments.md`, `decisions.md` | ✅ |
 | Воспроизводимость и проверка | 0–5 | README §«Воспроизведение прогонов» + таблица «golden-команда → заявка», seed-механизм `(seed,item,orient)`, `docker/`, `scripts/check_clean_deploy.sh`, `.github/workflows/ci.yml` | ✅ каждая заявка — одна команда + seed |
-| Видеодемонстрация работы решения | обяз. | `docs/report/video/demo_reel.mp4` (6:06, собирается `scripts/build_demo_reel.py`), текст закадра `video_narration.md`, драматургия `video_script.md` | ✅ смонтирован; озвучка — за человеком |
+| Видеодемонстрация работы решения | обяз. | `docs/report/video/demo_reel.mp4` (5:39, собирается `scripts/build_demo_reel.py`), текст закадра `video_narration.md`, драматургия `video_script.md` | ✅ смонтирован; озвучка — за человеком |
 | Полнота комплекта сдачи | 0–5 | README (навигация), `final_report.md`, эта карта покрытия, preflight; облачная видеоссылка и пробная сдача пакета | ⛔ ссылка H6 и пробная сдача — за человеком (29.07) |
 
 ## Сводка пробелов (что закрывает баллы, но ещё не готово)

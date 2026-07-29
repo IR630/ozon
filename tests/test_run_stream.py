@@ -222,3 +222,18 @@ def test_summary_pipeline_propagates_python_failure_after_ros_setup():
     summary_pipeline = text.index('} | tee "$LOGDIR/stream.log"')
 
     assert ros_setup < pipefail < summary_pipeline
+
+
+def test_recorded_runs_can_hold_the_world_open_after_the_verdict():
+    """The verdict loop breaks the moment the last item lands, and cleanup then
+    tears the world down — which cut the divert off the end of every recorded
+    clip. The hold must sit BEFORE cleanup and default to 0, so metric runs and
+    CI are untouched while recorders opt in."""
+    text = SCRIPT.read_text(encoding="utf-8")
+    hold = text.index('sleep "${POST_EPISODE_HOLD:-0}"')
+    assert hold < text.index("\ncleanup\ntrap - EXIT")
+
+
+def test_the_recorder_opts_into_the_hold():
+    recorder = SCRIPT.with_name("record_stream_video.sh").read_text(encoding="utf-8")
+    assert "POST_EPISODE_HOLD=${POST_EPISODE_HOLD:-10}" in recorder

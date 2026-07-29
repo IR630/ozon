@@ -30,7 +30,11 @@ OUT=${1:?usage: record_stream_video.sh <out.mp4> [slug:zone:gap_m ...]}
 shift
 mkdir -p "$(dirname "$OUT")"
 
-bash scripts/run_stream.sh "$@" > /tmp/record_stream_run.log 2>&1 &
+# Keep the world alive after the verdict so the tail of the physical move makes
+# it into the file: without this the clip ends with the item still riding the
+# belt and the divert is never shown (see run_stream.sh for the knob).
+POST_EPISODE_HOLD=${POST_EPISODE_HOLD:-10} \
+    bash scripts/run_stream.sh "$@" > /tmp/record_stream_run.log 2>&1 &
 RUN=$!
 
 # wait out run_stream's initial pkill of stale servers, then for the world

@@ -426,6 +426,14 @@ echo "=== controller decisions ==="
 grep -E "item [0-9]+: (B —|C —|D —)|FIRED|mis-sort|MISSED" "$LOGDIR/skeleton.log" \
     | sed -E 's/.*\[controller\]: //' | awk '!seen[$0]++' || true
 
+# The verdict loop breaks the instant the last item's terminal position is
+# confirmed, and `cleanup` then tears the world down. That is right for a metric
+# run and wrong for a recorded one: the spectator camera is still streaming the
+# tail of the physical move, so footage ends with the item mid-belt and the
+# divert — the whole point of the clip — never appears. Recorders set this knob;
+# metric runs leave it at 0 and behave exactly as before.
+sleep "${POST_EPISODE_HOLD:-0}"
+
 cleanup
 trap - EXIT
 sleep 1
