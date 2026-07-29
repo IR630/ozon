@@ -98,3 +98,42 @@ def test_asking_for_an_absent_head_is_an_error_not_a_no_op():
     clean = TWO_CAM_WORLD.read_text(encoding="utf-8")
     with pytest.raises(ValueError):
         miscalibrate(clean, heads=(("camera_side_pos_y", +1.0),))
+
+
+# --- the budget is a seam ---------------------------------------------------
+# One budget cannot decide the rig: the offline matrix has 3A leading at the
+# typical column and TRAILING in the worst one, so the live census has to be run
+# at both. These lock that the second budget actually reaches the world — a CLI
+# flag that parsed and then wrote the default error would silently answer the
+# typical column twice and read as "the rig is stable across calibration".
+
+
+def test_the_budget_is_a_parameter_not_a_constant():
+    clean = SRC_WORLD.read_text(encoding="utf-8")
+    worse = miscalibrate(clean, shift_mm=3.0, tilt_deg=0.3)
+    for name, sign in (("camera_side_neg_y", -1.0), ("camera_side_pos_y", +1.0)):
+        before, after = _pose(clean, name), _pose(worse, name)
+        assert after[1] - before[1] == pytest.approx(sign * 3.0 / 1000.0)
+        assert after[4] - before[4] == pytest.approx(math.radians(0.3))
+
+
+def test_the_cli_passes_the_budget_through(tmp_path):
+    """The flag must reach the FILE, not just argparse."""
+    from scripts.make_miscal_world import main
+
+    out = tmp_path / "worse.sdf"
+    assert main([str(out), str(SRC_WORLD), "--shift-mm", "3", "--tilt-deg", "0.3"]) == 0
+    written = out.read_text(encoding="utf-8")
+    clean = SRC_WORLD.read_text(encoding="utf-8")
+    moved = _pose(written, "camera_side_pos_y")[1] - _pose(clean, "camera_side_pos_y")[1]
+    assert moved == pytest.approx(3.0 / 1000.0)
+
+
+def test_the_cli_still_defaults_to_the_typical_budget(tmp_path):
+    """Every earlier run named no budget; those runs must stay reproducible."""
+    from scripts.make_miscal_world import main
+
+    out = tmp_path / "default.sdf"
+    assert main([str(out), str(SRC_WORLD)]) == 0
+    assert out.read_text(encoding="utf-8") == miscalibrate(
+        SRC_WORLD.read_text(encoding="utf-8"))

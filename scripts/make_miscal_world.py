@@ -27,6 +27,17 @@ The two-head rig is miscalibrated the same way, by naming its world:
     python3 scripts/make_miscal_world.py \\
         sim/worlds/cell_diverter_2cam_miscal.sdf sim/worlds/cell_diverter_2cam.sdf
 
+THE BUDGET IS A SEAM, because one budget answers only half the question. The
+offline matrix (docs/experiments.md 26.07) found the rig ORDER INVERTS between
+calibration columns: at the typical 2 mm / 0.2 deg budget 3A leads two heads
+92 % against 82 %, and in the worst column it trails, 82-83 % against 86 %. A
+live census run at one budget therefore cannot say which rig to ship. The two
+budgets below are the matrix's own columns (scripts/probe_camera_count.py
+CALIBRATIONS), so the live numbers land on the offline ones:
+
+    --shift-mm 2 --tilt-deg 0.2    # "типичная"      (default)
+    --shift-mm 3 --tilt-deg 0.3    # "посредственная" — the column where 3A lost
+
 Only the heads the source world actually carries are moved, and which ones they
 were is printed: a rig quietly miscalibrated on fewer heads than intended is a
 census nobody can attribute.
@@ -78,17 +89,27 @@ def miscalibrate(sdf_text, shift_mm=SHIFT_MM, tilt_deg=TILT_DEG, heads=_SIDE_HEA
 
 
 def main(argv):
-    out_path = Path(argv[0]) if argv else OUT_WORLD
-    src_path = Path(argv[1]) if len(argv) > 1 else SRC_WORLD
-    src = src_path.read_text(encoding="utf-8")
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("out", nargs="?", default=OUT_WORLD, type=Path)
+    parser.add_argument("src", nargs="?", default=SRC_WORLD, type=Path)
+    parser.add_argument("--shift-mm", type=float, default=SHIFT_MM,
+                        help="outward y displacement per side head (default %(default)s)")
+    parser.add_argument("--tilt-deg", type=float, default=TILT_DEG,
+                        help="pitch error per side head (default %(default)s)")
+    args = parser.parse_args(argv)
+
+    src = args.src.read_text(encoding="utf-8")
     heads = heads_present(src)
     if not heads:
-        print("ABORT: %s carries no side head to miscalibrate" % src_path)
+        print("ABORT: %s carries no side head to miscalibrate" % args.src)
         return 2
-    out_path.write_text(
-        miscalibrate(src, heads=heads), encoding="utf-8")
+    args.out.write_text(
+        miscalibrate(src, shift_mm=args.shift_mm, tilt_deg=args.tilt_deg, heads=heads),
+        encoding="utf-8")
     print("miscalibrated world: %s from %s (%+g mm outward, %+g deg pitch, heads: %s)"
-          % (out_path, src_path, SHIFT_MM, TILT_DEG,
+          % (args.out, args.src, args.shift_mm, args.tilt_deg,
              ", ".join(name for name, _sign in heads)))
     return 0
 
