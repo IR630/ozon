@@ -39,8 +39,8 @@ source "$ROS_INSTALL_ROOT/setup.bash"
 # no longer be hidden by a successful final consumer.
 set -o pipefail
 
-# Production is the three-head rig (28.07); one-head fallback is one variable away.
-WORLD=${WORLD:-sim/worlds/cell_diverter_3cam.sdf}
+# Production is the TWO-head rig (30.07); other rigs are one variable away.
+WORLD=${WORLD:-sim/worlds/cell_diverter_2cam.sdf}
 ITEM_MODEL_ROOT=${ITEM_MODEL_ROOT:-sim/models/items}
 SEED=${SEED:-0}
 ORIENT_INDEX=${ORIENT_INDEX:-0}

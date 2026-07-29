@@ -23,8 +23,12 @@ REQUIRED_FILES = (
     "ros_msgs/msg/ItemClassification.msg",
     "launch/skeleton.launch.py",
     "sim/worlds/cell_diverter.sdf",
-    # The shipped rig since 28.07 is the three-head one; the preflight has to guard
+    # The shipped rig since 30.07 is the TWO-head one; the preflight has to guard
     # the configuration that actually runs, not only the single-head fallback.
+    # The three-head world stays in the tree as a measured alternative the report
+    # compares against, so it is guarded too.
+    "sim/worlds/cell_diverter_2cam.sdf",
+    "sim/bridge_2cam.yaml",
     "sim/worlds/cell_diverter_3cam.sdf",
     "sim/bridge_3cam.yaml",
     "scripts/run_skeleton.sh",

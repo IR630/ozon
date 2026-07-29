@@ -87,7 +87,7 @@ SPAWN_Y=${SPAWN_Y:-0}
 # false "heads=1" diagnosis while verifying the rig itself.
 # scripts/compare_mechanisms.sh still swaps in the pusher world on purpose; the
 # command topics are identical so the nodes are unchanged either way.
-WORLD=${WORLD:-sim/worlds/cell_diverter_3cam.sdf}
+WORLD=${WORLD:-sim/worlds/cell_diverter_2cam.sdf}
 # Generated organizer models are intentionally gitignored. CI points this seam
 # at a text-only geometric fixture with the same domain dimensions and mass.
 ITEM_MODEL_ROOT=${ITEM_MODEL_ROOT:-sim/models/items}

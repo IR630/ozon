@@ -48,9 +48,10 @@ SAVE_DYNAMICS=${SAVE_DYNAMICS:-${CAPTURE_DYNAMICS:-0}}
 # around x=3.4-4.9 — which the old x>=3.5 band happily scored as "rode to the end".
 # Name the world here, and print it, so a census can never again be silent about what it
 # measured. Override explicitly (compare_mechanisms.sh does) to measure the baseline.
-# Production is the three-head rig (28.07). One-head fallback stays one variable
-# away: WORLD=sim/worlds/cell_diverter.sdf BRIDGE_CONFIG=bridge.yaml.
-export WORLD=${WORLD:-sim/worlds/cell_diverter_3cam.sdf}
+# Production is the TWO-head rig (30.07). Other rigs stay one variable away:
+# WORLD=sim/worlds/cell_diverter.sdf BRIDGE_CONFIG=bridge.yaml for one head,
+# cell_diverter_3cam.sdf + bridge_3cam.yaml for three.
+export WORLD=${WORLD:-sim/worlds/cell_diverter_2cam.sdf}
 SLUGS=(bottle box_300x200x200 box_400x400x300 lunchbox bag detergent pouf pen plate cylinder helmet)
 ZONES=(D      B               C               B        B   B         C    C   D     B        B)
 START_ITEM=${3:-0}

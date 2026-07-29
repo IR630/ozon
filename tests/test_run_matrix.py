@@ -61,12 +61,14 @@ def test_the_census_measures_the_final_mechanism_and_says_which():
     )
 
     assert result.returncode == 0, result.stderr
-    # The diverter stays pinned; what moved on 28.07 is WHICH RIG is production —
-    # the three-head world, by the owner's decision. Both halves of the original
-    # contract still hold: the default is the shipped mechanism, and the summary
-    # line a report would quote names the world it measured.
-    assert "world: sim/worlds/cell_diverter_3cam.sdf" in result.stdout
-    assert "world=sim/worlds/cell_diverter_3cam.sdf" in result.stdout
+    # The diverter stays pinned; what moved again on 30.07 is WHICH RIG is
+    # production — the TWO-head world, by the owner's decision after the third
+    # head's fusion was measured lifting the 9 mm Pen over the small-item floor.
+    # Both halves of the original contract still hold: the default is the shipped
+    # mechanism, and the summary line a report would quote names the world it
+    # measured.
+    assert "world: sim/worlds/cell_diverter_2cam.sdf" in result.stdout
+    assert "world=sim/worlds/cell_diverter_2cam.sdf" in result.stdout
 
 
 def test_the_baseline_mechanism_can_still_be_measured_on_purpose():

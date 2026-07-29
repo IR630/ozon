@@ -31,16 +31,17 @@ def generate_launch_description():
         package="ros_gz_bridge",
         executable="parameter_bridge",
         name="camera_bridge",
-        # BRIDGE_CONFIG lets the three-head world bridge its extra depth streams
-        # without the shipped single-camera census bridging topics it does not have.
-        # PRODUCTION IS THE THREE-HEAD RIG (28.07, owner's call). The default moved
-        # from bridge.yaml so the shipped entry points bridge the rig they run.
-        # A one-head world with this config simply never publishes the side topics
-        # and perception degrades to the top view bit-exactly (src/multiview.py),
-        # so the fallback is `BRIDGE_CONFIG=bridge.yaml` — one variable, no code.
+        # BRIDGE_CONFIG lets a multi-head world bridge its extra depth streams
+        # without the single-camera census bridging topics it does not have.
+        # PRODUCTION IS THE TWO-HEAD RIG (30.07, owner's call): the third head
+        # bought no routing and its fusion is what lifted the 9 mm Pen over the
+        # small-item floor (docs/decisions.md 30.07).
+        # A world with fewer heads than this config simply never publishes the
+        # missing side topics and perception degrades to the top view bit-exactly
+        # (src/multiview.py), so any other rig is one variable, no code.
         parameters=[{"config_file": os.path.join(
                          REPO_ROOT, "sim",
-                         os.environ.get("BRIDGE_CONFIG", "bridge_3cam.yaml")),
+                         os.environ.get("BRIDGE_CONFIG", "bridge_2cam.yaml")),
                      "use_sim_time": True}],
         output="screen",
     )
