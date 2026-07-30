@@ -12,7 +12,8 @@
 > независимых физических измерений: часть строк проверяет согласованность одного
 > проектного контракта от расчёта до исполнения.
 >
-> Все константы — из `src/constants.py` и `src/stream_plan.py`:
+> Все константы — из `src/constants.py`, `scripts/stream_plan.py` и дефолтов
+> запуска в `scripts/run_skeleton.sh` (`FIRE_LEAD_S`):
 > `BELT_SPEED_M_S=1.0`,
 > `HOLD_S=2.5`, `RETRACT_S=0.6`, `FIRE_LEAD_S=0.5`, `FIRST_SPAWN_X_M=-1.5`,
 > `TARGET_X_M=4.2`, высота ленты `0.40 м`. `g=9.81 м/с²` (гравитация мира Gazebo).
