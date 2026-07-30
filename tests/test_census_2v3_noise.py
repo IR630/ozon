@@ -56,3 +56,26 @@ def test_the_stream_path_honours_the_same_soft_start_knob():
     assert 'seq 1 "${SOFT_START_TRIES:-' in stream, (
         "run_stream.sh must take SOFT_START_TRIES; a hardcoded wait cannot measure "
         "a rig that boots slower than the shipped one")
+
+
+def test_both_episode_paths_share_one_soft_start_default():
+    """run_stream.sh and run_skeleton.sh must not drift apart on this default.
+
+    run_stream.sh's own comment promises "same knob and same default as
+    run_skeleton.sh", and that promise is exactly what broke: raising the census
+    path alone on 30.07 left the STREAM path at 30 s. That is the worse half to
+    miss — the stream path measures THROUGHPUT, which the jury scores directly,
+    while a census cell only loses one row. Equality is asserted rather than each
+    value separately, so whichever rig ships next moves both or fails here.
+    """
+    pattern = r'seq 1 "\$\{SOFT_START_TRIES:-(\d+)\}"'
+    defaults = {}
+    for name in ("run_stream.sh", "run_skeleton.sh"):
+        text = (SCRIPT.parent / name).read_text(encoding="utf-8")
+        match = re.search(pattern, text)
+        assert match, f"{name} must keep the ${{SOFT_START_TRIES:-N}} form"
+        defaults[name] = int(match.group(1))
+
+    assert defaults["run_stream.sh"] == defaults["run_skeleton.sh"], (
+        f"soft-start defaults drifted: {defaults} — the stream path measures "
+        "throughput, so a lower default there silently caps the scored metric")
