@@ -1,6 +1,7 @@
 """Static regression checks for the Gazebo episode lifecycle."""
 
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -104,10 +105,41 @@ def test_soft_start_wait_is_overridable_and_defaults_to_the_shipped_value():
     """
     text = SCRIPT.read_text(encoding="utf-8")
 
-    assert 'seq 1 "${SOFT_START_TRIES:-60}"' in text, "wait must read SOFT_START_TRIES"
-    # 60 tries x 0.5 s = the 30 s the shipped census has always used
+    assert 'seq 1 "${SOFT_START_TRIES:-240}"' in text, "wait must read SOFT_START_TRIES"
+    # 240 tries x 0.5 s = 120 s, sized for the SHIPPED two-head rig (see the test below)
     assert "sleep 0.5" in text
     assert "soft-start done" in text
+
+
+# Measured bring-up on one tree: 1 head ~18 s, 2 heads ~28.7 s, 3 heads ~40 s
+# (docs/cameras-under-noise-brief.md, stage breakdown). The shipped rig is the
+# TWO-head one, so the default must clear 28.7 s with real margin, not 1.3 s.
+SHIPPED_BRINGUP_S = 28.7
+MIN_SOFT_START_MARGIN = 2.0     # x the measured bring-up
+
+
+def test_default_soft_start_budget_covers_the_shipped_two_head_rig():
+    """The default wait must be sized for the rig that actually ships.
+
+    This is the third bite of one constant. The default 60 tries = 30 s was sized
+    for the ONE-head world; when the shipped rig became the two-head one (30.07),
+    its ~28.7 s bring-up left a 1.3 s margin. A jury machine under any load then
+    aborts with "belt never reached full speed" — which reads as broken conveyor
+    physics, not as a stopwatch that ran out. The same misattribution already cost
+    this project two wrong conclusions under two different names, so the budget is
+    pinned to the SHIPPED rig's measured bring-up instead of to whichever rig the
+    default happened to be written for.
+    """
+    text = SCRIPT.read_text(encoding="utf-8")
+
+    match = re.search(r'seq 1 "\$\{SOFT_START_TRIES:-(\d+)\}"', text)
+    assert match, "the soft-start wait must keep the ${SOFT_START_TRIES:-N} form"
+    budget_s = int(match.group(1)) * 0.5
+    assert budget_s >= SHIPPED_BRINGUP_S * MIN_SOFT_START_MARGIN, (
+        f"default wait {budget_s:.0f} s gives only "
+        f"{budget_s - SHIPPED_BRINGUP_S:.1f} s over the shipped two-head rig's "
+        f"{SHIPPED_BRINGUP_S} s bring-up; a loaded machine aborts the cell before "
+        "it measures anything and the failure looks like conveyor physics")
 
 
 def test_the_cycle_number_is_broken_down_into_attributable_stages():

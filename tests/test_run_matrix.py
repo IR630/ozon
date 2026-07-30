@@ -196,3 +196,28 @@ def test_dry_run_rejects_invalid_item_range():
 
     assert result.returncode == 2
     assert "item range must fit 0..10" in result.stderr
+
+
+# The shipped two-head rig runs a ~43.9 s cell against the one-head world's ~23 s.
+# 300 s is the floor the rig census already locks in (tests/test_census_2v3_noise.py);
+# the bare default must not sit below what the census path considers measurable.
+MIN_CELL_TIMEOUT_S = 300
+
+
+def test_default_cell_timeout_is_sized_for_the_shipped_rig():
+    """A cap near the cycle turns machine load into a fake routing miss.
+
+    At the old 180 s default the shipped two-head rig lost `bottle oi=1` to rc=124
+    on a loaded machine (docs/cameras-under-noise-brief.md). That cell is recorded
+    TIMEOUT and scores exactly like a wrong route, so a busy machine silently
+    subtracts from the number the jury reads as classification quality. The cap
+    exists to cut a WEDGED Gazebo loose, not to race a healthy cell.
+    """
+    import re
+
+    match = re.search(r"^CELL_TIMEOUT=\$\{CELL_TIMEOUT:-(\d+)\}",
+                      SCRIPT.read_text(encoding="utf-8"), re.MULTILINE)
+    assert match, "run_matrix.sh must keep the ${CELL_TIMEOUT:-N} form"
+    assert int(match.group(1)) >= MIN_CELL_TIMEOUT_S, (
+        f"CELL_TIMEOUT={match.group(1)} s sits near the shipped rig's ~43.9 s cell; "
+        "a loaded machine then reports TIMEOUT cells as routing misses")

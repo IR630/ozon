@@ -32,7 +32,12 @@ PYTHON=${PYTHON:-python3}
 LOGDIR=${LOGDIR:-runs/matrix_$(date +%Y%m%d_%H%M%S)_seed${SEED}}
 # Per-cell wall-clock ceiling (s) and the runner it caps. SKELETON is overridable
 # so tests can inject a stub, exactly like the PYTHON seam above.
-CELL_TIMEOUT=${CELL_TIMEOUT:-180}
+# RAISED 180 -> 400 on 30.07 with the shipped rig. 180 s was sized for the one-head
+# world (~23 s cycle); the two-head rig runs ~43.9 s and lost cells to rc=124 at 180
+# on a loaded machine (bottle oi=1 — see docs/cameras-under-noise-brief.md). A capped
+# cell records TIMEOUT, which scores as a routing miss the rig never actually made,
+# so the cap must sit far past the cycle, not near it. Pinned by tests/test_run_matrix.py.
+CELL_TIMEOUT=${CELL_TIMEOUT:-400}
 SKELETON=${SKELETON:-bash scripts/run_skeleton.sh}
 # Opt-in full pose trace per cell. A normal census stays lightweight; a targeted
 # flaky-row replay can set SAVE_DYNAMICS=1 and retain the trajectory that failed

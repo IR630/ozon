@@ -80,8 +80,9 @@ SPAWN_Z=${SPAWN_Z:-0.5}
 # instead of the belt carrying it (the helmet's stable census failure). run_matrix.sh
 # takes this per cell from spawn_orientations.spawn_offset_y_m.
 SPAWN_Y=${SPAWN_Y:-0}
-# Mechanism seam. The default is the SHIPPED cell: diverter mechanism, three-head
-# rig (28.07). It used to be cell.sdf — the day-3 ballistic pusher with one camera —
+# Mechanism seam. The default is the SHIPPED cell: diverter mechanism, TWO-head
+# rig (30.07 — the three-head rig was dropped, see docs/report/camera_tradeoff.md).
+# It used to be cell.sdf — the day-3 ballistic pusher with one camera —
 # which every caller overrode with WORLD, so a bare `run_skeleton.sh` silently
 # measured neither the shipped mechanism nor the shipped rig. That gap cost one
 # false "heads=1" diagnosis while verifying the rig itself.
@@ -174,13 +175,18 @@ LAUNCH=$!
 # run_stream.sh has always fed this way, which is why the stream never saw the defect.
 # The item lands one clearance above a belt at 1 m/s, skids ~6 cm (mu=0.8) and is carried:
 # the infeed rails hold it through that, exactly as they hold it in the stream.
-# 30 s by default. This is a HARNESS constant, not a physical limit, and the
+# 120 s by default. This is a HARNESS constant, not a physical limit, and the
 # comment above records that it has already produced one false diagnosis pointing
-# at conveyor physics. It bites again on any configuration that boots slower than
-# the shipped one: the three-head rig runs a ~50 s cycle against this world's ~30 s
-# and overran the wait in 3 of 33 census cells. Overridable so a slow rig is
-# measured rather than mis-attributed.
-for _ in $(seq 1 "${SOFT_START_TRIES:-60}"); do
+# at conveyor physics. It bites on any configuration that boots slower than the
+# budget: the three-head rig overran the old 30 s in 3 of 33 census cells and the
+# failure was read as bridge load rather than as the timer.
+# RAISED 60 -> 240 on 30.07, when the SHIPPED rig became the two-head one. Its
+# measured bring-up is ~28.7 s (1 head ~18 s, 3 heads ~40 s), so the old default
+# left a 1.3 s margin on the configuration we actually hand to the jury — any
+# load on their machine turns a working rig into "belt never reached full speed".
+# Sized at 2x the shipped bring-up; still overridable so a slow rig is measured
+# rather than mis-attributed. Pinned by tests/test_run_skeleton.py.
+for _ in $(seq 1 "${SOFT_START_TRIES:-240}"); do
     grep -q "soft-start done" "$NODE_LOG" && break
     sleep 0.5
 done
