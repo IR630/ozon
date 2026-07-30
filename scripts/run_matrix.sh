@@ -124,7 +124,11 @@ for i in $(seq "$START_ITEM" "$END_ITEM"); do
             continue
         fi
         rc=0
-        ORIENT_X=$OX ORIENT_Y=$OY ORIENT_Z=$OZ ORIENT_W=$OW \
+        # CELL_OI names the pose inside the item's row. run_skeleton.sh ignores it;
+        # the video recorder (scripts/record_census_cell.sh) needs it, because the
+        # three orientations of one item would otherwise write one filename three
+        # times and the reel would show pose 3 of every item, scored 33/33.
+        ORIENT_X=$OX ORIENT_Y=$OY ORIENT_Z=$OZ ORIENT_W=$OW CELL_OI=$oi \
             SPAWN_Z=${SZ:-0.5} SPAWN_Y=${SY:-0} \
             CAPTURE_DYNAMICS=$SAVE_DYNAMICS DYNAMICS_TRACE="$dynamics_log" \
             timeout --kill-after=15 "$CELL_TIMEOUT" $SKELETON "$slug" "$zone" \

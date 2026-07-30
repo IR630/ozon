@@ -182,6 +182,40 @@ def test_targeted_replay_can_keep_a_pose_trace_per_cell(tmp_path):
     assert not list(tmp_path.glob("matrix_*_dynamic_pose.log"))
 
 
+def test_each_cell_is_told_which_orientation_it_is(tmp_path):
+    """The video recorder names its file from CELL_OI.
+
+    Without it the three orientations of one item all write one filename, and the
+    reel plays pose 3 of every item while its caption claims 33 distinct cells —
+    a census that looks complete and is not.
+    """
+    bash, env = _bash_env()
+    env.pop("MATRIX_DRY_RUN", None)
+    env["LOGDIR"] = tmp_path.as_posix()
+    stub = tmp_path / "oi.sh"
+    stub.write_text(
+        '#!/usr/bin/env bash\nprintf "oi=%s\\n" "$CELL_OI" '
+        '>> "$LOGDIR/seen_oi.txt"\nprintf "%s -> %s: PASS (pose x=0 y=0 z=0, '
+        'cycle 1.0s from launch)\\n" "$1" "$2"\n',
+        encoding="utf-8",
+    )
+    env["SKELETON"] = f"bash {stub.as_posix()}"
+
+    result = subprocess.run(
+        [bash, str(SCRIPT), "0", "3", "10", "10"],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    seen = (tmp_path / "seen_oi.txt").read_text(encoding="utf-8").split()
+    assert seen == ["oi=0", "oi=1", "oi=2"], seen
+
+
 def test_dry_run_rejects_invalid_item_range():
     bash, env = _bash_env()
     result = subprocess.run(

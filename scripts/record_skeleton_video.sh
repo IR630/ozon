@@ -44,9 +44,20 @@ for _ in $(seq 1 40); do
     sleep 0.5
 done
 sleep 1
+# Default framing is the committed overview pose. Set SPECTATOR_POSE to shoot the
+# same episode closer — from the overview an item is a few pixels wide, so a clip
+# meant to SHOW the sorting shows a speck and proves it only in the caption. Same
+# temp-copy trick as record_stream_video.sh; preview a pose with frame_spectator.sh,
+# which costs seconds instead of a full render.
+SPECTATOR_MODEL="$PWD/sim/models/spectator/model.sdf"
+if [ -n "${SPECTATOR_POSE:-}" ]; then
+    sed -E "s|<pose>[^<]*</pose>|<pose>$SPECTATOR_POSE</pose>|" \
+        "$SPECTATOR_MODEL" > /tmp/spectator_skeleton.sdf
+    SPECTATOR_MODEL=/tmp/spectator_skeleton.sdf
+fi
 ign service -s /world/cell/create --reqtype ignition.msgs.EntityFactory \
     --reptype ignition.msgs.Boolean --timeout 5000 \
-    --req "sdf_filename: \"$PWD/sim/models/spectator/model.sdf\", name: \"spectator\"" > /dev/null
+    --req "sdf_filename: \"$SPECTATOR_MODEL\", name: \"spectator\"" > /dev/null
 # visual-only prop: make the production camera visible in footage (see model.sdf)
 ign service -s /world/cell/create --reqtype ignition.msgs.EntityFactory \
     --reptype ignition.msgs.Boolean --timeout 5000 \
