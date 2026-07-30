@@ -91,8 +91,22 @@ def test_long_sections_collapse_to_directories(tmp_path):
     assert "episode_0.log" not in manifest
 
 
-def test_real_repository_bundles_the_shipped_clips():
-    # Regression guard: the demo the deck plays is also what the cloud gets.
+def test_real_repository_bundles_every_clip_the_deck_plays():
+    """Regression guard: the demo the deck plays is also what the cloud gets.
+
+    DERIVED FROM THE DECK, not a hardcoded list. The previous version pinned
+    `rig3_*` by name, and that is exactly how this drifted twice: on 28.07 the
+    shipped rig became three heads while the clips were single-head, and on 30.07
+    it became two heads while the clips were three-head. A list written by hand
+    goes stale silently; the deck's own <video src> cannot.
+    """
+    import re
+
+    deck = (ROOT / "docs" / "report" / "slides" / "deck-c-ozon.html").read_text(encoding="utf-8")
+    played = {Path(src).name for src in re.findall(r'<video[^>]+src="([^"]+\.mp4)"', deck)}
+    assert played, "the deck plays no clips at all — the gallery is empty"
+
     plan, _ = plan_bundle(ROOT)
-    names = {path.name for path in plan["01-video-demo"]}
-    assert {"hero_stream_mixed_cd.mp4", "rig3_bottle_D.mp4", "rig3_pen_C.mp4"} <= names
+    bundled = {path.name for path in plan["01-video-demo"]}
+    missing = played - bundled
+    assert not missing, f"the deck plays clips the bundle does not carry: {sorted(missing)}"
