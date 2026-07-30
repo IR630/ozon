@@ -25,11 +25,12 @@ feedback-топиков на точном окружении организат�
 **Текущий результат.** Три исторических pre-v0.5 body-scored census дали
 `33/33 ×3`; два полных stream-suite v0.5 — `33/33 + 33/33`. На актуальном ядре
 «v0.5 + Stage 26 + depth-scale fix» повторная непрерывная перепись также дала
-**33/33**, таймаутов и execution-ошибок нет. Последний multi-seed замер
-однокамерной конфигурации на depth-scale базе дал **163/165** (оба промаха —
-K≈0.8, execution 0); точный `main` после последующих инфраструктурных правок
-повторно проверен одним полным seed. Двухкамерный multi-seed также дал
-**163/165** — камера маршрутизацию не двигает.
+**33/33**, таймаутов и execution-ошибок нет. Multi-seed **отгружаемой
+ДВУХкамерной** стойки (24.07, seeds 0–4) дал **163/165** при execution 0; тот же
+замер одноголовым fallback-путём на depth-scale базе дал **163/165** ячейка в
+ячейку (оба промаха — K≈0.8). Совпадение и есть довод: вердикт держится на
+верхней головке, стойка маршрутизацию не двигает. Точный `main` после
+последующих инфраструктурных правок повторно проверен одним полным seed.
 Шумовой seed-0 gate 25.07 давал **31/33** для одной камеры против **18/33** для
 двух и трёх, но 28.07 это число снято: все 15 потерянных ячеек были таймаутами по
 стоимости сегментации, а не ошибками измерения. После её починки тот же gate даёт
@@ -173,10 +174,15 @@ build-артефакты, в гит они не попадают, поэтому
 colcon build --packages-select ros_msgs          # ROS 2 контракты -> install/
 python3 scripts/build_item_models.py             # SDF-модели 11 товаров -> sim/models/
 bash scripts/check_sdf.sh                         # валидность мира и моделей
-WORLD=sim/worlds/cell_diverter.sdf \
-  bash scripts/run_skeleton.sh box_300x200x200 B # один товар, финальный механизм
+bash scripts/run_skeleton.sh box_300x200x200 B   # один товар, отгружаемая стойка
 bash scripts/run_stream.sh                        # поток без перезапуска мира
 ```
+
+`WORLD` и `BRIDGE_CONFIG` здесь не задаются намеренно: скрипты и
+`launch/skeleton.launch.py` уже дефолтят на отгружаемую ДВУХкамерную стойку
+(`cell_diverter_2cam.sdf` + `bridge_2cam.yaml`), поэтому команда без переменных
+запускает именно то, что сдаётся. Одноголовый путь — явный override
+(`WORLD=sim/worlds/cell_diverter.sdf BRIDGE_CONFIG=bridge.yaml`).
 
 GUI Gazebo пробрасывается через X11 (Linux) или WSLg (Windows); для проверок
 без экрана используется headless-режим (`ign gazebo -s -r <world>`).
@@ -326,13 +332,17 @@ Headless-запуски Gazebo на программном GL требуют `LI
 
 ```bash
 # один товар, полный контур на финальном шибере без ручных вмешательств
-WORLD=sim/worlds/cell_diverter.sdf bash scripts/run_skeleton.sh box_300x200x200 B
+bash scripts/run_skeleton.sh box_300x200x200 B
 
 # несколько товаров без перезапуска Gazebo; план подачи печатается до старта
 bash scripts/run_stream.sh
 
 # матрица: все товары × N воспроизводимых ориентаций от заданного seed
-WORLD=sim/worlds/cell_diverter.sdf bash scripts/run_matrix.sh 0 3
+bash scripts/run_matrix.sh 0 3
+
+# та же матрица на одноголовой стойке — сравнение стоек, а не заявка
+WORLD=sim/worlds/cell_diverter.sdf BRIDGE_CONFIG=bridge.yaml \
+  bash scripts/run_matrix.sh 0 3
 
 # медиана/p95 throughput и задержек по сохранённым потоковым прогонам
 python3 scripts/measure_throughput.py runs/stream_run_1 runs/stream_run_2
@@ -370,7 +380,7 @@ bash scripts/record_skeleton_video.sh plate D
 
 | Заявка | Команда | Проверка результата |
 |---|---|---|
-| Классификация + маршрутизация `33/33` на seed 0, `163/165` по пяти seed'ам | `WORLD=sim/worlds/cell_diverter.sdf bash scripts/run_matrix.sh 0 3` (один seed); `for s in 0 1 2 3 4; do bash scripts/run_matrix.sh $s 3; done` + `python3 scripts/census_seed_sweep.py` (пять) | census 11×3; `scripts/census_ruler_diff.py`; распределение по seed'ам — `scripts/census_seed_sweep.py` |
+| Классификация + маршрутизация `33/33` на seed 0, `163/165` по пяти seed'ам | `bash scripts/run_matrix.sh 0 3` (один seed); `for s in 0 1 2 3 4; do bash scripts/run_matrix.sh $s 3; done` + `python3 scripts/census_seed_sweep.py` (пять) | census 11×3; `scripts/census_ruler_diff.py`; распределение по seed'ам — `scripts/census_seed_sweep.py`. `163/165` снят на ДВУХкамерной стойке (24.07, `feat/three-cameras@d45f42b`, seeds 0–4) — та же цифра, что у одной головки |
 | Потоковая матрица всех моделей `33/33`, 6/6 all-pass | `bash scripts/run_stream_suite.sh 0 0 2` | вердикты эпизодов; `runs/stream_suite_*` |
 | Sustained производительность `медиана 10 шт/мин` | `python3 scripts/measure_throughput.py runs/stream_suite_<...>` | steady-state median/p95, `calc_vs_sim.md` якорь 5 |
 | Камера→решение `0.030 с` (синхронизация) | тот же `measure_throughput.py` | per-stage latency, один sim-clock |
@@ -383,7 +393,7 @@ bash scripts/record_skeleton_video.sh plate D
 
 | Сценарий | Входы | Назначение |
 |---|---|---|
-| Один товар | `run_skeleton.sh <slug> <B\|C\|D> [spawn_x]`; `WORLD`, `SPAWN_Y`, `SPAWN_Z`, `ORIENT_{X,Y,Z,W}` | Точечный сквозной replay. Для финального механизма всегда задавать `WORLD=sim/worlds/cell_diverter.sdf` |
+| Один товар | `run_skeleton.sh <slug> <B\|C\|D> [spawn_x]`; `WORLD`, `BRIDGE_CONFIG`, `SPAWN_Y`, `SPAWN_Z`, `ORIENT_{X,Y,Z,W}` | Точечный сквозной replay. Дефолт — отгружаемая двухкамерная стойка, переменные задавать только чтобы уйти с неё |
 | Матрица | `run_matrix.sh [seed] [N] [start_item] [end_item]`; `LOGDIR`, `CELL_TIMEOUT=180` | Последовательный census 11 товаров × N ориентаций; диапазон индексов позволяет продолжить оборванный хвост |
 | Поток | `run_stream.sh [slug:zone:gap_m ...]`; `SEED`, `ORIENT_INDEX`, `LOGDIR` | `gap_m` — расстояние позади предыдущего товара; первый gap равен 0. Небезопасный план отвергается до старта Gazebo |
 | Потоковая матрица | `run_stream_suite.sh [seed] [start_orient] [end_orient]`; `SAME_ZONE_GAP_M` | Все 11 моделей двумя эпизодами на ориентацию; A/B-ручка меняет только same-zone gap, default 1.0 м |
