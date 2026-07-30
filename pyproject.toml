@@ -1,6 +1,15 @@
 [tool.ruff]
 line-length = 120
 
+# PIN THE RULE SET, NOT JUST THE VERSION. `requirements.txt` asks for bare `ruff`,
+# so CI installs whatever is newest — and a newer ruff widens its DEFAULT selection.
+# That is what turned main red from 28.07 on: 0.16 added I/UP/RUF to the default and
+# reported 370 findings the pinned-by-habit local 0.15 never saw, none of them a real
+# defect. Naming the set makes the gate mean the same thing on every machine and in
+# every future release; this is exactly the historical default ruff shipped with.
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["slow: full-contour Gazebo episodes (~1 min each), opt-in via RUN_E2E=1"]
