@@ -381,7 +381,7 @@ bash scripts/record_skeleton_video.sh plate D
 | Заявка | Команда | Проверка результата |
 |---|---|---|
 | Классификация + маршрутизация `33/33` на seed 0, `163/165` по пяти seed'ам | `bash scripts/run_matrix.sh 0 3` (один seed); `for s in 0 1 2 3 4; do bash scripts/run_matrix.sh $s 3; done` + `python3 scripts/census_seed_sweep.py` (пять) | census 11×3; `scripts/census_ruler_diff.py`; распределение по seed'ам — `scripts/census_seed_sweep.py`. `163/165` снят на ДВУХкамерной стойке (24.07, `feat/three-cameras@d45f42b`, seeds 0–4) — та же цифра, что у одной головки |
-| Потоковая матрица всех моделей `33/33`, 6/6 all-pass | `bash scripts/run_stream_suite.sh 0 0 2` | вердикты эпизодов; `runs/stream_suite_*` |
+| Потоковая матрица всех моделей `33/33`, 6/6 all-pass — ядро v0.5 (**17.07**); чистый перезамер отгружаемой стойки 30.07 даёт **29/33, 5/6 all-pass** | `bash scripts/run_stream_suite.sh 0 0 2` | вердикты эпизодов; `runs/stream_suite_*`, `runs/throughput_prod2cam_clean`. Единственный отказ — `oi1_pass_b` (2/6, воспроизведён дважды): три товара сходят с ленты в плотном same-zone потоке, классификация при этом верна |
 | Sustained производительность `медиана 9 шт/мин` — заявка ОТГРУЖАЕМОЙ двухкамерной стойки (30.07, RTF 0.44) | `python3 scripts/measure_throughput.py runs/stream_suite_<...>` | steady-state median/p95, `calc_vs_sim.md` якорь 5. Одноголовые 9 (28.07) и 10 (17.07) — сравнение стоек, не заявка |
 | Камера→решение `0.042 с` (синхронизация) — та же отгружаемая стойка (30.07, n=33, p95 0.088) | тот же `measure_throughput.py` | per-stage latency, один sim-clock. `0.030 с` — та же метрика на одноголовой 17.07 |
 | Чистое развёртывание (headless CPU) | `bash scripts/check_clean_deploy.sh` | чистый checkout HEAD → образ → `ci_e2e.sh` PASS |
