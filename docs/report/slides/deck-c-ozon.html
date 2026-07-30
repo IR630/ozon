@@ -385,8 +385,8 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
 
     <div class="telemetry reveal">
       <div><div class="v">33/33</div><div class="k">census ×3</div></div>
-      <div><div class="v teal">0,030 с</div><div class="k">камера → решение</div></div>
-      <div><div class="v">8 шт/мин</div><div class="k">отгружаемая стойка</div></div>
+      <div><div class="v teal">0,042 с</div><div class="k">камера → решение</div></div>
+      <div><div class="v">9 шт/мин</div><div class="k">отгружаемая стойка</div></div>
     </div>
 
     <div class="cover-team reveal">
@@ -510,7 +510,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
     <div class="body">
       <div class="route reveal d1">
         <div class="track"></div>
-        <div class="cam">depth-камера · решение за 0,030 с</div>
+        <div class="cam">depth-стойка · решение за 0,042 с</div>
         <div class="pt a">A</div>
         <div class="drop" style="left:600px"></div>
         <div class="drop" style="left:1050px"></div>
@@ -639,9 +639,9 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
     <div class="body">
       <div class="tiles reveal d1">
         <div class="tile"><div class="v">33/33</div><div class="k">Маршрутизация, отгружаемая стойка<br>под шумом 3 мм — 32/33</div><div class="cmd">run_matrix.sh 0 3</div></div>
-        <div class="tile"><div class="v teal">5/6</div><div class="k">Потоковая матрица 11 моделей<br>3 камеры, 28.07</div><div class="cmd">run_stream_suite.sh 0 0 2</div></div>
-        <div class="tile"><div class="v">8 шт/мин</div><div class="k">Отгружаемая стойка, настенные<br>у одной головки 9 — третья стоит одного</div><div class="cmd">measure_throughput.py</div></div>
-        <div class="tile"><div class="v teal">0,030 с</div><div class="k">Синхронизация камера → решение<br>общий sim-clock</div><div class="cmd">measure_throughput.py</div></div>
+        <div class="tile"><div class="v teal">5/6</div><div class="k">Потоковая матрица 11 моделей<br>2 камеры, 30.07 · terminal FAIL 0</div><div class="cmd">run_stream_suite.sh 0 0 2</div></div>
+        <div class="tile"><div class="v">9 шт/мин</div><div class="k">Отгружаемая стойка, настенные<br>RTF 0.44 · 19 шт/мин в sim-времени</div><div class="cmd">measure_throughput.py</div></div>
+        <div class="tile"><div class="v teal">0,042 с</div><div class="k">Синхронизация камера → решение<br>общий sim-clock</div><div class="cmd">measure_throughput.py</div></div>
         <div class="tile"><div class="v">5 из 5</div><div class="k">Расчёт ↔ симуляция<br>величины из первых принципов</div><div class="cmd">calc_vs_sim.md</div></div>
         <div class="tile"><div class="v bone">CV 4 × Исп. 4</div><div class="k">Уровень готовности<br>исполнение 4 обосновано сведением</div><div class="cmd">самооценка команды</div></div>
       </div>
@@ -703,7 +703,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
         <div class="col reveal d1">
           <h3><span class="mark">Границы</span>Названы прямо</h3>
           <ul class="bullets">
-            <li><b>8 шт/мин — отгружаемая стойка</b>; 9 у одной головки, 18 — пиковый короткий поток. За заявку выдаём меньшую цифру</li>
+            <li><b>9 шт/мин — отгружаемая стойка</b>; 9 у одной головки, 18 — пиковый короткий поток. За заявку выдаём меньшую цифру</li>
             <li>Плотный <b>same-zone</b> поток деградирует: насыщается ход ленты</li>
             <li><b>Свой же дефект, найденный мульти-seed:</b> слияние поднимало 9 мм Ручки
               до 11 и выводило её из-под габаритного правила. Закрыт порогом = разрешение
