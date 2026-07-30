@@ -92,7 +92,14 @@ CAMERA_FRAME_PERIOD_S = 1.0 / 15.0
 # The bound is the translation error plus the rotation error over the longest
 # range the crop admits: 2 mm + 0.2 deg x 1.28 m = 6.5 mm for the largest item
 # in the catalogue. 8 mm clears that and still sits under the 9 mm pen, which is
-# the thinnest item and the one the side heads exist for.
+# the thinnest item in the catalogue.
+#
+# THE SECOND HALF OF THIS SENTENCE USED TO READ "and the one the side heads exist
+# for". That was an untested assumption and 30.07 measured the opposite: the TOP
+# head reads the Pen correctly at 9 mm, and a side head resolves only 3-4 mm per
+# pixel at this range, so it is the head that gets the Pen WRONG. What the floor
+# still has to do is unchanged — it filters BELT, so it must sit under the thinnest
+# item rather than clipping it away. See SIDE_HEIGHT_MIN_GAIN_MM below.
 #
 # It costs almost nothing because it cuts from the BOTTOM: the side heads'
 # contribution to height is a MAXIMUM over the cloud, so trimming low points
