@@ -86,11 +86,18 @@ SHIPPED_DECK = "docs/report/slides/deck-c-ozon.html"
 MIN_DECK_VIDEOS = 3
 
 
-def deck_media_issues(root: Path) -> list[str]:
+def deck_media_issues(root: Path, tracked: set[str] | None = None) -> list[str]:
     """Local media referenced by the decks that would not render.
 
-    Missing files, mp4s in a codec browsers refuse, and a shipped deck carrying
-    fewer than ``MIN_DECK_VIDEOS`` playable clips.
+    Missing files, mp4s in a codec browsers refuse, media that is present locally
+    but absent from the repository, and a shipped deck carrying fewer than
+    ``MIN_DECK_VIDEOS`` playable clips.
+
+    ``tracked`` is the set of git-tracked paths. Pass it: existence on the
+    author's disk proves nothing about the jury's clone, and that gap already
+    shipped once — `.gitignore` re-included the retired three-head gallery while
+    the deck referenced the two-head one, so four of five gallery clips were
+    missing from the repository while every disk check stayed green.
     """
     issues = []
     for deck in sorted(root.glob(_DECK_GLOB)):
@@ -103,6 +110,14 @@ def deck_media_issues(root: Path) -> list[str]:
             if not path.is_file():
                 issues.append(f"MISSING_MEDIA: {name}")
                 continue
+            if tracked is not None:
+                try:
+                    relative_media = path.relative_to(root.resolve()).as_posix()
+                except ValueError:
+                    relative_media = None
+                if relative_media is not None and relative_media not in tracked:
+                    issues.append(f"UNTRACKED_MEDIA: {name}")
+                    continue
             if path.suffix.lower() == ".mp4":
                 if _H264_SAMPLE_ENTRY in path.read_bytes():
                     playable += 1
@@ -198,7 +213,13 @@ def submission_issues(root: Path, tracked: list[str] | None = None) -> list[str]
             issues.append(f"LARGE: {relative}: {size_mib:.1f} MiB")
 
     issues.extend(broken_local_links(root))
-    issues.extend(deck_media_issues(root))
+    # An EMPTY inventory means "no usable git index here" (the colcon container),
+    # not "nothing is tracked" — treating it as the latter would report every
+    # deck clip as missing from the repository. Only check tracking when we
+    # actually have an inventory to check against.
+    tracked_paths = set(tracked if tracked is not None else tracked_files(root))
+    issues.extend(deck_media_issues(
+        root, tracked=tracked_paths if tracked_paths else None))
     return issues
 
 

@@ -122,3 +122,36 @@ def test_current_decks_render_from_a_clean_clone():
     # Regression guard: every clip the decks reference is in the repository and
     # in a codec a browser will actually play.
     assert deck_media_issues(ROOT) == []
+
+
+def test_deck_media_must_be_tracked_in_git_not_merely_present_on_disk(tmp_path):
+    """A clip that exists locally but is gitignored still breaks the jury's clone.
+
+    This is the gap that let a real defect ship: when the gallery moved from the
+    three-head rig to the two-head one, `.gitignore` kept re-including `rig3_*`
+    while the deck started referencing `rig2_*`. Every clip was on the author's
+    disk, so the disk-only check stayed green — but four of the five clips on the
+    shipped deck's gallery slide were absent from the repository, and a fresh
+    clone rendered four broken videos on the slide that demonstrates the
+    classification rule.
+    """
+    name = Path(SHIPPED_DECK).name
+    for clip in ("kept.mp4", "ignored.mp4"):
+        _clip(tmp_path, clip, playable=True)
+    _deck(tmp_path, name, ["../video/kept.mp4", "../video/ignored.mp4"])
+
+    issues = deck_media_issues(
+        tmp_path, tracked={"docs/report/video/kept.mp4"})
+
+    assert f"UNTRACKED_MEDIA: {SHIPPED_DECK}: ../video/ignored.mp4" in issues
+    assert not any("kept.mp4" in issue for issue in issues), (
+        "a tracked clip must not be reported")
+
+
+def test_current_deck_media_is_all_tracked():
+    """Regression guard on the real repository, with git as the source of truth."""
+    from scripts.check_submission import tracked_files
+
+    issues = deck_media_issues(ROOT, tracked=set(tracked_files(ROOT)))
+
+    assert issues == [], f"deck media missing from the repository: {issues}"

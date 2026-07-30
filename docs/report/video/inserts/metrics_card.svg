@@ -24,12 +24,12 @@
     </g>
     <g transform="translate(0,430)">
       <text x="150" fill="#9aa4b2">Производительность (отгружаемая стойка)</text>
-      <text x="1770" text-anchor="end" fill="#00d1b2" font-weight="700">8 шт/мин · 3 головки (у одной 9)</text>
+      <text x="1770" text-anchor="end" fill="#00d1b2" font-weight="700">9 шт/мин · 2 головки (прод)</text>
       <line x1="150" y1="42" x2="1770" y2="42" stroke="#1e2636"/>
     </g>
     <g transform="translate(0,540)">
       <text x="150" fill="#9aa4b2">Синхронизация</text>
-      <text x="1770" text-anchor="end" fill="#ffffff" font-weight="600">камера→решение медиана 0.030 с</text>
+      <text x="1770" text-anchor="end" fill="#ffffff" font-weight="600">камера→решение медиана 0.042 с</text>
       <line x1="150" y1="42" x2="1770" y2="42" stroke="#1e2636"/>
     </g>
     <g transform="translate(0,650)">

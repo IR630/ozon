@@ -35,6 +35,7 @@
   <g text-anchor="middle" font-size="36">
     <text x="343"  y="700" fill="#c7d0dd">решение</text>
     <text x="343"  y="746" fill="#ffffff" font-weight="700">0.33 с</text>
+    <text x="343"  y="792" fill="#8b97a7" font-size="26">(набор 5 кадров @ 15 Гц)</text>
     <text x="886"  y="700" fill="#00d1b2" font-weight="700">запас 0.92 с</text>
     <text x="886"  y="746" fill="#8b97a7" font-size="30">(вердикт готов задолго до выстрела)</text>
     <text x="1503" y="700" fill="#c7d0dd">упреждение</text>
