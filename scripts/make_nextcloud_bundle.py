@@ -94,10 +94,21 @@ SECTIONS = (
         patterns=(
             "runs/rig_throughput_20260728",
             "runs/stream_suite_20260717_123705_seed0",
+            # Logs of the SHIPPED two-head rig (30.07). Without these the section
+            # promised "the logs the numbers came from" while shipping only the
+            # logs of superseded rigs: the census behind 33/33, the clean suite
+            # behind 5/6 + 11 items/min + 0.040 s, and the gap diagnostic behind
+            # the one acknowledged failure were all absent.
+            "runs/census_prod2cam_seed0",
+            "runs/throughput_prod2cam_clean",
+            "runs/diag_gap18_oi1",
         ),
         optional=frozenset({
             "runs/rig_throughput_20260728",
             "runs/stream_suite_20260717_123705_seed0",
+            "runs/census_prod2cam_seed0",
+            "runs/throughput_prod2cam_clean",
+            "runs/diag_gap18_oi1",
         }),
     ),
 )
