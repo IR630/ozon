@@ -188,12 +188,27 @@ def deck_media_issues(root: Path, tracked: set[str] | None = None) -> list[str]:
 
 
 def tracked_files(root: Path) -> list[str]:
-    result = subprocess.run(
-        ["git", "ls-files", "-z"],
-        cwd=root,
-        check=True,
-        capture_output=True,
-    )
+    """Paths git tracks under ``root``; empty when git cannot answer.
+
+    NOT ``check=True``. Every caller is built around "an empty inventory means no
+    usable git index here, so do not condemn every file" — raising instead made
+    that contract unreachable and cost real green builds: in the colcon container
+    the workspace trips git's dubious-ownership guard, ``git ls-files`` exits 128,
+    and three tests failed on every push from 28.07 on for a reason that had
+    nothing to do with the submission. The same traceback would meet an organizer
+    who unpacks the archive without ``.git`` and runs the preflight.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "-z"],
+            cwd=root,
+            check=False,
+            capture_output=True,
+        )
+    except OSError:                      # git not installed at all
+        return []
+    if result.returncode != 0:
+        return []
     return [part.decode("utf-8") for part in result.stdout.split(b"\0") if part]
 
 

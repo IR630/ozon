@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from scripts.check_submission import (
     MAX_TRACKED_BINARY_BYTES,
     MIN_DECK_VIDEOS,
@@ -154,7 +156,11 @@ def test_current_deck_media_is_all_tracked():
     """Regression guard on the real repository, with git as the source of truth."""
     from scripts.check_submission import tracked_files
 
-    issues = deck_media_issues(ROOT, tracked=set(tracked_files(ROOT)))
+    tracked = set(tracked_files(ROOT))
+    if not tracked:
+        pytest.skip("no git inventory here (colcon container); nothing to check against")
+
+    issues = deck_media_issues(ROOT, tracked=tracked)
 
     assert issues == [], f"deck media missing from the repository: {issues}"
 
@@ -182,6 +188,22 @@ def test_reel_clip_issues_stays_quiet_without_a_git_inventory():
     assert reel_clip_issues(["anything.mp4"], tracked=None) == []
 
 
+def test_tracked_files_returns_nothing_where_git_cannot_answer(tmp_path):
+    """A preflight must report problems, not become one.
+
+    Every caller here is written around "an empty inventory means no usable git
+    index" — but ``tracked_files`` ran git with ``check=True`` and raised instead,
+    so the contract was never actually available. Two real consequences: the
+    colcon container (where the workspace trips git's dubious-ownership guard and
+    ``git ls-files`` exits 128) failed three tests on every push since 28.07, and
+    an organizer who unpacks the archive without ``.git`` would get a traceback
+    instead of the submission report.
+    """
+    from scripts.check_submission import tracked_files
+
+    assert tracked_files(tmp_path) == []
+
+
 def test_reel_clip_names_actually_reads_the_plan():
     """The wiring, not just the rule — a silent empty list disarms the guard.
 
@@ -207,6 +229,8 @@ def test_the_preflight_names_every_reel_clip_missing_from_the_repository():
     from scripts.check_submission import tracked_files
 
     tracked = set(tracked_files(ROOT))
+    if not tracked:
+        pytest.skip("no git inventory here (colcon container); nothing to check against")
     planned = [s.name for s in SEGMENTS if isinstance(s, Clip)]
     absent = [n for n in planned if f"docs/report/video/{n}" not in tracked]
 
