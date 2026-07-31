@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import pytest
@@ -67,6 +68,33 @@ def test_reel_covers_all_three_categories_with_footage():
     captions = " ".join(s.caption for s in SEGMENTS if isinstance(s, Clip))
     for zone in ("→ B", "→ C", "→ D"):
         assert zone in captions, f"no clip demonstrates {zone}"
+
+
+def test_burnt_in_numbers_agree_with_the_metrics_card():
+    """The reel states the claim twice — as a text card and as the rendered insert.
+
+    They drifted: when the shipped rig moved to two heads the insert was re-rendered
+    to "9 шт/мин · 2 головки" and "0.042 с", while the text cards in this plan kept
+    the retired "8 товаров/мин" and "0,030 с" — the three-head throughput and the
+    one-head synchronisation. A viewer would have seen both numbers in one video.
+    The insert is the source of truth here because the documents are written against
+    it, so the cards are checked against the insert rather than against a literal.
+    """
+    svg = (ROOT / "docs" / "report" / "video" / "inserts" / "metrics_card.svg").read_text(
+        encoding="utf-8")
+    throughput = re.search(r"(\d+)\s*шт/мин", svg)
+    latency = re.search(r"(\d+[.,]\d+)\s*с\b", svg)
+    assert throughput and latency, "metrics_card.svg no longer states the headline numbers"
+
+    card_text = " ".join(line for s in SEGMENTS if isinstance(s, Card) for line in s.lines)
+    for stated in re.findall(r"(\d+)\s*товаров/мин", card_text):
+        # 18 is explicitly labelled in the same sentence as the short peak burst.
+        if stated != "18":
+            assert stated == throughput.group(1), (
+                f"card says {stated} товаров/мин, insert says {throughput.group(1)}")
+    for stated in re.findall(r"медиана (\d+[.,]\d+) с", card_text):
+        assert stated.replace(",", ".") == latency.group(1).replace(",", "."), (
+            f"card says {stated} s, insert says {latency.group(1)}")
 
 
 def test_cards_have_a_heading_line():
