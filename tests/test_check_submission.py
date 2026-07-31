@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from scripts.check_submission import (
     MAX_TRACKED_BINARY_BYTES,
     MIN_DECK_VIDEOS,
@@ -7,6 +9,8 @@ from scripts.check_submission import (
     broken_local_links,
     deck_media_issues,
     has_https_video_link,
+    reel_clip_issues,
+    reel_clip_names,
     submission_issues,
 )
 
@@ -152,6 +156,84 @@ def test_current_deck_media_is_all_tracked():
     """Regression guard on the real repository, with git as the source of truth."""
     from scripts.check_submission import tracked_files
 
-    issues = deck_media_issues(ROOT, tracked=set(tracked_files(ROOT)))
+    tracked = set(tracked_files(ROOT))
+    if not tracked:
+        pytest.skip("no git inventory here (colcon container); nothing to check against")
+
+    issues = deck_media_issues(ROOT, tracked=tracked)
 
     assert issues == [], f"deck media missing from the repository: {issues}"
+
+
+def test_reel_clip_issues_flags_a_clip_the_plan_needs_but_the_repository_lacks():
+    """The reel has the deck's failure mode, and no guard was watching it.
+
+    ``build_demo_reel.py`` aborts on a missing clip, so the author — who has every
+    clip on disk — never sees a problem, while a clean clone cannot rebuild the
+    video demonstration at all. The preflight listed only ``hero_stream_mixed_cd``
+    by hand, so its media list and the reel's own plan could drift apart silently,
+    which is exactly what happened to the deck on 30.07.
+    """
+    issues = reel_clip_issues(
+        ["kept.mp4", "local_only.mp4"],
+        tracked={"docs/report/video/kept.mp4"},
+    )
+
+    assert issues == ["UNTRACKED_REEL_CLIP: local_only.mp4"]
+
+
+def test_reel_clip_issues_stays_quiet_without_a_git_inventory():
+    # Same rule the deck check follows: an empty inventory means "no usable git
+    # index here" (the colcon container), not "nothing is tracked".
+    assert reel_clip_issues(["anything.mp4"], tracked=None) == []
+
+
+def test_tracked_files_returns_nothing_where_git_cannot_answer(tmp_path):
+    """A preflight must report problems, not become one.
+
+    Every caller here is written around "an empty inventory means no usable git
+    index" — but ``tracked_files`` ran git with ``check=True`` and raised instead,
+    so the contract was never actually available. Two real consequences: the
+    colcon container (where the workspace trips git's dubious-ownership guard and
+    ``git ls-files`` exits 128) failed three tests on every push since 28.07, and
+    an organizer who unpacks the archive without ``.git`` would get a traceback
+    instead of the submission report.
+    """
+    from scripts.check_submission import tracked_files
+
+    assert tracked_files(tmp_path) == []
+
+
+def test_reel_clip_names_actually_reads_the_plan():
+    """The wiring, not just the rule — a silent empty list disarms the guard.
+
+    ``reel_clip_names`` loads the plan by path and returns [] on any failure, so a
+    broken import looks exactly like "the reel needs no clips" and the preflight
+    goes quiet. It did: loading a module that defines dataclasses without first
+    registering it in ``sys.modules`` raises AttributeError inside @dataclass, and
+    the unit tests above passed anyway because they never went through this path.
+    """
+    from scripts.build_demo_reel import SEGMENTS, Clip
+
+    assert reel_clip_names(ROOT) == [s.name for s in SEGMENTS if isinstance(s, Clip)]
+
+
+def test_the_preflight_names_every_reel_clip_missing_from_the_repository():
+    """Whatever the reel cannot rebuild from a clean clone must be SAID, not hidden.
+
+    This is a consistency guard, not a demand that the list be empty: it asserts
+    the preflight reports exactly the clips git does not carry, so the gap can
+    never be silently larger than what the submission report claims.
+    """
+    from scripts.build_demo_reel import SEGMENTS, Clip
+    from scripts.check_submission import tracked_files
+
+    tracked = set(tracked_files(ROOT))
+    if not tracked:
+        pytest.skip("no git inventory here (colcon container); nothing to check against")
+    planned = [s.name for s in SEGMENTS if isinstance(s, Clip)]
+    absent = [n for n in planned if f"docs/report/video/{n}" not in tracked]
+
+    reported = reel_clip_issues(planned, tracked=tracked)
+
+    assert reported == [f"UNTRACKED_REEL_CLIP: {name}" for name in absent]

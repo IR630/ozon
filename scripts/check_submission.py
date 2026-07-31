@@ -7,6 +7,7 @@ known placeholders and accidentally tracked large binaries.
 """
 from __future__ import annotations
 
+import importlib.util
 import re
 import subprocess
 import sys
@@ -85,6 +86,60 @@ _H264_SAMPLE_ENTRY = b"avc1"
 SHIPPED_DECK = "docs/report/slides/deck-c-ozon.html"
 MIN_DECK_VIDEOS = 3
 
+# Where the reel's footage lives, and the plan that says which of it is needed.
+_VIDEO_DIR = "docs/report/video"
+_REEL_PLAN = "scripts/build_demo_reel.py"
+
+
+def reel_clip_issues(clips, tracked: set[str] | None) -> list[str]:
+    """Clips the reel plan needs that the repository does not carry.
+
+    The deck already learned this lesson (see ``deck_media_issues``); the reel had
+    the same hole and nothing watching it. ``build_demo_reel.py`` aborts on a
+    missing clip, so on the author's disk — where every clip sits — the reel builds
+    and looks finished, while a clean clone cannot rebuild the video demonstration
+    the task statement requires at all.
+
+    ``tracked`` follows the deck check's convention: an empty or absent inventory
+    means "no usable git index here" (the colcon container), not "nothing is
+    tracked", so the check stays quiet rather than condemning every clip.
+    """
+    if not tracked:
+        return []
+    return [f"UNTRACKED_REEL_CLIP: {name}" for name in clips
+            if f"{_VIDEO_DIR}/{name}" not in tracked]
+
+
+def reel_clip_names(root: Path) -> list[str]:
+    """Clip names the reel references, read from the reel's own plan.
+
+    Loaded from the file rather than copied here on purpose: a hand-kept second
+    list is precisely how the preflight's media inventory and the deck's gallery
+    drifted apart on 30.07, and this guard exists to stop that repeating.
+    Returns an empty list if the plan cannot be read — a preflight must report
+    problems, not become one.
+    """
+    plan_path = root / _REEL_PLAN
+    if not plan_path.is_file():
+        return []
+    spec = importlib.util.spec_from_file_location("_reel_plan", plan_path)
+    if spec is None or spec.loader is None:
+        return []
+    module = importlib.util.module_from_spec(spec)
+    # Register BEFORE executing: @dataclass looks its own module up in sys.modules
+    # while building the class, and on a module that is absent there it raises
+    # AttributeError on None.__dict__ — which this function would then swallow into
+    # an empty list, quietly disarming the check.
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        return []
+    finally:
+        sys.modules.pop(spec.name, None)
+    return [segment.name for segment in getattr(module, "SEGMENTS", ())
+            if type(segment).__name__ == "Clip"]
+
 
 def deck_media_issues(root: Path, tracked: set[str] | None = None) -> list[str]:
     """Local media referenced by the decks that would not render.
@@ -133,12 +188,27 @@ def deck_media_issues(root: Path, tracked: set[str] | None = None) -> list[str]:
 
 
 def tracked_files(root: Path) -> list[str]:
-    result = subprocess.run(
-        ["git", "ls-files", "-z"],
-        cwd=root,
-        check=True,
-        capture_output=True,
-    )
+    """Paths git tracks under ``root``; empty when git cannot answer.
+
+    NOT ``check=True``. Every caller is built around "an empty inventory means no
+    usable git index here, so do not condemn every file" — raising instead made
+    that contract unreachable and cost real green builds: in the colcon container
+    the workspace trips git's dubious-ownership guard, ``git ls-files`` exits 128,
+    and three tests failed on every push from 28.07 on for a reason that had
+    nothing to do with the submission. The same traceback would meet an organizer
+    who unpacks the archive without ``.git`` and runs the preflight.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "-z"],
+            cwd=root,
+            check=False,
+            capture_output=True,
+        )
+    except OSError:                      # git not installed at all
+        return []
+    if result.returncode != 0:
+        return []
     return [part.decode("utf-8") for part in result.stdout.split(b"\0") if part]
 
 
@@ -220,6 +290,8 @@ def submission_issues(root: Path, tracked: list[str] | None = None) -> list[str]
     tracked_paths = set(tracked if tracked is not None else tracked_files(root))
     issues.extend(deck_media_issues(
         root, tracked=tracked_paths if tracked_paths else None))
+    issues.extend(reel_clip_issues(
+        reel_clip_names(root), tracked=tracked_paths if tracked_paths else None))
     return issues
 
 
