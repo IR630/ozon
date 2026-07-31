@@ -13,12 +13,20 @@ the belt by depth against a known belt plane; a side head has no such background
 so segmenting its frame on its own terms is a second, different detector. Anchor-
 ing on the top head's world box avoids inventing one.
 
-THE SYNC PENALTY IS REAL AND IS COMPENSATED HERE. The heads are untriggered at
-15 Hz, so two frames can be a full period apart — 66.7 ms, and at a belt speed of
+THE SYNC PENALTY IS REAL AND IS COMPENSATED HERE. The heads are untriggered and
+run at DIFFERENT rates — the top one at 15 Hz, the side ones at 10 Hz since the
+perf pass of 28.07 (`sim/worlds/cell_diverter_2cam.sdf`) — so two frames can sit a
+full period apart: 66.7 ms against the top head's clock, and at a belt speed of
 1 m/s that is 66.7 mm of travel against a 5 mm accuracy budget. Every side cloud
 is therefore shifted along +x by (t_top - t_side) * BELT_SPEED_M_S before it is
 allowed near the dims. Uncompensated multi-head numbers are not conservative,
 they are meaningless.
+
+Worth knowing when reading CAMERA_SIDE_STALE_FRAMES: that budget is counted in the
+TOP head's frame period, so the two periods it allows (133 ms) are only 1.33
+periods of a 10 Hz side head. The gate is still safe — a dropped side frame
+degrades the measurement to the top view bit-exactly and prints heads=1 — but it is
+tighter for the side heads than the constant's name suggests.
 """
 import numpy as np
 
