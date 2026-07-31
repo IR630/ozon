@@ -30,6 +30,12 @@ REQUIRED_FILES = (
     # compares against, so it is guarded too.
     "sim/worlds/cell_diverter_2cam.sdf",
     "sim/bridge_2cam.yaml",
+    # The shipped video demonstration itself (31.07). The task statement makes a
+    # video demonstration mandatory, and this one lives in the repository rather
+    # than only behind the cloud link — so a jury that never opens the link still
+    # sees the solution work. If it ever vanishes from the tree, the submission is
+    # incomplete, and the preflight has to say so rather than leave it to memory.
+    "docs/report/video/census_reel.mp4",
     "sim/worlds/cell_diverter_3cam.sdf",
     "sim/bridge_3cam.yaml",
     "scripts/run_skeleton.sh",
@@ -297,8 +303,13 @@ def submission_issues(root: Path, tracked: list[str] | None = None) -> list[str]
     tracked_paths = set(tracked if tracked is not None else tracked_files(root))
     issues.extend(deck_media_issues(
         root, tracked=tracked_paths if tracked_paths else None))
-    issues.extend(reel_clip_issues(
-        reel_clip_names(root), tracked=tracked_paths if tracked_paths else None))
+    # NOT reel_clip_issues() here any more. That guard watches the narrative reel
+    # (build_demo_reel.py), and since 31.07 the shipped video demonstration is
+    # census_reel.mp4 — the narrative reel is not an artifact of the submission, so
+    # its missing source clips must not block one. The guard itself stays alive and
+    # tested: if the narrative reel is ever brought back, it is the thing that
+    # notices its footage never reached the repository. What the preflight checks
+    # instead is that the reel we DO ship is present, and that is REQUIRED_FILES.
     return issues
 
 
