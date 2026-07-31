@@ -126,13 +126,27 @@ def test_caption_names_the_item_the_pose_and_the_outcome():
     assert top == "Бутылка · поза 2/3"
     assert "D ожидалось → D" in bottom
     assert "[12/33]" in bottom
-    assert "✓" in bottom
+    assert "PASS" in bottom
+
+
+def test_caption_stays_inside_the_glyphs_every_build_host_has():
+    # A tick (U+2713) is in DejaVu but NOT in Arial, so the reel rendered it as an
+    # empty box on Windows and as a tick on Linux — the same script producing a
+    # different video per machine. Captions stay on ASCII + Cyrillic + the few
+    # punctuation marks all three candidate fonts carry.
+    allowed = set("·→ ")
+    for verdict in ("PASS", "FAIL"):
+        cell = Cell("bottle", 0, "D", verdict, Path("x.mp4"))
+        for line in caption_lines(cell, index=1, total=33, poses=3):
+            for char in line:
+                assert char.isascii() or "А" <= char <= "я" or char in allowed, (
+                    f"{char!r} (U+{ord(char):04X}) is not safe in every font")
 
 
 def test_a_failed_cell_is_not_captioned_as_a_pass():
     cell = Cell("pouf", 2, "C", "FAIL", Path("x.mp4"))
     _, bottom = caption_lines(cell, index=21, total=33, poses=3)
-    assert "✗" in bottom
+    assert "FAIL" in bottom
     assert "отказ" in bottom
     # It must NOT invent a landing zone: naming one needs a second ruler beside
     # zone_verdict.py, and two rulers is how a census disagrees with itself.

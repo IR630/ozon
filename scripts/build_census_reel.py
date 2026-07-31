@@ -199,9 +199,14 @@ def caption_lines(cell: Cell, index: int, total: int, poses: int) -> tuple[str, 
     # would need a second ruler beside zone_verdict.py, and two rulers in one
     # project is how a census starts disagreeing with itself.
     landed = cell.expect if passed else "отказ"
-    mark = "✓" if passed else "✗"
+    # PASS/FAIL, not check marks. U+2713 is absent from Arial (the font found on
+    # Windows) and present in DejaVu (found on Linux), so a tick renders as an
+    # empty box or not depending on WHICH MACHINE built the reel — it shipped as a
+    # box in the first cut. These words are ASCII, and they are also the exact
+    # vocabulary of the episode logs, so a juror reading both sees one term.
     return (f"{name} · поза {cell.oi + 1}/{poses}",
-            f"{cell.expect} ожидалось → {landed}  {mark}  [{index}/{total}]")
+            f"{cell.expect} ожидалось → {landed}  {cell.verdict}  "
+            f"[{index}/{total}]")
 
 
 def build(cells: list[Cell], out: Path, poses: int, dry_run: bool) -> int:
