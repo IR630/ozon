@@ -154,6 +154,15 @@ def plan_bundle(root: Path) -> tuple[dict[str, list[Path]], list[str]]:
             if not found and pattern not in section.optional:
                 gaps.append(f"{section.folder}: не найдено — {pattern}")
             collected.extend(found)
+        # OPTIONAL COVERS A SOURCE, NOT A WHOLE SECTION. Every pattern of
+        # 04-run-artifacts is optional (logs are build artifacts a clean checkout
+        # lacks), so on a machine without runs/ the section collected nothing, no
+        # gap was raised and the exit status stayed 0 — while the MANIFEST went on
+        # promising "the logs every number is recomputed from". A named-but-empty
+        # folder is the worst outcome of the three: it reads as delivered.
+        if not collected:
+            gaps.append(f"{section.folder}: раздел собрался ПУСТЫМ — "
+                        f"ни один источник не найден ({', '.join(section.patterns)})")
         plan[section.folder] = collected
     return plan, gaps
 

@@ -12,9 +12,14 @@ from scripts.make_nextcloud_bundle import (
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _fake_tree(root: Path) -> None:
-    """A miniature of the repository holding one file per required pattern."""
-    for relative in (
+def _fake_tree(root: Path, *, with_logs: bool = True) -> None:
+    """A miniature of the repository holding one file per required pattern.
+
+    ``with_logs=False`` reproduces a checkout that never ran anything: the log
+    directories are build artifacts, so every source of 04-run-artifacts is
+    optional and the section legitimately collects nothing.
+    """
+    relatives = [
         "docs/report/video/hero.mp4",
         "docs/report/video/hero_poster.png",
         "docs/report/video_script.md",
@@ -24,7 +29,10 @@ def _fake_tree(root: Path) -> None:
         "docs/Stl/item.stl",
         "sim/worlds/cell.sdf",
         "sim/bridge.yaml",
-    ):
+    ]
+    if with_logs:
+        relatives.append("runs/census_prod2cam_seed0/cell.log")
+    for relative in relatives:
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"x" * 1024)
@@ -49,6 +57,23 @@ def test_missing_required_source_is_a_reported_gap_not_a_silent_skip(tmp_path):
     _, gaps = plan_bundle(tmp_path)
 
     assert gaps == ["02-cad-and-models: не найдено — docs/Step"]
+
+
+def test_a_section_that_ends_up_empty_is_reported_even_when_every_source_is_optional(tmp_path):
+    """A named-but-empty folder is the worst outcome: it looks delivered.
+
+    Every pattern of ``04-run-artifacts`` is optional, because logs are build
+    artifacts a fresh checkout legitimately lacks. Combined, that meant a machine
+    without ``runs/`` produced a bundle whose "logs every number comes from"
+    folder was EMPTY, with no gap reported and exit status 0 — while the MANIFEST
+    kept promising those logs. Optional means "this one source may be absent", not
+    "this whole section may quietly vanish".
+    """
+    _fake_tree(tmp_path, with_logs=False)
+
+    _, gaps = plan_bundle(tmp_path)
+
+    assert any(gap.startswith("04-run-artifacts:") for gap in gaps), gaps
 
 
 def test_build_copies_originals_and_writes_a_manifest(tmp_path):
