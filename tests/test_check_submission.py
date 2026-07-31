@@ -45,6 +45,25 @@ def test_current_package_has_only_the_known_human_placeholder():
     ]
 
 
+def test_no_tracked_binary_is_large_without_being_argued_for():
+    """Run the size gate against the REAL git inventory, not an empty one.
+
+    ``test_current_package_has_only_the_known_human_placeholder`` passes
+    ``tracked=[]``, so the large-file rule never fires there — the suite stayed
+    green while the actual preflight went BLOCKED. That is how a 13.6 MiB reel
+    landed in the tree with every test passing. Anything big must be listed in
+    ALLOWED_LARGE_FILES with a reason, which is a decision, not an oversight.
+    """
+    from scripts.check_submission import tracked_files
+
+    if not tracked_files(ROOT):
+        pytest.skip("no git inventory here (colcon container); nothing to size-check")
+
+    large = [issue for issue in submission_issues(ROOT) if issue.startswith("LARGE:")]
+
+    assert large == [], f"large tracked files nobody approved: {large}"
+
+
 def test_preflight_reports_missing_artifacts_and_unapproved_large_files(tmp_path):
     large = tmp_path / "surprise.mp4"
     large.write_bytes(b"0" * (MAX_TRACKED_BINARY_BYTES + 1))

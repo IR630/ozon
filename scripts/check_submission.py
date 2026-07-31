@@ -62,6 +62,13 @@ ALLOWED_LARGE_FILES = {
     "docs/task.pdf",
     "docs/criteries.pdf",
     "docs/software.pdf",
+    # The census reel (13.6 MiB, 31.07) is the second deliberate exception and it
+    # is named here rather than waived by raising the limit. It is the one artifact
+    # that shows all 33 cells being sorted, and it is worth its size in the tree for
+    # the same reason the deck's gallery clips are: a jury that never opens the
+    # cloud link still sees the solution work. Raising MAX_TRACKED_BINARY_BYTES
+    # instead would silently admit the next 14 MiB file nobody argued for.
+    "docs/report/video/census_reel.mp4",
 }
 ALLOWED_LARGE_PREFIXES = ("docs/Step/", "docs/Stl/")
 VIDEO_LABEL = "**Видеодемонстрация:**"
