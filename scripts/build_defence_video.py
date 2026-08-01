@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -50,8 +51,25 @@ def audio_tracks(root: Path) -> list[Path]:
 
 
 def _ffmpeg() -> tuple[str, str]:
-    import static_ffmpeg.run as runner
-    ffmpeg, ffprobe = runner.get_or_fetch_platform_executables_else_raise()
+    """(ffmpeg, ffprobe), from static_ffmpeg if present, else from PATH.
+
+    static_ffmpeg is NOT in requirements.txt — it downloads a binary — so hard
+    depending on it made the README's claim untrue: "собирается одной командой,
+    поэтому ролик воспроизводим" met ModuleNotFoundError on any clean clone.
+    `build_demo_reel.find_ffmpeg` already had the fallback pattern; this is the
+    same one, extended to ffprobe, so the reel builds wherever ffmpeg exists.
+    """
+    try:
+        import static_ffmpeg.run as runner
+        return runner.get_or_fetch_platform_executables_else_raise()
+    except ImportError:
+        pass
+    ffmpeg, ffprobe = shutil.which("ffmpeg"), shutil.which("ffprobe")
+    if not ffmpeg or not ffprobe:
+        raise SystemExit(
+            "ABORT: neither static_ffmpeg nor a system ffmpeg/ffprobe was found.\n"
+            "    pip install static-ffmpeg     # downloads its own binaries\n"
+            "    # or install ffmpeg with your package manager")
     return ffmpeg, ffprobe
 
 
