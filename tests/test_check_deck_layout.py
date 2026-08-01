@@ -9,13 +9,22 @@ to fail, not the real deck.
 Playwright is a dev-only tool: it is not in requirements.txt and CI never
 installs it, so every test skips cleanly where the browser is absent.
 """
+from importlib.util import find_spec
+from pathlib import Path
+
 import pytest
 
-pytest.importorskip("playwright.sync_api", reason="playwright is a dev-only tool")
+from scripts.check_deck_layout import audit
 
-from pathlib import Path  # noqa: E402
-
-from scripts.check_deck_layout import audit  # noqa: E402
+# SKIP AT THE TEST, NOT AT IMPORT. `pytest.importorskip` at module level raises
+# Skipped while the file is being imported, and pytest 6.2.5 — the apt version the
+# colcon job runs — aborts the whole collection there: the CI run reported
+# "1 skipped" and exited 5 (no tests collected), so every other test in the suite
+# silently stopped running. A marker skips these four tests and leaves collection
+# untouched on any pytest version.
+_NO_PLAYWRIGHT = find_spec("playwright") is None
+pytestmark = pytest.mark.skipif(
+    _NO_PLAYWRIGHT, reason="playwright is a dev-only tool; not installed here")
 
 ROOT = Path(__file__).resolve().parents[1]
 SHIPPING_DECK = ROOT / "docs" / "report" / "slides" / "deck-c-ozon.html"
@@ -36,6 +45,10 @@ def _page(body: str) -> str:
 
 
 def _chromium_ok() -> bool:
+    # Called at import time by the marker below, so it has to survive playwright
+    # being absent entirely — not just the browser binary being missing.
+    if _NO_PLAYWRIGHT:
+        return False
     from playwright.sync_api import sync_playwright
     try:
         with sync_playwright() as p:
