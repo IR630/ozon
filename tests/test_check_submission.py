@@ -10,6 +10,7 @@ from scripts.check_submission import (
     deck_media_issues,
     has_https_video_link,
     reel_clip_issues,
+    outline_media_issues,
     reel_clip_names,
     submission_issues,
 )
@@ -182,6 +183,45 @@ def test_current_deck_media_is_all_tracked():
     issues = deck_media_issues(ROOT, tracked=tracked)
 
     assert issues == [], f"deck media missing from the repository: {issues}"
+
+
+def test_outline_media_issues_flags_a_clip_the_defence_plan_names_but_git_lacks(tmp_path):
+    """Third repeat of one failure: a document promises footage the repo lacks.
+
+    The deck had it (rig3_* re-included while the deck played rig2_*), the reel had
+    it (two hero clips never committed), and the defence plan had it too —
+    ``presentation_outline.md`` listed ``hero_diverter_bottle_D.mp4`` as the standby
+    clip, and that file was never in git. Nothing watched this one: the deck guard
+    reads the HTML decks, and the outline is markdown that no player opens, so the
+    gap only surfaces when someone reaches for the clip on stage.
+    """
+    outline = tmp_path / "docs" / "report" / "presentation_outline.md"
+    outline.parent.mkdir(parents=True, exist_ok=True)
+    outline.write_text(
+        "- **Клип 2:** `kept.mp4` — есть\n- Резерв: `missing.mp4`, `shot.png`\n",
+        encoding="utf-8")
+
+    issues = outline_media_issues(
+        tmp_path, tracked={"docs/report/video/kept.mp4", "docs/report/img/shot.png"})
+
+    assert issues == ["OUTLINE_MEDIA: missing.mp4"]
+
+
+def test_outline_media_issues_stays_quiet_without_a_git_inventory(tmp_path):
+    assert outline_media_issues(tmp_path, tracked=None) == []
+
+
+def test_current_defence_plan_names_only_media_the_repository_carries():
+    """Regression guard on the real outline — what is promised on stage must exist."""
+    from scripts.check_submission import tracked_files
+
+    tracked = set(tracked_files(ROOT))
+    if not tracked:
+        pytest.skip("no git inventory here (colcon container); nothing to check against")
+
+    issues = outline_media_issues(ROOT, tracked=tracked)
+
+    assert issues == [], f"defence plan names media git does not carry: {issues}"
 
 
 def test_reel_clip_issues_flags_a_clip_the_plan_needs_but_the_repository_lacks():
