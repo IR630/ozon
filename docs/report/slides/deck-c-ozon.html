@@ -181,7 +181,13 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
 .cover-tag  { position:absolute; left:var(--edge); top:252px; }
 .cover-h1   { position:absolute; left:var(--edge); top:302px; width:1040px; }
 .cover-lede { position:absolute; left:var(--edge); top:640px; width:880px; }
-.telemetry  { position:absolute; left:var(--edge); top:832px; display:flex; gap:64px; font-family:var(--font-mono); }
+/* 786, not 832: the team line below wraps to two lines at this width, and at
+   the old spacing it ran under .foot — which is absolutely positioned and does
+   not get pushed, so the two texts drew on top of each other (found on a
+   projector 01.08, measured at 23px of overlap). The block moves up as a whole
+   instead of the team line being shortened: the names are item 1 of the
+   structure the organizers ask for. */
+.telemetry  { position:absolute; left:var(--edge); top:786px; display:flex; gap:64px; font-family:var(--font-mono); }
 .telemetry .v { font-size:52px; font-weight:600; color:var(--near); letter-spacing:-.02em; line-height:1; }
 .telemetry .v.teal { color:var(--mid); }
 .telemetry .k { margin-top:12px; font-size:16px; font-weight:300; letter-spacing:.19em; text-transform:uppercase; color:var(--faint); }
@@ -189,7 +195,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
    one the deck used to miss — the team name lived in the chrome strip, where it
    reads as a watermark rather than as an answer to "кто вы". One line under the
    telemetry: the cover is where a jury looks for it, and it costs no slide time. */
-.cover-team { position:absolute; left:var(--edge); top:966px; width:1140px; font-family:var(--font-mono); font-size:19px; font-weight:300; line-height:1.6; color:var(--faint); }
+.cover-team { position:absolute; left:var(--edge); top:898px; width:1140px; font-family:var(--font-mono); font-size:19px; font-weight:300; line-height:1.6; color:var(--faint); }
 .cover-team b { color:var(--bone); font-weight:600; letter-spacing:.04em; }
 
 /* K-gauge — the criterion drawn as the machine sees it */
@@ -234,7 +240,10 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
 .chain .node.hot .t { color:var(--near); }
 .chain .node.cool { border-color:rgba(39,209,235,.36); background:linear-gradient(180deg, rgba(39,209,235,.09), transparent); }
 .chain .node.cool .t { color:var(--mid); }
-.chain-cap { margin-top:44px; }
+/* 26, not 44: the caption под цепочкой — самый длинный абзац деки, и на
+   44px он заходил под .foot на 5px. Пять пикселей не видно в редакторе и
+   отлично видно с проектора. */
+.chain-cap { margin-top:26px; }
 
 /* --- rule cards (slide 3) --- */
 .rules { display:flex; gap:28px; }
@@ -309,7 +318,10 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
 .video-wrap.ready video { opacity:1; }
 .video-wrap.ready .vfallback { opacity:0; }
 .video-side { position:absolute; right:var(--edge); top:300px; width:490px; }
-.video-side .cue { padding:26px 0; border-bottom:1px solid var(--hairline); }
+/* 17, not 26: три врезки суммарно заходили под .foot на 23px — «В резерве»
+   ложилось поверх «0 FAIL / 0 JAM». Режется отступ, а не текст: сам текст
+   несёт провенанс стойки, который на защите спрашивают. */
+.video-side .cue { padding:17px 0; border-bottom:1px solid var(--hairline); }
 .video-side .cue .t { font-family:var(--font-mono); font-size:16px; letter-spacing:.18em; text-transform:uppercase; color:var(--near); }
 .video-side .cue .x { margin-top:14px; font-size:25px; line-height:1.36; color:var(--dim); }
 .video-side .cue .x b { color:var(--bone); font-weight:600; }
@@ -334,6 +346,12 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
    right-hand bullet column, whose height depends on how the text wraps. */
 .ugt { position:absolute; right:var(--edge); top:176px; text-align:right; }
 .slide-close .head { width:1020px; }
+/* Слайд ограничений несёт самые длинные пункты деки: каждый — отказ с
+   оговоркой, и сокращать текст здесь нельзя, честный разбор идёт в баллы.
+   Поэтому ужимается РИТМ списка, а не его содержание, и только на этом
+   слайде. Без этого нижний пункт заходил под .foot на 23px. */
+.slide-close .bullets li { padding:13px 0 13px 34px; font-size:24px; line-height:1.38; }
+.slide-close .bullets li::before { top:25px; }
 .ugt .v { font-family:var(--font-mono); font-size:58px; font-weight:600; color:var(--near); letter-spacing:-.02em; }
 .ugt .k { margin-top:14px; font-family:var(--font-mono); font-size:17px; letter-spacing:.18em; text-transform:uppercase; color:var(--faint); }
 
@@ -415,13 +433,12 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
 
     <div class="foot"><span>Конвейер 1 м/с</span><span>10³ … 450×320×320 мм</span><span>порог K = 0,8</span></div>
   </section>
-
   <!-- =====================================================
        SLIDE 2 — TASK & APPROACH
        ===================================================== -->
   <section class="slide">
     <div class="field"></div>
-    <div class="chrome"><span>Задача и подход</span><span>Хакатон Ozon · Трек 3</span><span>02</span></div>
+    <div class="chrome"><span>Задача и подход</span><span>Хакатон Ozon · Трек 3</span><span>01</span></div>
 
     <div class="head">
       <span class="tag reveal">Что происходит на участке</span>
@@ -451,7 +468,41 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
 
     <div class="foot"><span>A → B / C / D</span><span>ИИ в массы</span></div>
   </section>
+  <!-- =====================================================
+       SLIDE - ARCHITECTURE & STACK
+       ===================================================== -->
+  <section class="slide">
+    <div class="field"></div>
+    <div class="chrome"><span>Архитектура решения</span><span>Контракты, а не договорённости</span><span>02</span></div>
 
+    <div class="head">
+      <span class="tag reveal">Из чего собран контур</span>
+      <h2 class="reveal">Границы модулей &mdash; <span class="accent">типизированные контракты</span></h2>
+    </div>
+
+    <div class="body">
+      <div class="cols">
+        <div class="col reveal d1">
+          <h3><span class="mark">Узлы</span>Связаны сообщениями, не словарями</h3>
+          <ul class="bullets">
+            <li>perception &rarr; classifier &rarr; controller &mdash; <b>типизированные ROS&nbsp;2 сообщения</b>: контракт виден из текста, а не возникает в рантайме</li>
+            <li>Ядро перцепции и классификации <b>тестируется отдельно от ROS&nbsp;2</b> &mdash; логика проверяема без симулятора</li>
+            <li>Механизм и число камер &mdash; <b>сменный мир плюс переменная окружения</b>, а не ветка кода</li>
+          </ul>
+        </div>
+        <div class="col reveal d3">
+          <h3><span class="mark">Стек</span>Развернётся на вашем стенде</h3>
+          <ul class="bullets teal">
+            <li>Python 3.11 &middot; ROS&nbsp;2 Humble &middot; Gazebo Fortress &mdash; <b>из разрешённого списка</b></li>
+            <li>Классический CV, <b>без нейросети</b>: усложнение обязано побить бейзлайн числом, а бить нечего &mdash; правило уже даёт 33/33</li>
+            <li>Одна команда: <b>чистый checkout &rarr; пиннутый Docker &rarr; headless e2e на CPU</b></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="foot"><span>check_clean_deploy.sh</span><span>Один seed задаёт эпизод дословно</span></div>
+  </section>
   <!-- =====================================================
        SLIDE 3 — CLASSIFICATION LOGIC
        ===================================================== -->
@@ -494,45 +545,45 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
 
     <div class="foot"><span>census 33/33 ×3 · без единой ошибки</span><span>K по проекциям — согласовано с QA 18.07</span></div>
   </section>
-
   <!-- =====================================================
-       SLIDE 4 — ROUTING A/B/C/D
+       SLIDE - STL, SENSORS, ALGORITHMS
        ===================================================== -->
   <section class="slide">
     <div class="field"></div>
-    <div class="chrome"><span>Маршрутизация</span><span>Хакатон Ozon · Трек 3</span><span>04</span></div>
+    <div class="chrome"><span>Модели, сенсоры, алгоритмы</span><span>Чем меряем и с чем сверяем</span><span>04</span></div>
 
     <div class="head">
-      <span class="tag reveal">Как класс становится движением</span>
-      <h2 class="reveal">От точки A <span class="accent">в три потока</span></h2>
+      <span class="tag reveal">От STL организаторов до вердикта</span>
+      <h2 class="reveal">Камеру проверяет <span class="accent">сам меш</span></h2>
     </div>
 
     <div class="body">
-      <div class="route reveal d1">
-        <div class="track"></div>
-        <div class="cam">depth-стойка · решение за 0,042 с</div>
-        <div class="pt a">A</div>
-        <div class="drop" style="left:600px"></div>
-        <div class="drop" style="left:1050px"></div>
-        <div class="drop" style="left:1500px"></div>
-        <div class="pt b">B</div>
-        <div class="pt c">C</div>
-        <div class="pt d">D</div>
-        <div class="lbl" style="left:498px">Основной сортировщик — товар годен как есть</div>
-        <div class="lbl" style="left:948px">Негабарит — вне пределов сортировщика</div>
-        <div class="lbl" style="left:1398px">Доупаковка — круг в сечении</div>
+      <div class="rules">
+        <div class="rule-card b reveal d1">
+          <div class="z" style="font-size:36px">STL</div>
+          <div class="cond">11 моделей &rarr; сцена одной командой</div>
+          <div class="meta">Эталонные габариты и K считаются напрямую по мешу. Это независимая истина, против которой меряется камера, &mdash; а не второй способ получить тот же ответ.</div>
+        </div>
+        <div class="rule-card reveal d2">
+          <div class="z" style="font-size:36px">Сенсор</div>
+          <div class="cond">Depth сверху и с борта, RGB не читается</div>
+          <div class="meta">Верхняя головка владеет следом и K. Боковая добавляет только скрытую высоту &mdash; и только когда прибавка выше её вертикального разрешения, 3,4&nbsp;мм на пиксель.</div>
+        </div>
+        <div class="rule-card d reveal d3">
+          <div class="z" style="font-size:36px">Алгоритм</div>
+          <div class="cond">Сегментация &rarr; трек &rarr; габариты &rarr; K</div>
+          <div class="meta">K = r вписанной / R описанной, по проекциям. На стыках этапов &mdash; санити-чек физического диапазона: габарит не бывает 0 или 5000&nbsp;мм, K лежит в [0,&nbsp;1].</div>
+        </div>
       </div>
 
-      <p class="lede reveal d4" style="max-width:1600px; margin-top:14px">
-        Перенос проверен вне тестового набора: <b>20/20</b> на процедурных формах
-        вокруг порога K = 0,8 и пределов 450/320. Это не запоминание одиннадцати STL —
-        это работающее правило.
+      <p class="lede reveal d5" style="max-width:1600px; margin-top:28px">
+        Сверка &laquo;меш &harr; камера&raquo; идёт поячеечно, поэтому расхождение видно как
+        <b>конкретная ячейка</b>, а не как средняя ошибка по датасету.
       </p>
     </div>
 
-    <div class="foot"><span>measure_private_shapes.py</span><span>20/20 на неизвестных формах</span></div>
+    <div class="foot"><span>analyze_models.py &middot; build_item_models.py</span><span>Санити-чек на каждом стыке</span></div>
   </section>
-
   <!-- =====================================================
        SLIDE 5 — ACTUATOR
        ===================================================== -->
@@ -568,13 +619,49 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
 
     <div class="foot"><span>mechanism.md · blade_actuator.md · chute_angle.md</span><span>ИИ в массы</span></div>
   </section>
+  <!-- =====================================================
+       SLIDE 4 — ROUTING A/B/C/D
+       ===================================================== -->
+  <section class="slide">
+    <div class="field"></div>
+    <div class="chrome"><span>Маршрутизация</span><span>Хакатон Ozon · Трек 3</span><span>06</span></div>
 
+    <div class="head">
+      <span class="tag reveal">Как класс становится движением</span>
+      <h2 class="reveal">От точки A <span class="accent">в три потока</span></h2>
+    </div>
+
+    <div class="body">
+      <div class="route reveal d1">
+        <div class="track"></div>
+        <div class="cam">depth-стойка · решение за 0,042 с</div>
+        <div class="pt a">A</div>
+        <div class="drop" style="left:600px"></div>
+        <div class="drop" style="left:1050px"></div>
+        <div class="drop" style="left:1500px"></div>
+        <div class="pt b">B</div>
+        <div class="pt c">C</div>
+        <div class="pt d">D</div>
+        <div class="lbl" style="left:498px">Основной сортировщик — товар годен как есть</div>
+        <div class="lbl" style="left:948px">Негабарит — вне пределов сортировщика</div>
+        <div class="lbl" style="left:1398px">Доупаковка — круг в сечении</div>
+      </div>
+
+      <p class="lede reveal d4" style="max-width:1600px; margin-top:14px">
+        Перенос проверен вне тестового набора: <b>20/20</b> на процедурных формах
+        вокруг порога K = 0,8 и пределов 450/320. Это не запоминание одиннадцати STL —
+        это работающее правило.
+      </p>
+    </div>
+
+    <div class="foot"><span>measure_private_shapes.py</span><span>20/20 на неизвестных формах</span></div>
+  </section>
   <!-- =====================================================
        SLIDE 6 — VIDEO DEMO (core of the defence)
        ===================================================== -->
   <section class="slide slide-gallery">
     <div class="field"></div>
-    <div class="chrome"><span class="live">Демонстрация</span><span>Сквозной поток на финальном диверторе</span><span>06</span></div>
+    <div class="chrome"><span class="live">Демонстрация</span><span>Сквозной поток на финальном диверторе</span><span>07</span></div>
 
     <div class="head" style="top:150px">
       <h2 class="reveal">Как это <span class="accent">работает вживую</span></h2>
@@ -601,35 +688,34 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
     <div class="video-gallery reveal d3">
       <figure>
         <video src="../video/rig2_bottle_D.mp4" poster="../video/rig2_bottle_D_poster.png"
-               muted loop playsinline preload="none"></video>
+               muted loop playsinline preload="auto"></video>
         <figcaption><b>Бутылка → D</b><span>круг в сечении, K = 0,996</span></figcaption>
       </figure>
       <figure>
         <video src="../video/rig2_box_300x200x200_B.mp4" poster="../video/rig2_box_300x200x200_B_poster.png"
-               muted loop playsinline preload="none"></video>
+               muted loop playsinline preload="auto"></video>
         <figcaption><b>Короб 300 → B</b><span>в габарите, идёт как есть</span></figcaption>
       </figure>
       <figure>
         <video src="../video/rig2_box_400x400x300_C.mp4" poster="../video/rig2_box_400x400x300_C_poster.png"
-               muted loop playsinline preload="none"></video>
+               muted loop playsinline preload="auto"></video>
         <figcaption><b>Короб 400 → C</b><span>400 мм против ворот 320</span></figcaption>
       </figure>
       <figure>
         <video src="../video/rig2_pen_C.mp4" poster="../video/rig2_pen_C_poster.png"
-               muted loop playsinline preload="none"></video>
+               muted loop playsinline preload="auto"></video>
         <figcaption><b>Ручка → C</b><span>габарит бьёт форму; сами 9 мм — на depth-кадре</span></figcaption>
       </figure>
     </div>
 
     <div class="foot"><span>Пробел — пуск и пауза; клик по плитке — её клип</span><span>0 FAIL / 0 JAM</span></div>
   </section>
-
   <!-- =====================================================
        SLIDE 7 — PROOF
        ===================================================== -->
   <section class="slide">
     <div class="field"></div>
-    <div class="chrome"><span>Подтверждение работоспособности</span><span>Каждая цифра воспроизводима</span><span>07</span></div>
+    <div class="chrome"><span>Подтверждение работоспособности</span><span>Каждая цифра воспроизводима</span><span>08</span></div>
 
     <div class="head">
       <span class="tag reveal">Что доказано числом</span>
@@ -649,49 +735,47 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
 
     <div class="foot"><span>Вся случайность — через один seed: (seed, item_index, orient_index)</span><span>README.md → таблица «заявка → команда»</span></div>
   </section>
-
   <!-- =====================================================
-       SLIDE 8 — TOOLS
+       SLIDE - FAULTS & EDGE HANDLING
        ===================================================== -->
   <section class="slide">
     <div class="field"></div>
-    <div class="chrome"><span>Инструменты и причины выбора</span><span>Хакатон Ozon · Трек 3</span><span>08</span></div>
+    <div class="chrome"><span>Нештатные ситуации</span><span>Что делает решение, когда пошло не так</span><span>09</span></div>
 
     <div class="head">
-      <span class="tag reveal">Стек и воспроизводимость</span>
-      <h2 class="reveal">Простое и работающее <span class="accent">бьёт сложное</span></h2>
+      <span class="tag reveal">Обработка ошибок и пограничных случаев</span>
+      <h2 class="reveal">Отказ должен быть <span class="accent">громким</span></h2>
     </div>
 
     <div class="body">
       <div class="cols">
         <div class="col reveal d1">
-          <h3><span class="mark">Стек</span>Что и почему</h3>
+          <h3><span class="mark">Предусмотрено</span>Штатная реакция</h3>
           <ul class="bullets">
-            <li><b>Python 3.11 · ROS 2 Humble · Gazebo Fortress</b> — из разрешённого списка, разворачивается на стенде организаторов</li>
-            <li><b>Классический CV, без нейросети.</b> Усложнение обязано побить бейзлайн числом — а бить нечего: классификация уже 33/33</li>
-            <li><b>NumPy / SciPy</b> — геометрия сечений и K считаются векторно</li>
+            <li><b>E-stop с восстановлением</b>: остановка по сигналу, возврат механизма, продолжение потока &mdash; регрессия пройдена</li>
+            <li>Планировщик <b>отвергает опасный поток до старта</b>: смена зоны требует 3,1&nbsp;м &laquo;воздуха&raquo;</li>
+            <li>Боковая головка молчит &rarr; верхняя <b>ведёт вердикт бит в бит</b>, без переключения кода</li>
           </ul>
         </div>
         <div class="col reveal d3">
-          <h3><span class="mark">Проверка</span>Развернётся у вас</h3>
+          <h3><span class="mark">Границы</span>Ловим, а не замалчиваем</h3>
           <ul class="bullets teal">
-            <li><b>Одна команда:</b> чистый checkout → пиннутый Docker → headless CPU e2e</li>
-            <li><b>Один seed</b> задаёт эпизод однозначно — любой прогон повторяется дословно</li>
-            <li>Эксперт <b>меняет входные параметры</b> и смотрит поведение: сценарии описаны в README</li>
+            <li>Значение вне физического диапазона &mdash; <b>явный отказ</b>, а не тихо неверный ответ</li>
+            <li>У порога действует <b>консервативная политика</b>: спорное идёт в C/D, а не в B &mdash; затор в основном сортировщике дороже</li>
+            <li><b>Свой же дефект, найденный мульти-seed:</b> слияние поднимало 9&nbsp;мм Ручки до 11 и выводило из-под габаритного правила. Закрыт порогом = разрешение боковой головки</li>
           </ul>
         </div>
       </div>
     </div>
 
-    <div class="foot"><span>scripts/check_clean_deploy.sh</span><span>CPU / headless fallback</span></div>
+    <div class="foot"><span>smoke_estop_recover.sh</span><span>Неуверенность &mdash; отдельный поток, не молчание</span></div>
   </section>
-
   <!-- =====================================================
        SLIDE 9 — LIMITS & CLOSING
        ===================================================== -->
   <section class="slide slide-close">
     <div class="field"></div>
-    <div class="chrome"><span>Ограничения и развитие</span><span>Честный разбор</span><span>09</span></div>
+    <div class="chrome"><span>Ограничения и развитие</span><span>Честный разбор</span><span>10</span></div>
 
     <div class="head">
       <span class="tag reveal">Где решение упрощает мир</span>
@@ -708,9 +792,6 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
               <b>2/6</b> (в сумме 29/33) — три товара сходят с ленты влево. Классификация
               в них верна, отказ исполнительный. Воспроизведён дважды, <b>полную причину
               не нашли</b>; зазор 1,0→1,8 м поднимает до 3/6</li>
-            <li><b>Свой же дефект, найденный мульти-seed:</b> слияние поднимало 9 мм Ручки
-              до 11 и выводило её из-под габаритного правила. Закрыт порогом = разрешение
-              боковой головки, 3,4 мм на пиксель</li>
             <li>Физика — <b>инженерные допущения</b>: ODE-трение, rigid-body; ткань и привод не моделируются</li>
             <li>Физический прототип — <b>осознанный NO-GO</b>: постановка допускает ПАК в симуляции</li>
           </ul>
@@ -731,8 +812,41 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
       <div class="k">Уровень готовности решения</div>
     </div>
 
-    <div class="foot"><span>Спасибо — готовы к вопросам</span><span>ИИ в массы · Хакатон Ozon, трек 3</span></div>
+    <div class="foot"><span>Ограничения названы до вопросов, а не после</span><span>ИИ в массы · Хакатон Ozon, трек 3</span></div>
   </section>
+  <!-- =====================================================
+       SLIDE - QUESTIONS
+       ===================================================== -->
+  <section class="slide title-slide">
+    <div class="field"></div>
+    <div class="belt a"><span></span></div>
+    <div class="belt b"><span></span></div>
+    <div class="chrome"><span class="live">Поток активен</span><span>Хакатон Ozon &middot; Трек 3</span><span>11</span></div>
+
+    <div class="cover-tag tag reveal">Спасибо за внимание</div>
+    <h1 class="cover-h1 reveal">Будем рады ответить <span class="accent">на ваши вопросы</span></h1>
+
+    <div class="telemetry reveal">
+      <div><div class="v">33/33</div><div class="k">маршрутизация</div></div>
+      <div><div class="v teal">0,042 с</div><div class="k">камера &rarr; решение</div></div>
+      <div><div class="v">9 шт/мин</div><div class="k">отгружаемая стойка</div></div>
+    </div>
+
+    <div class="cover-team reveal">
+      <b>Команда &laquo;ИИ в массы&raquo;</b><br>
+      Иван Пушкин &middot; Иван Резников &middot; Максим Седов &middot; Михаил Анцев &middot; Владимир Зайцев
+    </div>
+
+    <div class="foot"><span>Каждая цифра &mdash; одна команда в README</span><span>ИИ в массы &middot; Хакатон Ozon, трек 3</span></div>
+  </section>
+
+
+
+
+
+
+
+
 
 </main>
 </div>
@@ -809,11 +923,21 @@ class SlidePresentation {
     }, {passive:true});
   }
 
-  /* Space toggles the demo clip on the video slide. */
+  /* Space toggles EVERY clip on the slide as one wall, not just the hero.
+     The gallery is an argument — four outcomes of the rule side by side — and
+     an argument that has to be clicked through four times is four arguments.
+     Judged from the room, all five running at once reads as "the line works",
+     which is the claim; one running and four frozen reads as a screenshot. */
   toggleVideo() {
-    const v = this.slides[this.current].querySelector('video');
-    if (!v) return;
-    v.paused ? v.play() : v.pause();
+    const clips = Array.from(this.slides[this.current].querySelectorAll('video'));
+    if (!clips.length) return;
+    const anyPlaying = clips.some(v => !v.paused);
+    clips.forEach(v => {
+      if (anyPlaying) { v.pause(); }
+      else { v.play().catch(() => {}); }
+      const fig = v.closest('figure');
+      if (fig) fig.classList.toggle('playing', !anyPlaying);
+    });
   }
 
   next() { this.showSlide(this.current + 1); }
@@ -825,9 +949,13 @@ class SlidePresentation {
       const on = i === this.current;
       slide.classList.toggle('active', on);
       slide.classList.toggle('visible', on);
-      const v = slide.querySelector('video');
-      if (v && !on) v.pause();
-      if (v && on)  v.play().catch(() => {}); /* autoplay may be blocked — Space starts it */
+      /* All clips of the slide, not just the first: the demo slide is a wall of
+         five and they must come up together. Muted + playsinline is what makes
+         autoplay legal here; Space is still the manual fallback. */
+      slide.querySelectorAll('video').forEach(v => {
+        if (!on) { v.pause(); v.currentTime = 0; const f = v.closest('figure'); if (f) f.classList.remove('playing'); }
+        else { v.play().then(() => { const f = v.closest('figure'); if (f) f.classList.add('playing'); }).catch(() => {}); }
+      });
     });
     this.counter.textContent = `${this.current + 1} / ${this.slides.length}`;
     this.progress.style.width = `${(this.current + 1) / this.slides.length * 100}%`;
@@ -846,14 +974,13 @@ document.querySelectorAll('.video-wrap video').forEach(v => {
   v.addEventListener('loadeddata', reveal);
 });
 
-/* Gallery tiles play on click, one at a time. `preload="none"` keeps four extra
-   clips from competing with the hero clip for bandwidth on a cold open, and the
-   poster carries the slide until someone actually asks for motion. */
+/* Gallery tiles run TOGETHER with the hero clip (see showSlide/toggleVideo).
+   A click now toggles only the tile it landed on — it no longer pauses the other
+   three, because the previous one-at-a-time rule is exactly what made the wall
+   impossible. Kept so the presenter can freeze a single outcome on a jury
+   question without stopping the rest of the evidence. */
 document.querySelectorAll('.video-gallery video').forEach(v => {
   v.addEventListener('click', () => {
-    document.querySelectorAll('.video-gallery video').forEach(other => {
-      if (other !== v) { other.pause(); other.closest('figure').classList.remove('playing'); }
-    });
     if (v.paused) { v.play().catch(() => {}); v.closest('figure').classList.add('playing'); }
     else { v.pause(); v.closest('figure').classList.remove('playing'); }
   });
