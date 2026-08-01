@@ -33,6 +33,15 @@ SLIDE_HEADING = re.compile(r"^## Слайд (\d+) — (.+)$", re.M)
 STAGE_DIRECTION = re.compile(r"\*\*\[.*?\]\*\*", re.S)
 WORD = re.compile(r"[А-Яа-яЁёA-Za-z0-9]+")
 
+# The stamp `--write` puts on each heading, and the pattern that strips a stale
+# one before writing a fresh stamp. Timings live in the headings because that is
+# where the presenter reads them, but they are GENERATED — hand-editing a heading
+# is how the text and its budget drift apart.
+SLIDE_STAMP = re.compile(r"\s+·\s+\d+:\d{2}\s+·\s+к\s+\d+:\d{2}\s*$", re.M)
+
+# Which slide holds the clip, 1-based: its pause lands inside the running clock.
+CLIP_SLIDE = 8
+
 
 def slides(text: str) -> list[tuple[str, str]]:
     """(heading, spoken body) per slide, in deck order."""
@@ -42,8 +51,37 @@ def slides(text: str) -> list[tuple[str, str]]:
         end = marks[i + 1].start() if i + 1 < len(marks) else len(text)
         body = text[m.end():end]
         body = body.split("\n---", 1)[0]
-        out.append((f"{m.group(1)} {m.group(2)}", STAGE_DIRECTION.sub(" ", body)))
+        title = SLIDE_STAMP.sub("", m.group(2)).strip()
+        out.append((f"{m.group(1)} {title}", STAGE_DIRECTION.sub(" ", body)))
     return out
+
+
+def stamp(text: str) -> str:
+    """Rewrite every slide heading with its measured length and running clock.
+
+    The running clock is the number a presenter actually uses: "by the end of
+    this slide the timer should read 2:15" catches drift three slides before the
+    limit does. The clip pause is charged to the slide that plays it.
+    """
+    rows, _, _ = measure(text)
+    lengths = [seconds for _, _, seconds in rows]
+    running, marks = 0.0, []
+    for index, seconds in enumerate(lengths, start=1):
+        running += seconds
+        if index == CLIP_SLIDE:
+            running += CLIP_SILENCE_SECONDS
+        marks.append(running)
+
+    counter = [0]
+
+    def rewrite(match: re.Match) -> str:
+        i = counter[0]
+        counter[0] += 1
+        title = SLIDE_STAMP.sub("", match.group(2)).strip()
+        return (f"## Слайд {match.group(1)} — {title}"
+                f" · {_mmss(lengths[i])} · к {_mmss(marks[i])}")
+
+    return SLIDE_HEADING.sub(rewrite, text)
 
 
 def measure(text: str) -> tuple[list[tuple[str, int, float]], int, float]:
@@ -72,7 +110,18 @@ def main() -> int:
         print(f"speech not found: {SPEECH}")
         return 2
 
-    rows, words, speech_seconds = measure(SPEECH.read_text(encoding="utf-8"))
+    text = SPEECH.read_text(encoding="utf-8")
+
+    if "--write" in sys.argv:
+        stamped = stamp(text)
+        if stamped != text:
+            SPEECH.write_text(stamped, encoding="utf-8")
+            print("тайминги в заголовках обновлены\n")
+        else:
+            print("тайминги в заголовках уже актуальны\n")
+        text = stamped
+
+    rows, words, speech_seconds = measure(text)
     total = speech_seconds + CLIP_SILENCE_SECONDS
     left = LIMIT_SECONDS - total
 

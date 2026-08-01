@@ -10,8 +10,10 @@ from pathlib import Path
 from scripts.measure_speech import (
     CLIP_SILENCE_SECONDS,
     LIMIT_SECONDS,
+    SLIDE_STAMP,
     measure,
     slides,
+    stamp,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -48,3 +50,33 @@ def test_the_shipped_speech_fits_the_seven_minute_limit_with_margin():
     assert LIMIT_SECONDS - total >= 20, (
         f"only {LIMIT_SECONDS - total:.0f}s of margin — too thin for a live defence")
     assert words > 400, "speech looks truncated"
+
+
+def test_every_slide_heading_carries_a_timing_the_presenter_can_use():
+    headings = [line for line in SPEECH.splitlines() if line.startswith("## Слайд ")]
+
+    assert headings, "speech has no slide headings"
+    unstamped = [h for h in headings if not SLIDE_STAMP.search(h)]
+    assert not unstamped, f"slides without a timing stamp: {unstamped}"
+
+
+def test_the_stamped_timings_match_the_current_text():
+    """A hand-edited heading is how the budget and the text drift apart.
+
+    Re-stamping is idempotent, so a file whose stamps are current does not change
+    when stamped again. If this fails, the speech was edited without re-running
+    `measure_speech.py --write` and its printed timings are lying.
+    """
+    assert stamp(SPEECH) == SPEECH, (
+        "timings are stale — run: python scripts/measure_speech.py --write")
+
+
+def test_the_running_clock_ends_where_the_total_does():
+    # The last slide's cumulative mark IS the run time; if the two disagree, one
+    # of them is wrong and the presenter is pacing against a fiction.
+    _, _, speech_seconds = measure(SPEECH)
+    total = speech_seconds + CLIP_SILENCE_SECONDS
+
+    last = [line for line in SPEECH.splitlines() if line.startswith("## Слайд ")][-1]
+    minutes, seconds = last.rsplit("к ", 1)[1].split(":")
+    assert abs(int(minutes) * 60 + int(seconds) - total) <= 1
