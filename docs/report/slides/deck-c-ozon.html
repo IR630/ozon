@@ -674,7 +674,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
         docs/report/video/ — клип идёт вместе с репозиторием<br>
         полные записи прогонов — в Nextcloud организаторов
       </div>
-      <video src="../video/hero_stream_mixed_cd.mp4" muted loop playsinline preload="metadata"></video>
+      <video src="../video/hero_stream_mixed_cd.mp4" muted loop playsinline preload="auto"></video>
     </div>
 
     <div class="video-side">
@@ -695,7 +695,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
       <figure>
         <video src="../video/rig2_box_300x200x200_B.mp4" poster="../video/rig2_box_300x200x200_B_poster.png"
                muted loop playsinline preload="auto"></video>
-        <figcaption><b>Короб 300 → B</b><span>в габарите, идёт как есть</span></figcaption>
+        <figcaption><b>Короб 300 → B</b><span>шибер НЕ срабатывает — так и надо</span></figcaption>
       </figure>
       <figure>
         <video src="../video/rig2_box_400x400x300_C.mp4" poster="../video/rig2_box_400x400x300_C_poster.png"
@@ -967,12 +967,18 @@ const deck = new SlidePresentation();
 /* Reveal a clip only once it has really decoded a frame. A missing file or an
    unsupported codec then leaves the labelled panel standing instead of a
    black box the presenter discovers on stage. */
+/* DEPENDING ON ONE EVENT WAS THE BUG. With preload="metadata" the hero clip had
+   not reached HAVE_CURRENT_DATA when this script ran, so the readyState check
+   missed it; by the time autoplay pushed it to readyState 4, the one-shot
+   `loadeddata` had already gone past unheard. Result: the clip PLAYED, at
+   opacity 0, behind its own "file missing" panel — the worst possible failure,
+   because it looks exactly like a broken file while nothing is broken.
+   Several events plus the state check makes the reveal independent of when the
+   media happens to load. */
 document.querySelectorAll('.video-wrap video').forEach(v => {
   const reveal = () => v.closest('.video-wrap').classList.add('ready');
-  // A local file decodes before this script runs, so loadeddata has already
-  // fired and would never be heard: check the state first, then subscribe.
   if (v.readyState >= 2) reveal();
-  v.addEventListener('loadeddata', reveal);
+  ['loadeddata', 'canplay', 'playing', 'timeupdate'].forEach(e => v.addEventListener(e, reveal));
 });
 
 /* Gallery tiles run TOGETHER with the hero clip (see showSlide/toggleVideo).
