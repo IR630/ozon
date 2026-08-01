@@ -65,3 +65,46 @@ def test_deploy_check_runs_the_e2e_on_a_clean_checkout_not_the_worktree():
     # the image must be built from the archived sources, not the live repo root
     assert re.search(r'docker build .*-f "\$CHECKOUT/docker/Dockerfile" "\$CHECKOUT"',
                      DEPLOY_CHECK)
+
+
+WORKFLOW = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+
+def test_ci_never_installs_a_named_package_without_a_version_source():
+    """Twice now, a release published upstream turned CI red on an unrelated commit.
+
+    28.07 it was ruff 0.16 (wider default rule set, 370 findings); 01.08 it was
+    trimesh 5.0.0, published 00:05 UTC and installed by the 01:38 run, which drops
+    numpy 1.x — and the colcon container keeps numpy apt-built at 1.x on purpose,
+    so every test died at collection. Neither commit touched the dependency.
+
+    `pip install -r requirements.txt` is deliberately exempt: the lint job runs on
+    a dev-grade Python where unpinned is the point, and that is stated in
+    docker/pip-constraints.txt. What must never reappear is a BARE PACKAGE NAME on
+    a pip line — that is the form with no version source at all.
+    """
+    offenders = []
+    for line in WORKFLOW.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#") or not re.search(r"\bpip3?\s+install\b", stripped):
+            continue
+        if "-r requirements.txt" in stripped:
+            continue
+        constrained = "-c docker/pip-constraints.txt" in stripped
+        pinned = "==" in stripped
+        if not (constrained or pinned):
+            offenders.append(stripped)
+    assert not offenders, (
+        "pip line with no version source (add -c docker/pip-constraints.txt "
+        f"or an == pin): {offenders}")
+
+
+def test_ci_and_the_deployment_image_agree_on_trimesh():
+    """One version, one file. The CI step applies the lock instead of copying it.
+
+    A second hand-written "4.12.2" in the workflow is exactly how the deployed
+    image and the tested environment drift apart while both look pinned.
+    """
+    assert "pip3 install --no-deps -c docker/pip-constraints.txt trimesh" in WORKFLOW
+    assert re.search(r"^trimesh==\d+\.\d+\.\d+$", CONSTRAINTS, re.M), (
+        "the lock must carry the trimesh version the CI step now defers to")

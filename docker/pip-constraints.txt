@@ -4,8 +4,14 @@
 # apt-owned — pip sees them satisfied and must not upgrade them, or the apt-built
 # cv_bridge/scipy extensions break (numpy 1.x ABI, see Dockerfile).
 # requirements.txt stays unpinned on purpose: the CI lint job and dev hosts run
-# Python 3.11/3.12, where e.g. numpy 1.21.5 has no wheels. This file pins the
-# DEPLOYMENT image only.
+# Python 3.11/3.12, where e.g. numpy 1.21.5 has no wheels.
+#
+# ALSO USED BY CI (01.08): the colcon-build job installs trimesh into the same
+# kind of environment — a ROS container whose numpy/scipy are apt-built 1.x — so
+# it applies this file rather than repeating a version by hand. It was the one
+# place installing trimesh unpinned, and trimesh 5.0.0 (2026-08-01) dropped
+# numpy 1.x, turning CI red on an unrelated commit. Everything else here still
+# describes the DEPLOYMENT image only.
 numpy==1.21.5
 scipy==1.8.0
 pytest==6.2.5

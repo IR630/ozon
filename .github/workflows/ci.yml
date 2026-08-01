@@ -52,8 +52,15 @@ jobs:
         shell: bash
         run: |
           apt-get install -y python3-pytest python3-numpy python3-scipy python3-opencv python3-pip
-          # --no-deps: keep the apt numpy/scipy that cv2 and rclpy are built against
-          pip3 install --no-deps trimesh
+          # --no-deps: keep the apt numpy/scipy that cv2 and rclpy are built against.
+          # -c: and therefore trimesh must be the version that PAIRS with numpy 1.x.
+          # Unpinned, this step installed whatever was newest: trimesh 5.0.0 (released
+          # 2026-08-01 00:05 UTC) types NDArray as ndarray[tuple[int], dtype[DType]],
+          # which numpy 1.x cannot subscript — every test failed at COLLECTION, 90
+          # minutes after the release, on a commit that touched none of this. Reusing
+          # the deployment lock instead of writing "4.12.2" here on purpose: a second
+          # hand-written copy of a version is how these two numbers drift apart.
+          pip3 install --no-deps -c docker/pip-constraints.txt trimesh
           source /opt/ros/humble/setup.bash
           source install/setup.bash
           python3 -m pytest -q
