@@ -84,6 +84,14 @@ docs/report/video/*
 !docs/report/video/rig2_box_400x400x300_C.mp4
 !docs/report/video/rig2_pen_C.mp4
 !docs/report/video/inserts/
+# Два клипа плана ролика, которых не было в git НИКОГДА (01.08). Из-за них
+# `build_demo_reel.py` не собирался из чистого клона, а слайд «Клип 2»
+# презентации (`presentation_outline.md`) ссылался на файл, лежащий только на
+# машине автора. Оба сняты 30.07 на отгружаемой ДВУХкамерной стойке — та же
+# партия, что и hero_stream_mixed_cd.mp4; `heads=2` подтверждён логами
+# `runs/clips2cam_proof/`. 927 КБ на два клипа.
+!docs/report/video/hero_diverter_cylinder_B.mp4
+!docs/report/video/hero_diverter_box400_C.mp4
 # Постеры двухкамерной стойки (~85 КБ каждый) — первый кадр галереи, он же
 # fallback, если браузер жюри откажется играть mp4.
 !docs/report/video/rig2_*_poster.png
