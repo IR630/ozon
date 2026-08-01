@@ -190,7 +190,18 @@ def main() -> int:
         print(f"deck not found: {args.deck}")
         return 2
 
-    report = audit(args.deck, args.shots)
+    # A checking tool must not become the thing that needs debugging. playwright is
+    # deliberately absent from requirements.txt (it pulls a browser), so on every
+    # machine but the one that renders decks this import raises — and a traceback
+    # reads as "the deck is broken" rather than "this optional tool is not set up".
+    # The paired test already skips for the same reason.
+    try:
+        report = audit(args.deck, args.shots)
+    except ImportError:
+        print("playwright is not installed — this layout check needs a real browser.")
+        print("    pip install playwright && python -m playwright install chromium")
+        print("Nothing was checked; this says nothing about the deck itself.")
+        return 3
     bad = [row for row in report if row["problems"]]
 
     for row in report:
