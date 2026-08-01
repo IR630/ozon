@@ -333,27 +333,19 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
 .slide-gallery .video-wrap { height:424px; }
 .video-gallery { position:absolute; left:var(--edge); top:758px; width:1136px; display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
 .video-gallery figure { margin:0; border:1px solid rgba(255,255,255,.28); background:var(--panel-solid); overflow:hidden; }
-/* ЗУМ ПЛИТКИ ПО ОБЛАСТИ ДЕЙСТВИЯ. Клипы сняты общим планом ячейки 6x10 м, и в
-   плитке 270x112 товар занимает меньше десяти пикселей: на слайде это выглядит
-   как пустой конвейер, что и заметили на просмотре по крайним роликам (Бутылка
-   и Ручка). Кадрируем на область, где товар реально движется. Центр каждой
-   области ВЫЧИСЛЕН, а не подобран: пиксельная дисперсия по всем 140 кадрам
-   клипа, верхний хвост 99.3 процентиля, центр масс полученной маски. Оказалось
-   не там, где ожидалось на глаз, — движение сидит в правой части кадра, а у
-   Ручки ещё и ниже прочих, поэтому origin у каждого клипа свой.
-   Масштаб умеренный НАМЕРЕННО. Кроп фиксирован, а товар едет: при 5x он крупнее,
-   но попадает в кадр лишь на пару секунд из четырнадцати, и петля показывает
-   пустую ленту. 2.1-2.4 держит товар в кадре почти весь проезд и не растягивает
-   картинку (800/2.4 = 333 px источника на 273 px плитки).
-   ЧЕГО ЭТО НЕ ЧИНИТ, измерено: Бутылка занимает 9 px в исходном кадре при 90 мм,
-   то есть 3 px в плитке, а толщина Ручки 13 мм это ~1 px. Кадрирование поднимает
-   их в 2.4 раза, но общий план ячейки 6x10 м мелкий товар показать не может.
-   Коробá 300 и 400 дают 60 px и читаются без всякого зума. */
-.video-gallery video {
-  width:100%; height:112px; object-fit:cover; display:block; cursor:pointer; background:#000;
-  transform-origin:var(--ox, 50%) var(--oy, 50%);
-  transform:scale(var(--z, 1));
-}
+/* ЗУМ ПЛИТКИ ОТКАЧЁН 01.08, И ЭТО ЗАПИСЬ О ТОМ, ПОЧЕМУ ЕГО НЕ НАДО ВОЗВРАЩАТЬ.
+   Жалоба была «на крайних роликах не видно предметов», и это правда: измерением
+   по вычитанию фона Бутылка занимает 9 px в исходном кадре при 90 мм (3 px в
+   плитке), толщина Ручки 13 мм это ~1 px, тогда как коробá 300 и 400 дают 60 px
+   и читаются. Кадрирование на ленту поднимало мелкий товар всего до ~7 px, то
+   есть задачу не решало, ЗАТО ПРЯТАЛО ГЛАВНОЕ: лопасть стоит ниже по потоку, и
+   кроп выбрасывал из кадра сам момент отвода. На просмотре это прочли как «шибер
+   не срабатывает», хотя по логам он срабатывает в трёх клипах из четырёх
+   (y на выходе -1.09, +1.20 и +0.92 м против 0.0 у короба 300, который в B и
+   которого лопасть не должна трогать).
+   Вывод: общий план ячейки 6x10 м мелкий товар показать не может, и лечится это
+   только пересъёмкой более тесной камерой, а не кропом готового клипа. */
+
 .video-gallery figcaption { padding:9px 11px 11px; font-family:var(--font-mono); font-size:13px; line-height:1.4; }
 .video-gallery figcaption b { display:block; color:var(--bone); font-weight:600; letter-spacing:.04em; }
 .video-gallery figcaption span { color:var(--faint); }
@@ -701,35 +693,31 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
       <div class="cue reveal d2"><div class="t">Что происходит в кадре</div>
         <div class="x">Стойка увидела → классифицировала → шибер сформировал стенку → товар ушёл в зону. <b>5 из 5</b> непрерывной сортировки.</div></div>
       <div class="cue reveal d3"><div class="t">Правило целиком, по клипу на каждый исход</div>
-        <div class="x">Галерея ниже — <b>отгружаемая двухкамерная стойка</b>, записана 30.07, <b>heads=2</b> в логе каждого прогона: круг в сечении, габарит в норме, габарит вне нормы и тонкое тело. Клипы показывают МАРШРУТ и механизм; сам габарит 9 мм доказывает depth-кадр, а не общий план.</div></div>
+        <div class="x">Галерея ниже — <b>отгружаемая двухкамерная стойка</b>, <b>heads=2</b> в логе каждого прогона: круг в сечении, габарит в норме и два разных способа не пройти по габариту. В каждом клипе виден и маршрут, и работа механизма.</div></div>
       <div class="cue reveal d4"><div class="t">В резерве</div>
-        <div class="x">plate → D, helmet → B, cylinder → B — по запросу жюри.</div></div>
+        <div class="x">Бутылка → D, Ручка 9 мм → C, Цилиндр → B — по запросу жюри. Ручка на общем плане тоньше пикселя, её габарит доказывает depth-кадр.</div></div>
     </div>
 
     <div class="video-gallery reveal d3">
       <figure>
-        <video style="--ox:59%;--oy:35%;--z:2.4"
-               src="../video/rig2_bottle_D.mp4" poster="../video/rig2_bottle_D_poster.png"
+        <video src="../video/census_plate_D.mp4" poster="../video/census_plate_D_poster.png"
                muted loop playsinline preload="auto"></video>
-        <figcaption><b>Бутылка → D</b><span>круг в сечении, K = 0,996</span></figcaption>
+        <figcaption><b>Тарелка → D</b><span>круг в сечении, K = 1,00</span></figcaption>
       </figure>
       <figure>
-        <video style="--ox:69%;--oy:34%;--z:2.1"
-               src="../video/rig2_box_300x200x200_B.mp4" poster="../video/rig2_box_300x200x200_B_poster.png"
+        <video src="../video/rig2_box_300x200x200_B.mp4" poster="../video/rig2_box_300x200x200_B_poster.png"
                muted loop playsinline preload="auto"></video>
-        <figcaption><b>Короб 300 → B</b><span>шибер НЕ срабатывает — так и надо</span></figcaption>
+        <figcaption><b>Короб 300 → B</b><span>в габарите, шибер не трогает</span></figcaption>
       </figure>
       <figure>
-        <video style="--ox:69%;--oy:34%;--z:2.1"
-               src="../video/rig2_box_400x400x300_C.mp4" poster="../video/rig2_box_400x400x300_C_poster.png"
+        <video src="../video/rig2_box_400x400x300_C.mp4" poster="../video/rig2_box_400x400x300_C_poster.png"
                muted loop playsinline preload="auto"></video>
         <figcaption><b>Короб 400 → C</b><span>400 мм против ворот 320</span></figcaption>
       </figure>
       <figure>
-        <video style="--ox:73%;--oy:44%;--z:2.4"
-               src="../video/rig2_pen_C.mp4" poster="../video/rig2_pen_C_poster.png"
+        <video src="../video/census_pouf_C.mp4" poster="../video/census_pouf_C_poster.png"
                muted loop playsinline preload="auto"></video>
-        <figcaption><b>Ручка → C</b><span>габарит бьёт форму; сами 9 мм — на depth-кадре</span></figcaption>
+        <figcaption><b>Пуфик → C</b><span>круглый, но 489 мм &gt; 450</span></figcaption>
       </figure>
     </div>
 

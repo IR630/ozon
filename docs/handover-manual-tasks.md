@@ -137,8 +137,13 @@ bash scripts/check_clean_deploy.sh       # чистый checkout -> образ -
 **Что сделать:**
 
 ```bash
+python scripts/build_defence_video.py     # -> docs/report/video/defence.mp4 (25 МБ)
 python scripts/make_nextcloud_bundle.py   # -> build/nextcloud/
 ```
+
+**Порядок важен.** `defence.mp4` в git не лежит (производный, 25 МБ), поэтому на
+чистой машине пакет соберётся БЕЗ питч-видео и никто об этом не крикнет. Сначала
+собрать ролик, потом пакет.
 
 Загрузить папку `build/nextcloud/` целиком, взять публичную ссылку, подставить её
 вместо плейсхолдера в README, прогнать `python scripts/check_submission.py` —
