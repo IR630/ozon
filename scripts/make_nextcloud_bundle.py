@@ -119,7 +119,22 @@ EXCLUDED = (
     ("ozon_stream.mp4", "397 МБ сырой записи рабочей сессии — не артефакт сдачи; "
                         "если это нужный материал, добавить руками осознанно"),
     ("build/, install/, log/", "артефакты сборки colcon, воспроизводятся командой"),
+    ("docs/report/video/demo_reel.mp4",
+     "повествовательный ролик — рабочий материал, а не артефакт сдачи "
+     "(видеодемонстрация — census_reel.mp4); в git его нет, поэтому в пакет он "
+     "попадал только у того, у кого лежал на диске, и притом собранный ДО "
+     "правок чисел 31.07"),
 )
+
+# Files a pattern sweeps up but that must not ship. Enforced here, not by
+# narrowing the glob: a pattern precise enough to miss this file would also
+# miss the next clip someone records. EXCLUDED above only PRINTS the decision —
+# until this set existed, the bundle's contents depended on what happened to be
+# lying in the author's working tree, which is the same drift the reel and the
+# deck each hit once already.
+NOT_BUNDLED = frozenset({
+    "docs/report/video/demo_reel.mp4",
+})
 
 
 # Дальше этого числа поимённый список перестаёт читаться и сворачивается
@@ -150,7 +165,8 @@ def plan_bundle(root: Path) -> tuple[dict[str, list[Path]], list[str]]:
             # and must be reported like an absent one, or the bundle ships a
             # named-but-empty folder.
             found = [file for match in sorted(root.glob(pattern))
-                     for file in _files_under(match)]
+                     for file in _files_under(match)
+                     if file.relative_to(root).as_posix() not in NOT_BUNDLED]
             if not found and pattern not in section.optional:
                 gaps.append(f"{section.folder}: не найдено — {pattern}")
             collected.extend(found)

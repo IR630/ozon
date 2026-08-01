@@ -2,6 +2,7 @@ from pathlib import Path
 
 from scripts.make_nextcloud_bundle import (
     MANIFEST_FILE_ROWS,
+    NOT_BUNDLED,
     SECTIONS,
     build,
     plan_bundle,
@@ -135,3 +136,38 @@ def test_real_repository_bundles_every_clip_the_deck_plays():
     bundled = {path.name for path in plan["01-video-demo"]}
     missing = played - bundled
     assert not missing, f"the deck plays clips the bundle does not carry: {sorted(missing)}"
+
+
+def test_working_tree_leftovers_do_not_ride_along_into_the_bundle():
+    """A file only the author has must not decide what the jury receives.
+
+    `docs/report/video/*.mp4` is deliberately broad, so anything sitting in that
+    folder ships. `demo_reel.mp4` is the case that made this concrete: it is not
+    in git, it is documented as working material rather than a submission
+    artifact, and the copy on the author's disk predates the 31.07 number fixes —
+    so bundling it would have put a superseded figure in front of the jury on one
+    machine and nothing at all on any other.
+    """
+    plan, _ = plan_bundle(ROOT)
+    bundled = {path.relative_to(ROOT).as_posix() for path in plan["01-video-demo"]}
+    assert not (bundled & NOT_BUNDLED), (
+        f"excluded files reached the bundle: {sorted(bundled & NOT_BUNDLED)}")
+
+
+def test_exclusion_is_enforced_and_not_merely_documented(tmp_path):
+    """The rationale list is printed, not applied — the guard must be the set.
+
+    Written against a tree where the excluded file is the ONLY thing the pattern
+    could match, so a filter that silently does nothing cannot pass.
+    """
+    _fake_tree(tmp_path)
+    video = tmp_path / "docs" / "report" / "video"
+    for stray in video.glob("*.mp4"):
+        stray.unlink()
+    (video / "demo_reel.mp4").write_bytes(b"stale reel")
+
+    plan, gaps = plan_bundle(tmp_path)
+    names = {path.name for path in plan["01-video-demo"]}
+    assert "demo_reel.mp4" not in names
+    assert any("*.mp4" in gap for gap in gaps), (
+        "a pattern left with nothing but excluded files must be reported as a gap")
