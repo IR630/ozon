@@ -333,7 +333,27 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
 .slide-gallery .video-wrap { height:424px; }
 .video-gallery { position:absolute; left:var(--edge); top:758px; width:1136px; display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
 .video-gallery figure { margin:0; border:1px solid rgba(255,255,255,.28); background:var(--panel-solid); overflow:hidden; }
-.video-gallery video { width:100%; height:112px; object-fit:cover; display:block; cursor:pointer; background:#000; }
+/* ЗУМ ПЛИТКИ ПО ОБЛАСТИ ДЕЙСТВИЯ. Клипы сняты общим планом ячейки 6x10 м, и в
+   плитке 270x112 товар занимает меньше десяти пикселей: на слайде это выглядит
+   как пустой конвейер, что и заметили на просмотре по крайним роликам (Бутылка
+   и Ручка). Кадрируем на область, где товар реально движется. Центр каждой
+   области ВЫЧИСЛЕН, а не подобран: пиксельная дисперсия по всем 140 кадрам
+   клипа, верхний хвост 99.3 процентиля, центр масс полученной маски. Оказалось
+   не там, где ожидалось на глаз, — движение сидит в правой части кадра, а у
+   Ручки ещё и ниже прочих, поэтому origin у каждого клипа свой.
+   Масштаб умеренный НАМЕРЕННО. Кроп фиксирован, а товар едет: при 5x он крупнее,
+   но попадает в кадр лишь на пару секунд из четырнадцати, и петля показывает
+   пустую ленту. 2.1-2.4 держит товар в кадре почти весь проезд и не растягивает
+   картинку (800/2.4 = 333 px источника на 273 px плитки).
+   ЧЕГО ЭТО НЕ ЧИНИТ, измерено: Бутылка занимает 9 px в исходном кадре при 90 мм,
+   то есть 3 px в плитке, а толщина Ручки 13 мм это ~1 px. Кадрирование поднимает
+   их в 2.4 раза, но общий план ячейки 6x10 м мелкий товар показать не может.
+   Коробá 300 и 400 дают 60 px и читаются без всякого зума. */
+.video-gallery video {
+  width:100%; height:112px; object-fit:cover; display:block; cursor:pointer; background:#000;
+  transform-origin:var(--ox, 50%) var(--oy, 50%);
+  transform:scale(var(--z, 1));
+}
 .video-gallery figcaption { padding:9px 11px 11px; font-family:var(--font-mono); font-size:13px; line-height:1.4; }
 .video-gallery figcaption b { display:block; color:var(--bone); font-weight:600; letter-spacing:.04em; }
 .video-gallery figcaption span { color:var(--faint); }
@@ -688,22 +708,26 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
 
     <div class="video-gallery reveal d3">
       <figure>
-        <video src="../video/rig2_bottle_D.mp4" poster="../video/rig2_bottle_D_poster.png"
+        <video style="--ox:59%;--oy:35%;--z:2.4"
+               src="../video/rig2_bottle_D.mp4" poster="../video/rig2_bottle_D_poster.png"
                muted loop playsinline preload="auto"></video>
         <figcaption><b>Бутылка → D</b><span>круг в сечении, K = 0,996</span></figcaption>
       </figure>
       <figure>
-        <video src="../video/rig2_box_300x200x200_B.mp4" poster="../video/rig2_box_300x200x200_B_poster.png"
+        <video style="--ox:69%;--oy:34%;--z:2.1"
+               src="../video/rig2_box_300x200x200_B.mp4" poster="../video/rig2_box_300x200x200_B_poster.png"
                muted loop playsinline preload="auto"></video>
         <figcaption><b>Короб 300 → B</b><span>шибер НЕ срабатывает — так и надо</span></figcaption>
       </figure>
       <figure>
-        <video src="../video/rig2_box_400x400x300_C.mp4" poster="../video/rig2_box_400x400x300_C_poster.png"
+        <video style="--ox:69%;--oy:34%;--z:2.1"
+               src="../video/rig2_box_400x400x300_C.mp4" poster="../video/rig2_box_400x400x300_C_poster.png"
                muted loop playsinline preload="auto"></video>
         <figcaption><b>Короб 400 → C</b><span>400 мм против ворот 320</span></figcaption>
       </figure>
       <figure>
-        <video src="../video/rig2_pen_C.mp4" poster="../video/rig2_pen_C_poster.png"
+        <video style="--ox:73%;--oy:44%;--z:2.4"
+               src="../video/rig2_pen_C.mp4" poster="../video/rig2_pen_C_poster.png"
                muted loop playsinline preload="auto"></video>
         <figcaption><b>Ручка → C</b><span>габарит бьёт форму; сами 9 мм — на depth-кадре</span></figcaption>
       </figure>
