@@ -103,6 +103,10 @@ MIN_DECK_VIDEOS = 3
 _VIDEO_DIR = "docs/report/video"
 _REEL_PLAN = "scripts/build_demo_reel.py"
 
+# Media named in the defence plan, and the directories the report keeps media in.
+_OUTLINE_MEDIA = re.compile(r"`([A-Za-z0-9_*.-]+\.(?:mp4|png))`")
+_MEDIA_DIRS = (_VIDEO_DIR, "docs/report/img", f"{_VIDEO_DIR}/inserts")
+
 
 def reel_clip_issues(clips, tracked: set[str] | None) -> list[str]:
     """Clips the reel plan needs that the repository does not carry.
@@ -121,6 +125,33 @@ def reel_clip_issues(clips, tracked: set[str] | None) -> list[str]:
         return []
     return [f"UNTRACKED_REEL_CLIP: {name}" for name in clips
             if f"{_VIDEO_DIR}/{name}" not in tracked]
+
+
+def outline_media_issues(root: Path, tracked: set[str] | None) -> list[str]:
+    """Media the defence plan names on stage that the repository does not carry.
+
+    Same failure as the deck's and the reel's, third venue. `presentation_outline.md`
+    listed `hero_diverter_bottle_D.mp4` as the standby clip for slide 6 and that file
+    was never committed — and nothing noticed, because the deck guard reads the HTML
+    decks while the outline is markdown no player ever opens. A clip that is missing
+    is found out on stage, which is the worst possible moment.
+
+    Names are matched inside backticks and looked up in the directories the report
+    keeps media in; a glob like `rig2_*` is a family, not a file, and is skipped.
+    """
+    if not tracked:
+        return []
+    outline = root / "docs" / "report" / "presentation_outline.md"
+    if not outline.is_file():
+        return []
+    text = outline.read_text(encoding="utf-8", errors="replace")
+    issues = []
+    for name in sorted(set(_OUTLINE_MEDIA.findall(text))):
+        if "*" in name:
+            continue
+        if not any(f"{directory}/{name}" in tracked for directory in _MEDIA_DIRS):
+            issues.append(f"OUTLINE_MEDIA: {name}")
+    return issues
 
 
 def reel_clip_names(root: Path) -> list[str]:
@@ -302,6 +333,8 @@ def submission_issues(root: Path, tracked: list[str] | None = None) -> list[str]
     # actually have an inventory to check against.
     tracked_paths = set(tracked if tracked is not None else tracked_files(root))
     issues.extend(deck_media_issues(
+        root, tracked=tracked_paths if tracked_paths else None))
+    issues.extend(outline_media_issues(
         root, tracked=tracked_paths if tracked_paths else None))
     # NOT reel_clip_issues() here any more. That guard watches the narrative reel
     # (build_demo_reel.py), and since 31.07 the shipped video demonstration is
