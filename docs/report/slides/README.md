@@ -3,8 +3,9 @@
 `deck-c-ozon.html` содержит 12 слайдов защиты. Это редактируемый исходник,
 который используется для локального просмотра и сборки записанной презентации.
 Основной презентационный файл сдачи —
-[`II_v_massy_pitch.mp4` в Nextcloud](https://disk.ozon-robozon.ru/s/xeToaJw95awTb5C/download?path=%2FII_v_massy_Task3%2F04-presentation&files=II_v_massy_pitch.mp4)
-продолжительностью 5:17.
+[записанная презентация в Nextcloud](https://disk.ozon-robozon.ru/s/xeToaJw95awTb5C)
+продолжительностью 5:17. Путь к файлу:
+`II_v_massy_Task3/04-presentation/II_v_massy_pitch.mp4`.
 
 ## Локальный просмотр
 

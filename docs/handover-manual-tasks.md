@@ -324,7 +324,7 @@ ffmpeg -i docs/report/video/demo_reel.mp4 -i voice.wav \
 
 ## 9. Прочитать три сведённых вручную документа
 
-При слиянии в `main` три файла сводились авторски: `PLAN-WEEK5.md`, `README.md`,
+При слиянии в `main` три файла сводились авторски: `docs/plans/PLAN-WEEK5.md`, `README.md`,
 `docs/report/path_to_line.md`. В последнем выброшены 62 строки версии `main`
 в пользу более полной версии ветки. Они идут жюри — прочитать глазами.
 

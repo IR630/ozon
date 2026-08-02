@@ -58,16 +58,17 @@
 - **Начать с отчёта:** [`docs/report/final_report.md`](docs/report/final_report.md).
 - **Краткое резюме:** [`docs/report/one_pager.md`](docs/report/one_pager.md).
 - **Записанная презентация (5:17):**
-  [`II_v_massy_pitch.mp4` в Nextcloud](https://disk.ozon-robozon.ru/s/xeToaJw95awTb5C/download?path=%2FII_v_massy_Task3%2F04-presentation&files=II_v_massy_pitch.mp4).
+  [Nextcloud команды](https://disk.ozon-robozon.ru/s/xeToaJw95awTb5C), файл
+  `II_v_massy_Task3/04-presentation/II_v_massy_pitch.mp4`.
 - **Исходник 12 слайдов:** [`deck-c-ozon.html`](docs/report/slides/deck-c-ozon.html)
   и [инструкция локального просмотра](docs/report/slides/README.md). HTML-файл
   нужен для редактирования и воспроизводимой сборки записанной презентации; это
   не отдельный файл, который требуется открывать при оценке решения.
-- **Текст выступления:** [`defence_speech.md`](docs/report/defence_speech.md).
 - **Облачные материалы:** [Nextcloud команды](https://disk.ozon-robozon.ru/s/xeToaJw95awTb5C).
 
 **Видеодемонстрация:**
-[`census_reel.mp4` в Nextcloud](https://disk.ozon-robozon.ru/s/xeToaJw95awTb5C/download?path=%2FII_v_massy_Task3%2F01-video-demo%2Fdocs%2Freport%2Fvideo&files=census_reel.mp4)
+[Nextcloud команды](https://disk.ozon-robozon.ru/s/xeToaJw95awTb5C), файл
+`II_v_massy_Task3/01-video-demo/docs/report/video/census_reel.mp4`
 — 6:03, H.264, все 33 контрольных случая. Каждый фрагмент подписан названием
 товара, положением, ожидаемой зоной и фактическим результатом. Копия ролика также
 лежит [в репозитории](docs/report/video/census_reel.mp4).
@@ -425,7 +426,7 @@ sim/          мир Gazebo, модели товаров, конфиг мост�
 scripts/      генератор моделей, сквозные прогоны, утилиты анализа и записи
 docker/       воспроизводимое окружение сборки и запуска
 tests/        unit-тесты ядра и узлов
-docs/         условия, решения, эксперименты, разделы отчёта
+docs/         условия, недельные планы, решения, эксперименты и разделы отчёта
 ```
 
 ### Структура решения по частям

@@ -200,12 +200,12 @@ bash scripts/check_clean_deploy.sh
 - исходный код и инструкции — корневой [README](../../README.md);
 - карта критериев → артефакт — [criteria_coverage.md](criteria_coverage.md);
 - короткое резюме — [one_pager.md](one_pager.md);
-- записанная презентация —
-  [`II_v_massy_pitch.mp4` в Nextcloud](https://disk.ozon-robozon.ru/s/xeToaJw95awTb5C/download?path=%2FII_v_massy_Task3%2F04-presentation&files=II_v_massy_pitch.mp4);
+- записанная презентация — [Nextcloud команды](https://disk.ozon-robozon.ru/s/xeToaJw95awTb5C),
+  файл `II_v_massy_Task3/04-presentation/II_v_massy_pitch.mp4`;
 - исходник слайдов — [`deck-c-ozon.html`](slides/deck-c-ozon.html); он используется
   для редактирования и сборки записанной презентации, а не как основной файл сдачи;
-- видеодемонстрация —
-  [`census_reel.mp4` в Nextcloud](https://disk.ozon-robozon.ru/s/xeToaJw95awTb5C/download?path=%2FII_v_massy_Task3%2F01-video-demo%2Fdocs%2Freport%2Fvideo&files=census_reel.mp4);
+- видеодемонстрация — [Nextcloud команды](https://disk.ozon-robozon.ru/s/xeToaJw95awTb5C),
+  файл `II_v_massy_Task3/01-video-demo/docs/report/video/census_reel.mp4`;
 - журналы доказательств — [experiments.md](../experiments.md) и
   [decisions.md](../decisions.md).
 
