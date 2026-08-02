@@ -34,4 +34,4 @@ export LOGDIR=/tmp/estop_stream_e2e
 # rc=124 before. The skeleton step above already carries 300 for the same reason
 # (a multi-head world boots slower than the default wait); the E-stop stream runs
 # the same world plus a stream and had less budget than the simpler step.
-timeout 300 bash scripts/smoke_estop_stream.sh
+timeout 480 bash scripts/smoke_estop_stream.sh
