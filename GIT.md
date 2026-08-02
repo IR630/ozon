@@ -40,6 +40,44 @@
   `pull_request`, push запрещён до отдельного решения команды/перевода на
   `workflow_dispatch`. Старые ветки не наследуют ручной режим из `main`.
 
+## Первый запуск на новой машине
+
+Развёртывание 02.08 на чистой Windows-машине встало на git трижды подряд, и
+каждый раз не по вине репозитория, поэтому три шага стоит сделать ДО работы
+(`docs/deploy-report-2026-08-02.md`).
+
+**1. Один раз войти интерактивно.** Свежий Git for Windows несёт настроенный
+`credential.helper=manager`, но без сохранённой учётки. В неинтерактивной сессии
+он пытается открыть графическое окно логина, которого никто не увидит, и любая
+сетевая операция **виснет вместо того, чтобы упасть** — это легко принять за
+медленную сеть. Диагноз виден так:
+
+```
+GIT_TERMINAL_PROMPT=0 git fetch --all
+fatal: could not read Username for 'https://github.com': terminal prompts disabled
+```
+
+Лечится одним `git push` руками из обычного терминала с прохождением диалога;
+дальше учётка лежит в Windows Credential Manager.
+
+**2. Задать identity**, иначе первый же коммит падает с `Author identity unknown`:
+
+```
+git config --global user.name  "Имя Фамилия"
+git config --global user.email "you@example.com"
+```
+
+`--global`, а не локально: при следующем checkout то же самое всплывёт заново.
+
+**3. Добавить ремоут `true`** — в свежем клоне есть только `origin`, то есть
+отправить что-либо организаторам нельзя, и требование «истории совпадают»
+становится непроверяемым. Команды — в следующем разделе, плюс сам `git remote
+add`.
+
+Отдельно: на Windows `git` может не быть в `PATH` у PowerShell (лежит только в
+Git Bash). Команды из README, написанные для PowerShell, тогда не выполняются —
+добавьте `C:\Program Files\Git\cmd`.
+
 ## Ремоуты
 
 Два репозитория: **`true`** — основной, командный у организаторов
@@ -48,6 +86,7 @@
 отправляет в оба сразу; каждому участнику настроить у себя один раз:
 
 ```
+git remote add true https://github.com/hackathonsrus/ozone-tech_ii_v_massy_883.git
 git remote set-url --push true https://github.com/hackathonsrus/ozone-tech_ii_v_massy_883.git
 git remote set-url --add --push true https://github.com/IR630/ozon.git
 ```

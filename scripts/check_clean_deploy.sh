@@ -15,7 +15,21 @@
 set -e
 cd "$(dirname "$0")/.."
 
-command -v docker > /dev/null || { echo "ABORT: docker is required" >&2; exit 1; }
+# The abort names the way out, not just the missing binary. A deploy check on a
+# Windows LTSC 2019 machine (02.08) died on this line, and "docker is required"
+# gave the operator nothing: on that OS Docker Desktop cannot be installed at
+# all, so the answer is a different machine, not an install. Whoever hits this
+# should learn which of the two it is without reading the script.
+command -v docker > /dev/null || {
+  echo "ABORT: docker is required for the clean-deploy gate." >&2
+  echo "  Это шлюз развёртывания: он собирает образ из чистого checkout." >&2
+  echo "  Без docker его пройти нельзя — заглушки тут не будет." >&2
+  echo "  Windows: нужна 10 версии 21H2 (build 19044)+ или 11." >&2
+  echo "  На LTSC 2019 (build 17763) Docker Desktop не ставится в принципе," >&2
+  echo "  и WSL2 тоже недоступен — см. docs/deploy-report-2026-08-02.md." >&2
+  echo "  Python-часть при этом работает: pytest -q, ruff check ." >&2
+  exit 1
+}
 
 CHECKOUT=$(mktemp -d /tmp/ozon_deploy_check_XXXXXX)
 cleanup() {
