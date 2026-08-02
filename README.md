@@ -25,7 +25,7 @@
 flowchart LR
     A["Подача A<br/>лента 1 м/с"] --> P
 
-    subgraph rig["Стойка: две depth-головки"]
+    subgraph rig["Стойка: две камеры глубины"]
         TOP["Верхняя<br/>след и K"]
         SIDE["Боковая<br/>скрытая высота"]
     end
@@ -55,7 +55,7 @@ flowchart LR
 
 ### Ячейка в разрезе
 
-Наш эскиз участка: съезд и reject-лоток, поперечное сечение станции дивёрта и
+Наш эскиз участка: съезд и лоток отвода, поперечное сечение станции дивёрта и
 вид вдоль ленты. Исходники в STEP и STL — в комплекте сдачи (`02-cad-and-models`).
 
 ![Размерный чертёж ячейки](docs/defense/cad/out/cell_sideview_dims.png)
@@ -98,7 +98,7 @@ flowchart LR
 
 - **Начать с отчёта:** [`docs/report/final_report.md`](docs/report/final_report.md).
 - **Краткое резюме:** [`docs/report/one_pager.md`](docs/report/one_pager.md).
-- **Записанная презентация (5:17):**
+- **Записанная презентация (5:23):**
   [Nextcloud команды](https://disk.ozon-robozon.ru/s/xeToaJw95awTb5C), файл
   `II_v_massy_Task3/04-presentation/II_v_massy_pitch.mp4`.
 - **Исходник 12 слайдов:** [`deck-c-ozon.html`](docs/report/slides/deck-c-ozon.html)
@@ -138,7 +138,7 @@ python scripts/make_nextcloud_bundle.py --without-runs
 | `01-video-demo` | видеодемонстрация решения | **главный файл — `census_reel.mp4`** (6:03, все 33 ячейки), остальные файлы — дополнительные клипы и постеры |
 | `02-cad-and-models` | CAD-файлы и 3D-модели | STEP/STL ячейки, размерный чертёж, изометрия; исходные модели 11 товаров (STEP + STL) |
 | `03-simulation` | файлы симуляций | миры Gazebo для разных конфигураций камер, настройки моста `ros_gz`, сгенерированные SDF-модели товаров |
-| `04-presentation` | презентация | `II_v_massy_pitch.mp4` (5:17, 12 слайдов с озвучкой); PDF можно добавить позднее |
+| `04-presentation` | презентация | `II_v_massy_pitch.mp4` (5:23, 12 слайдов с озвучкой); PDF можно добавить позднее |
 | `05-run-artifacts` | дополнительные доказательные материалы | необязательные финальные логи; раздел добавляется только при их наличии |
 
 `MANIFEST.md` внутри пакета объясняет назначение разделов и перечисляет файлы с
