@@ -284,6 +284,34 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
 .route .drop { position:absolute; width:2px; top:118px; height:134px; background:linear-gradient(180deg,rgba(234,242,255,.32),transparent); }
 .route .lbl { position:absolute; top:336px; font-family:var(--font-mono); font-size:17px; font-weight:300; color:var(--faint); width:300px; line-height:1.5; }
 
+/* --- размерный чертёж на слайде компоновки ---
+   Слайд говорил про участок 6x10 м схемой из прямоугольников. Настоящий чертёж
+   с размерами отвечает на вопрос «а вы это правда спроектировали» лучше любой
+   схемы, и он у нас есть (FreeCAD, docs/defense/cad). Панель под ним нужна: PNG
+   с белым фоном на цветном поле выглядит вырезанным из другого документа. */
+.layout-split { display:flex; gap:44px; align-items:flex-start; }
+.layout-split .blueprint { flex:0 0 1010px; }
+.layout-side { flex:1; }
+.layout-side .cue { padding:0 0 22px; border-bottom:1px solid var(--hairline); margin-bottom:22px; }
+.layout-side .cue:last-child { border-bottom:none; }
+/* Типографика врезок общая с демонстрацией: одинаковые по роли блоки не должны
+   выглядеть по-разному только потому, что живут на разных слайдах. */
+.layout-side .cue .t {
+  font-family:var(--font-mono); font-size:16px; letter-spacing:.18em;
+  text-transform:uppercase; color:var(--near);
+}
+.layout-side .cue .x { margin-top:14px; font-size:25px; line-height:1.36; color:var(--dim); }
+.layout-side .cue .x b { color:var(--bone); font-weight:600; }
+.blueprint {
+  padding:16px 20px; background:rgba(255,255,255,.94);
+  border:1px solid var(--hairline);
+}
+.blueprint img { display:block; width:100%; height:auto; }
+.blueprint-cap {
+  margin-top:12px; font-family:var(--font-mono); font-size:16px;
+  letter-spacing:.06em; color:var(--faint);
+}
+
 /* --- comparison / two-column (slides 5, 9) --- */
 .cols { display:flex; gap:56px; }
 .cols .col { flex:1; }
@@ -407,7 +435,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
     </div>
 
 
-    <div class="foot"><span>Конвейер 1 м/с</span><span>10³ … 450×320×320 мм</span><span>порог K = 0,8</span></div>
+    <div class="foot"><span>ИИ в массы</span><span>Хакатон Ozon &middot; Трек 3</span></div>
   </section>
   <!-- =====================================================
        SLIDE 2 — TASK & APPROACH
@@ -442,7 +470,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
       </p>
     </div>
 
-    <div class="foot"><span>A → B / C / D</span><span>ИИ в массы</span></div>
+    <div class="foot"><span>ИИ в массы</span><span>Хакатон Ozon &middot; Трек 3</span></div>
   </section>
   <!-- =====================================================
        SLIDE - ARCHITECTURE & STACK
@@ -477,7 +505,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
       </div>
     </div>
 
-    <div class="foot"><span>check_clean_deploy.sh</span><span>Один seed задаёт эпизод дословно</span></div>
+    <div class="foot"><span>ИИ в массы</span><span>Хакатон Ozon &middot; Трек 3</span></div>
   </section>
   <!-- =====================================================
        SLIDE 3 — CLASSIFICATION LOGIC
@@ -519,7 +547,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
       </div>
     </div>
 
-    <div class="foot"><span>census 33/33 ×3 · без единой ошибки</span><span>K по проекциям — согласовано с QA 18.07</span></div>
+    <div class="foot"><span>ИИ в массы</span><span>Хакатон Ozon &middot; Трек 3</span></div>
   </section>
   <!-- =====================================================
        SLIDE - STL, SENSORS, ALGORITHMS
@@ -558,7 +586,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
       </p>
     </div>
 
-    <div class="foot"><span>analyze_models.py &middot; build_item_models.py</span><span>Санити-чек на каждом стыке</span></div>
+    <div class="foot"><span>ИИ в массы</span><span>Хакатон Ozon &middot; Трек 3</span></div>
   </section>
   <!-- =====================================================
        SLIDE 5 — ACTUATOR
@@ -593,7 +621,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
       </div>
     </div>
 
-    <div class="foot"><span>mechanism.md · blade_actuator.md · chute_angle.md</span><span>ИИ в массы</span></div>
+    <div class="foot"><span>ИИ в массы</span><span>Хакатон Ozon &middot; Трек 3</span></div>
   </section>
   <!-- =====================================================
        SLIDE 4 — ROUTING A/B/C/D
@@ -608,30 +636,22 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
     </div>
 
     <div class="body">
-      <div class="route reveal d1">
-        <div class="track"></div>
-        <div class="cam">depth-стойка · решение за 0,042 с</div>
-        <div class="pt a">A</div>
-        <div class="drop" style="left:600px"></div>
-        <div class="drop" style="left:1050px"></div>
-        <div class="drop" style="left:1500px"></div>
-        <div class="pt b">B</div>
-        <div class="pt c">C</div>
-        <div class="pt d">D</div>
-        <div class="lbl" style="left:498px">Основной сортировщик — товар годен как есть</div>
-        <div class="lbl" style="left:948px">Негабарит — вне пределов сортировщика</div>
-        <div class="lbl" style="left:1398px">Доупаковка — круг в сечении</div>
+      <div class="layout-split">
+        <div class="blueprint reveal d1">
+          <img src="../../defense/cad/out/cell_sideview_dims.png"
+               alt="Размерный чертёж ячейки: вид сбоку с габаритами">
+        </div>
+        <div class="layout-side">
+          <div class="cue reveal d2"><div class="t">Участок 6 &times; 10 м</div>
+            <div class="x">Жёстко заданы только подача и инфид сортировщика. Накопители C и D мы придвинули вплотную, чтобы плечо переноса было короче.</div></div>
+          <div class="cue reveal d3"><div class="t">Из точки A в три потока</div>
+            <div class="x">B — годен как есть, C — вне габарита, D — круг в сечении. Решение готово за <b>0,042 с</b>, пока товар едет.</div></div>
+        </div>
       </div>
-
-      <p class="lede reveal d4" style="max-width:1600px; margin-top:14px">
-        Участок — <b>6 × 10 м</b>. Жёстко заданы только подача A и инфид сортера B;
-        накопители C и D размещены свободно и придвинуты вплотную, чтобы перенос был
-        коротким. Правило проверено и вне тестового набора: <b>20/20</b> на процедурных
-        формах вокруг порога и габаритных пределов.
-      </p>
+      <div class="blueprint-cap reveal d5">Наш чертёж, FreeCAD &middot; STEP и STL в комплекте сдачи</div>
     </div>
 
-    <div class="foot"><span>measure_private_shapes.py</span><span>20/20 на неизвестных формах</span></div>
+    <div class="foot"><span>ИИ в массы</span><span>Хакатон Ozon &middot; Трек 3</span></div>
   </section>
   <!-- =====================================================
        SLIDE 6 — VIDEO DEMO (core of the defence)
@@ -683,7 +703,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
       </figure>
     </div>
 
-    <div class="foot"><span>Пробел — пуск и пауза; клик по плитке — её клип</span><span>0 FAIL / 0 JAM</span></div>
+    <div class="foot"><span>ИИ в массы</span><span>Хакатон Ozon &middot; Трек 3</span></div>
   </section>
   <!-- =====================================================
        SLIDE 7 — PROOF
@@ -708,7 +728,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
       </div>
     </div>
 
-    <div class="foot"><span>Вся случайность — через один seed: (seed, item_index, orient_index)</span><span>README.md → таблица «заявка → команда»</span></div>
+    <div class="foot"><span>ИИ в массы</span><span>Хакатон Ozon &middot; Трек 3</span></div>
   </section>
   <!-- =====================================================
        SLIDE - FAULTS & EDGE HANDLING
@@ -743,7 +763,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
       </div>
     </div>
 
-    <div class="foot"><span>smoke_estop_recover.sh</span><span>Неуверенность &mdash; отдельный поток, не молчание</span></div>
+    <div class="foot"><span>ИИ в массы</span><span>Хакатон Ozon &middot; Трек 3</span></div>
   </section>
   <!-- =====================================================
        SLIDE 9 — LIMITS & CLOSING
@@ -763,9 +783,8 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
           <h3><span class="mark">Границы</span>Названы прямо</h3>
           <ul class="bullets">
             <li><b>9 шт/мин</b> — заявка отгружаемой стойки. Пиковые 18 за неё не выдаём</li>
-            <li>Плотный <b>same-zone</b> поток деградирует: эпизод из шести даёт <b>2/6</b>,
-              в сумме 29/33. Классификация верна, отказ исполнительный. Воспроизведён
-              дважды, <b>полную причину не нашли</b></li>
+            <li>Плотный <b>same-zone</b> поток деградирует: эпизод из шести даёт <b>2/6</b>.
+              Классификация верна, ошибается исполнительная часть. <b>Причину не нашли</b></li>
             <li>Физика — <b>инженерные допущения</b>: ODE-трение, rigid-body; ткань и привод не моделируются</li>
             <li>Физический прототип — <b>осознанный NO-GO</b>: постановка допускает ПАК в симуляции</li>
           </ul>
@@ -782,7 +801,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
     </div>
 
 
-    <div class="foot"><span>Уровень готовности: CV 4 × Исполнение 4</span><span>ИИ в массы · Хакатон Ozon, трек 3</span></div>
+    <div class="foot"><span>ИИ в массы</span><span>Хакатон Ozon &middot; Трек 3</span></div>
   </section>
   <!-- =====================================================
        SLIDE - QUESTIONS
@@ -807,7 +826,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
       Иван Пушкин &middot; Иван Резников &middot; Максим Седов &middot; Михаил Анцев &middot; Владимир Зайцев
     </div>
 
-    <div class="foot"><span>Каждая цифра &mdash; одна команда в README</span><span>ИИ в массы &middot; Хакатон Ozon, трек 3</span></div>
+    <div class="foot"><span>ИИ в массы</span><span>Хакатон Ozon &middot; Трек 3</span></div>
   </section>
 
 
