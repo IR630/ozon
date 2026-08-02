@@ -68,6 +68,8 @@ PROBE_JS = r"""
 
     const problems = [];
     const all = Array.from(slide.querySelectorAll('*'));
+    const titleEl = slide.querySelector('h1, h2');
+    const heading = titleEl ? toStage(titleEl.getBoundingClientRect()).top : null;
 
     // Leaves that carry visible text; skip the decorative layers outright.
     const probes = all.filter((el) => {
@@ -88,6 +90,7 @@ PROBE_JS = r"""
     probes.forEach((el) => {
       const box = toStage(el.getBoundingClientRect());
       if (box.width === 0 && box.height === 0) return;
+      const insideTitle = titleEl && (titleEl === el || titleEl.contains(el));
 
       if (box.bottom > 1080 + tolerance) {
         problems.push({ kind: 'OVERFLOW_BOTTOM',
@@ -97,6 +100,17 @@ PROBE_JS = r"""
       if (box.right > 1920 + tolerance) {
         problems.push({ kind: 'OVERFLOW_RIGHT',
                         detail: Math.round(box.right - 1920) + 'px past the stage',
+                        node: label(el) });
+      }
+
+      // NOTHING SITS ABOVE THE HEADING. The kicker and the chrome strip are
+      // allowed: both are small and quiet. What is not allowed is a loud block
+      // parked over the title — the deck had one (a 58px accent panel on the
+      // limits slide), and it read as noise before the slide had said anything.
+      if (heading !== null && !insideTitle && box.top < heading - tolerance
+          && parseFloat(getComputedStyle(el).fontSize) > 20) {
+        problems.push({ kind: 'ABOVE_HEADING',
+                        detail: Math.round(heading - box.top) + 'px above the title',
                         node: label(el) });
       }
 
@@ -112,6 +126,26 @@ PROBE_JS = r"""
         }
       });
     });
+
+    // TEXT ON TOP OF TEXT. The .foot check caught only collisions with chrome,
+    // so when the cover heading was widened and wrapped to a second line it
+    // landed straight on the lede and the checker still said OK. Any two text
+    // leaves that are not nested and overlap in both axes are a defect.
+    for (let a = 0; a < probes.length; a++) {
+      for (let b = a + 1; b < probes.length; b++) {
+        const ea = probes[a], eb = probes[b];
+        if (ea.contains(eb) || eb.contains(ea)) continue;
+        const ra = toStage(ea.getBoundingClientRect());
+        const rb = toStage(eb.getBoundingClientRect());
+        const dx = Math.min(ra.right, rb.right) - Math.max(ra.left, rb.left);
+        const dy = Math.min(ra.bottom, rb.bottom) - Math.max(ra.top, rb.top);
+        if (dx > tolerance && dy > tolerance) {
+          problems.push({ kind: 'TEXT_OVERLAPS_TEXT',
+                          detail: 'overlaps by ' + Math.round(dy) + 'px',
+                          node: label(ea) + '  ||  ' + label(eb) });
+        }
+      }
+    }
 
     slide.className = restore;
     report.push({ index: index + 1, problems });

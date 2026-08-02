@@ -124,3 +124,55 @@ def test_the_shipping_deck_currently_fits():
     broken = {index: items for index, items in problems.items() if items}
 
     assert not broken, f"slides do not fit 1920x1080: {sorted(broken)}"
+
+
+@needs_browser
+def test_a_loud_block_above_the_heading_is_reported(written):
+    """The rule the deck learned on 02.08: nothing shouts before the title does.
+
+    A 58px accent panel sat above the heading on the limits slide and read as
+    noise before the slide had said anything. Small quiet chrome above the title
+    stays legal, so the guard keys on type size rather than position alone.
+    """
+    deck = written("""
+      <section class="slide">
+        <div style="position:absolute; left:128px; top:176px; font-size:58px">CV 4</div>
+        <h2 style="position:absolute; left:128px; top:224px; font-size:82px">Заголовок</h2>
+      </section>""")
+
+    kinds = [p["kind"] for row in audit(deck) for p in row["problems"]]
+
+    assert "ABOVE_HEADING" in kinds
+
+
+@needs_browser
+def test_small_quiet_text_above_the_heading_is_allowed(written):
+    # The kicker and the chrome strip live above the title by design.
+    deck = written("""
+      <section class="slide">
+        <div style="position:absolute; left:128px; top:120px; font-size:18px">служебная строка</div>
+        <h2 style="position:absolute; left:128px; top:224px; font-size:82px">Заголовок</h2>
+      </section>""")
+
+    kinds = [p["kind"] for row in audit(deck) for p in row["problems"]]
+
+    assert "ABOVE_HEADING" not in kinds
+
+
+@needs_browser
+def test_text_landing_on_other_text_is_reported(written):
+    """The gap that let a broken cover pass: only chrome collisions were checked.
+
+    Widening the cover heading made it wrap to a second line, which came down on
+    the lede — two paragraphs drawn on top of each other, and the checker still
+    reported OK because neither was `.foot` or `.chrome`.
+    """
+    deck = written("""
+      <section class="slide">
+        <div style="position:absolute; left:128px; top:300px; font-size:60px">Заголовок в две строки</div>
+        <div style="position:absolute; left:128px; top:330px; font-size:30px">Лид, который лёг сверху</div>
+      </section>""")
+
+    kinds = [p["kind"] for row in audit(deck) for p in row["problems"]]
+
+    assert "TEXT_OVERLAPS_TEXT" in kinds

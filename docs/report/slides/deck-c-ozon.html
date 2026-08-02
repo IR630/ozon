@@ -53,6 +53,17 @@
   --font-mono:'JetBrains Mono', ui-monospace, monospace;
 
   --edge:128px;
+  /* ВЕРТИКАЛЬНАЯ СЕТКА, введена 02.08. До неё каждый слайд ставил свои числа
+     руками, и слайд демонстрации разъехался: заголовок на 150 против 224 у
+     остальных, контент на 300 против 392. С проектора это читается как
+     небрежность, потому что глаз держит положение заголовка между слайдами.
+     ПРАВИЛО: выше --y-head не стоит ничего, кроме служебной строки .chrome —
+     она мелкая и полупрозрачная. Крупный акцентный блок над заголовком
+     (прежний .ugt на слайде ограничений) правило нарушал и снят. */
+  --y-chrome:66px;
+  --y-head:172px;
+  --y-body:392px;
+  --y-foot:64px;
   --ease:cubic-bezier(.2,.85,.2,1);
 }
 * { margin:0; padding:0; box-sizing:border-box; }
@@ -115,8 +126,8 @@ img, video, canvas, svg { max-width:100%; max-height:100%; }
   font-family:var(--font-mono); font-size:18px; font-weight:300;
   letter-spacing:.2em; text-transform:uppercase; color:var(--faint);
 }
-.chrome { top:66px; }
-.foot   { bottom:64px; color:rgba(255,255,255,.66); }
+.chrome { top:var(--y-chrome); }
+.foot   { bottom:var(--y-foot); color:rgba(255,255,255,.66); }
 .chrome::after, .foot::before {
   content:''; position:absolute; left:0; right:0; height:1px; background:var(--hairline);
 }
@@ -178,16 +189,20 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
 .belt.b span { background:var(--brand); animation-duration:6.2s; animation-delay:-2s; }
 @keyframes travel { from{left:-8%;opacity:0} 12%,88%{opacity:.9} to{left:106%;opacity:0} }
 
-.cover-tag  { position:absolute; left:var(--edge); top:252px; }
-.cover-h1   { position:absolute; left:var(--edge); top:302px; width:1040px; }
-.cover-lede { position:absolute; left:var(--edge); top:640px; width:880px; }
+.cover-tag  { position:absolute; left:var(--edge); top:var(--y-head); }
+.cover-h1   { position:absolute; left:var(--edge); top:238px; width:1430px; }
+/* Титул единственный слайд без .head/.body: заголовок здесь крупнее и сам
+   задаёт ритм. 500, а не --y-body: при ширине 1430 заголовок ложится в две
+   строки и заканчивается около 440, поэтому лид на общей линии 392 наезжал
+   на него. */
+.cover-lede { position:absolute; left:var(--edge); top:500px; width:1180px; }
 /* 786, not 832: the team line below wraps to two lines at this width, and at
    the old spacing it ran under .foot — which is absolutely positioned and does
    not get pushed, so the two texts drew on top of each other (found on a
    projector 01.08, measured at 23px of overlap). The block moves up as a whole
    instead of the team line being shortened: the names are item 1 of the
    structure the organizers ask for. */
-.telemetry  { position:absolute; left:var(--edge); top:786px; display:flex; gap:64px; font-family:var(--font-mono); }
+.telemetry  { position:absolute; left:var(--edge); top:702px; display:flex; gap:64px; font-family:var(--font-mono); }
 .telemetry .v { font-size:52px; font-weight:600; color:var(--near); letter-spacing:-.02em; line-height:1; }
 .telemetry .v.teal { color:var(--mid); }
 .telemetry .k { margin-top:12px; font-size:16px; font-weight:300; letter-spacing:.19em; text-transform:uppercase; color:var(--faint); }
@@ -195,36 +210,16 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
    one the deck used to miss — the team name lived in the chrome strip, where it
    reads as a watermark rather than as an answer to "кто вы". One line under the
    telemetry: the cover is where a jury looks for it, and it costs no slide time. */
-.cover-team { position:absolute; left:var(--edge); top:898px; width:1140px; font-family:var(--font-mono); font-size:19px; font-weight:300; line-height:1.6; color:var(--faint); }
+.cover-team { position:absolute; left:var(--edge); top:862px; width:1140px; font-family:var(--font-mono); font-size:19px; font-weight:300; line-height:1.6; color:var(--faint); }
 .cover-team b { color:var(--bone); font-weight:600; letter-spacing:.04em; }
 
-/* K-gauge — the criterion drawn as the machine sees it */
-.gauge { position:absolute; right:132px; top:48%; transform:translateY(-50%); width:592px; height:592px; }
-.gauge svg { width:100%; height:100%; overflow:visible; }
-.ring-out { fill:none; stroke:var(--brand); stroke-width:2; opacity:.9; }
-.ring-in  { fill:none; stroke:var(--near); stroke-width:3; }
-.silhouette { fill:rgba(39,209,235,.07); stroke:var(--mid); stroke-width:2; }
-.hair { stroke:rgba(234,242,255,.3); stroke-width:1; stroke-dasharray:5 7; }
-.dash-spin { transform-origin:330px 330px; animation:spin 34s linear infinite; }
-@keyframes spin { to { transform:rotate(360deg); } }
-.slide.visible .draw { animation:draw 1.7s var(--ease) both .5s; }
-.draw { stroke-dasharray:2400; stroke-dashoffset:2400; }
-@keyframes draw { to { stroke-dashoffset:0; } }
-.gauge .label { position:absolute; font-family:var(--font-mono); font-size:19px; letter-spacing:.11em; }
-.gauge .label.r { right:-6px; top:200px; color:var(--near); }
-.gauge .label.R { right:-6px; top:86px;  color:var(--morning); }
-.gauge .verdict {
-  position:absolute; left:50%; bottom:-6px; transform:translateX(-50%);
-  font-family:var(--font-mono); font-size:23px; letter-spacing:.13em; white-space:nowrap;
-}
-.gauge .verdict b { color:var(--near); font-weight:600; }
 
 /* ===========================================
    SHARED CONTENT SCAFFOLD (slides 2–9)
    =========================================== */
-.head { position:absolute; left:var(--edge); top:172px; width:1500px; }
+.head { position:absolute; left:var(--edge); top:var(--y-head); width:1500px; }
 .head .tag { display:block; margin-bottom:26px; }
-.body { position:absolute; left:var(--edge); right:var(--edge); top:392px; bottom:150px; }
+.body { position:absolute; left:var(--edge); right:var(--edge); top:var(--y-body); bottom:150px; }
 
 /* --- pipeline chain (slide 2) --- */
 .chain { display:flex; align-items:stretch; gap:0; margin-top:18px; }
@@ -313,11 +308,11 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
    undecodable file leaves the caption standing instead of a black rectangle.
    The five clips of this slide ship in the repository in H.264 (28.07); the
    guard stays because docs/report/video/ is otherwise gitignored. */
-.video-wrap { position:absolute; left:var(--edge); top:300px; width:1136px; height:640px; border:1px solid rgba(255,255,255,.34); background:var(--panel-solid); }
+.video-wrap { position:absolute; left:var(--edge); top:var(--y-body); width:1136px; height:640px; border:1px solid rgba(255,255,255,.34); background:var(--panel-solid); }
 .video-wrap video { width:100%; height:100%; object-fit:cover; display:block; opacity:0; transition:opacity .4s ease; }
 .video-wrap.ready video { opacity:1; }
 .video-wrap.ready .vfallback { opacity:0; }
-.video-side { position:absolute; right:var(--edge); top:300px; width:490px; }
+.video-side { position:absolute; right:var(--edge); top:var(--y-body); width:490px; }
 /* 17, not 26: три врезки суммарно заходили под .foot на 23px — «В резерве»
    ложилось поверх «0 FAIL / 0 JAM». Режется отступ, а не текст: сам текст
    несёт провенанс стойки, который на защите спрашивают. */
@@ -330,8 +325,8 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
    когда жюри видит D, B, C и тонкое тело рядом, а не один удачный случай.
    Клипы и постеры лежат в репозитории (1,8 МБ на пять роликов), поэтому слайд
    играет из чистого клона без сети; полные записи прогонов — в Nextcloud. */
-.slide-gallery .video-wrap { height:424px; }
-.video-gallery { position:absolute; left:var(--edge); top:758px; width:1136px; display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+.slide-gallery .video-wrap { height:322px; }
+.video-gallery { position:absolute; left:var(--edge); top:746px; width:1136px; display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
 .video-gallery figure { margin:0; border:1px solid rgba(255,255,255,.28); background:var(--panel-solid); overflow:hidden; }
 /* ЗУМ ПЛИТКИ ОТКАЧЁН 01.08, И ЭТО ЗАПИСЬ О ТОМ, ПОЧЕМУ ЕГО НЕ НАДО ВОЗВРАЩАТЬ.
    Жалоба была «на крайних роликах не видно предметов», и это правда: измерением
@@ -353,19 +348,6 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
 .vfallback { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:60px; font-family:var(--font-mono); font-size:19px; line-height:1.8; color:var(--faint); transition:opacity .3s ease; }
 .vfallback .big { font-size:26px; color:var(--near); letter-spacing:.06em; margin-bottom:18px; }
 
-/* --- closing note ---
-   Anchored top-right on the closing slide so it never collides with the
-   right-hand bullet column, whose height depends on how the text wraps. */
-.ugt { position:absolute; right:var(--edge); top:176px; text-align:right; }
-.slide-close .head { width:1020px; }
-/* Слайд ограничений несёт самые длинные пункты деки: каждый — отказ с
-   оговоркой, и сокращать текст здесь нельзя, честный разбор идёт в баллы.
-   Поэтому ужимается РИТМ списка, а не его содержание, и только на этом
-   слайде. Без этого нижний пункт заходил под .foot на 23px. */
-.slide-close .bullets li { padding:13px 0 13px 34px; font-size:24px; line-height:1.38; }
-.slide-close .bullets li::before { top:25px; }
-.ugt .v { font-family:var(--font-mono); font-size:58px; font-weight:600; color:var(--near); letter-spacing:-.02em; }
-.ugt .k { margin-top:14px; font-family:var(--font-mono); font-size:17px; letter-spacing:.18em; text-transform:uppercase; color:var(--faint); }
 
 /* ===========================================
    PRESENTER CHROME — outside the slide stage
@@ -424,24 +406,6 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
       Иван Пушкин · Иван Резников · Максим Седов · Михаил Анцев · Владимир Зайцев
     </div>
 
-    <div class="gauge">
-      <svg viewBox="0 0 660 660" aria-hidden="true">
-        <!-- Chamfered square, centre (330,330): flat sides sit 186 from centre,
-             the eight vertices sit sqrt(186²+167²) = 250 from it. So the inscribed
-             circle is exactly r=186, the circumscribed exactly R=250, and
-             r/R = 0.744 — the drawing is literally the number it claims.
-             A plain rectangle cannot express this: its ceiling is 1/sqrt(2)=0.707. -->
-        <circle class="ring-out draw dash-spin" cx="330" cy="330" r="250" stroke-dasharray="10 14"/>
-        <path class="silhouette draw" d="M163 144 L497 144 L516 163 L516 497 L497 516 L163 516 L144 497 L144 163 Z"/>
-        <circle class="ring-in draw" cx="330" cy="330" r="186"/>
-        <line class="hair" x1="330" y1="330" x2="580" y2="330"/>
-        <line class="hair" x1="330" y1="330" x2="330" y2="144"/>
-        <circle cx="330" cy="330" r="5" fill="#EAF2FF"/>
-      </svg>
-      <div class="label R">R описанной</div>
-      <div class="label r">r вписанной</div>
-      <div class="verdict">K = r / R = <b>0,74</b> &nbsp;→&nbsp; не круг &nbsp;→&nbsp; зона B</div>
-    </div>
 
     <div class="foot"><span>Конвейер 1 м/с</span><span>10³ … 450×320×320 мм</span><span>порог K = 0,8</span></div>
   </section>
@@ -676,7 +640,7 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
     <div class="field"></div>
     <div class="chrome"><span class="live">Демонстрация</span><span>Сквозной поток на финальном диверторе</span><span>07</span></div>
 
-    <div class="head" style="top:150px">
+    <div class="head">
       <h2 class="reveal">Как это <span class="accent">работает вживую</span></h2>
     </div>
 
@@ -690,12 +654,10 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
     </div>
 
     <div class="video-side">
-      <div class="cue reveal d2"><div class="t">Что происходит в кадре</div>
-        <div class="x">Стойка увидела → классифицировала → шибер сформировал стенку → товар ушёл в зону. <b>5 из 5</b> непрерывной сортировки.</div></div>
-      <div class="cue reveal d3"><div class="t">Правило целиком, по клипу на каждый исход</div>
-        <div class="x">Галерея ниже — <b>отгружаемая двухкамерная стойка</b>, <b>heads=2</b> в логе каждого прогона: круг в сечении, габарит в норме и два разных способа не пройти по габариту. В каждом клипе виден и маршрут, и работа механизма.</div></div>
-      <div class="cue reveal d4"><div class="t">В резерве</div>
-        <div class="x">Бутылка → D, Ручка 9 мм → C, Цилиндр → B — по запросу жюри. Ручка на общем плане тоньше пикселя, её габарит доказывает depth-кадр.</div></div>
+      <div class="cue reveal d2"><div class="t">Что в кадре</div>
+        <div class="x">Стойка увидела, классифицировала, шибер сформировал стенку, товар ушёл в зону. <b>5 из 5</b> непрерывной сортировки.</div></div>
+      <div class="cue reveal d3"><div class="t">Галерея — по клипу на исход</div>
+        <div class="x">Отгружаемая двухкамерная стойка, <b>heads=2</b> в логе каждого прогона.</div></div>
     </div>
 
     <div class="video-gallery reveal d3">
@@ -800,11 +762,10 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
         <div class="col reveal d1">
           <h3><span class="mark">Границы</span>Названы прямо</h3>
           <ul class="bullets">
-            <li><b>9 шт/мин — отгружаемая стойка</b>; 9 у одной головки, 18 — пиковый короткий поток. За заявку выдаём меньшую цифру</li>
-            <li>Плотный <b>same-zone</b> поток деградирует: один эпизод из шести даёт
-              <b>2/6</b> (в сумме 29/33) — три товара сходят с ленты влево. Классификация
-              в них верна, отказ исполнительный. Воспроизведён дважды, <b>полную причину
-              не нашли</b>; зазор 1,0→1,8 м поднимает до 3/6</li>
+            <li><b>9 шт/мин</b> — заявка отгружаемой стойки. Пиковые 18 за неё не выдаём</li>
+            <li>Плотный <b>same-zone</b> поток деградирует: эпизод из шести даёт <b>2/6</b>,
+              в сумме 29/33. Классификация верна, отказ исполнительный. Воспроизведён
+              дважды, <b>полную причину не нашли</b></li>
             <li>Физика — <b>инженерные допущения</b>: ODE-трение, rigid-body; ткань и привод не моделируются</li>
             <li>Физический прототип — <b>осознанный NO-GO</b>: постановка допускает ПАК в симуляции</li>
           </ul>
@@ -820,12 +781,8 @@ h2 { font-weight:800; font-size:82px;  line-height:.98; letter-spacing:-.032em; 
       </div>
     </div>
 
-    <div class="ugt reveal d5">
-      <div class="v">CV 4 × Исполнение 4</div>
-      <div class="k">Уровень готовности решения</div>
-    </div>
 
-    <div class="foot"><span>Ограничения названы до вопросов, а не после</span><span>ИИ в массы · Хакатон Ozon, трек 3</span></div>
+    <div class="foot"><span>Уровень готовности: CV 4 × Исполнение 4</span><span>ИИ в массы · Хакатон Ozon, трек 3</span></div>
   </section>
   <!-- =====================================================
        SLIDE - QUESTIONS
