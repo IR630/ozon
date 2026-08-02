@@ -44,8 +44,9 @@ SECTIONS = (
         folder="01-video-demo",
         title="Видеодемонстрация решения",
         why=(
-            "Полная запись контрольной переписи 33 тестовых случаев и короткие "
-            "клипы, показывающие работу системы для разных маршрутов."
+            "**Начните с `census_reel.mp4`** — это основная видеодемонстрация: "
+            "полная запись контрольной переписи 33 тестовых случаев. Остальные "
+            "короткие клипы показывают работу системы для разных маршрутов."
         ),
         patterns=(
             "docs/report/video/*.mp4",
@@ -83,7 +84,7 @@ SECTIONS = (
         optional=frozenset({"sim/models"}),
     ),
     Section(
-        folder="04-run-artifacts",
+        folder="05-run-artifacts",
         title="Объёмные материалы: логи прогонов, из которых взяты цифры",
         why=(
             "Каждая заявленная цифра пересчитывается из этих логов одной "
@@ -128,7 +129,7 @@ NOT_BUNDLED = frozenset({
 # Дальше этого числа поимённый список перестаёт читаться и сворачивается
 # в каталоги.
 MANIFEST_FILE_ROWS = 30
-RUN_SECTION_FOLDER = "04-run-artifacts"
+RUN_SECTION_FOLDER = "05-run-artifacts"
 
 
 def _human(size: int) -> str:
@@ -165,7 +166,7 @@ def plan_bundle(root: Path, *, include_runs: bool = True) -> tuple[dict[str, lis
                 gaps.append(f"{section.folder}: не найдено — {pattern}")
             collected.extend(found)
         # OPTIONAL COVERS A SOURCE, NOT A WHOLE SECTION. Every pattern of
-        # 04-run-artifacts is optional (logs are build artifacts a clean checkout
+        # 05-run-artifacts is optional (logs are build artifacts a clean checkout
         # lacks), so on a machine without runs/ the section collected nothing, no
         # gap was raised and the exit status stayed 0 — while the MANIFEST went on
         # promising "the logs every number is recomputed from". A named-but-empty
@@ -194,9 +195,11 @@ def render_manifest(root: Path, plan: dict[str, list[Path]], *, include_runs: bo
         ]
     else:
         lines += [
+            "Финальная презентация добавляется в раздел `04-presentation`.",
+            "",
             "Дополнительные логи контрольных прогонов не входят в этот комплект",
             "и при необходимости могут быть добавлены отдельным разделом",
-            "`04-run-artifacts`.",
+            "`05-run-artifacts`.",
             "",
         ]
     total = 0

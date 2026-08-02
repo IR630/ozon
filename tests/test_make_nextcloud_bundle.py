@@ -17,7 +17,7 @@ def _fake_tree(root: Path, *, with_logs: bool = True) -> None:
     """A miniature of the repository holding one file per required pattern.
 
     ``with_logs=False`` reproduces a checkout that never ran anything: the log
-    directories are build artifacts, so every source of 04-run-artifacts is
+    directories are build artifacts, so every source of 05-run-artifacts is
     optional and the section legitimately collects nothing.
     """
     relatives = [
@@ -63,7 +63,7 @@ def test_missing_required_source_is_a_reported_gap_not_a_silent_skip(tmp_path):
 def test_a_section_that_ends_up_empty_is_reported_even_when_every_source_is_optional(tmp_path):
     """A named-but-empty folder is the worst outcome: it looks delivered.
 
-    Every pattern of ``04-run-artifacts`` is optional, because logs are build
+    Every pattern of ``05-run-artifacts`` is optional, because logs are build
     artifacts a fresh checkout legitimately lacks. Combined, that meant a machine
     without ``runs/`` produced a bundle whose "logs every number comes from"
     folder was EMPTY, with no gap reported and exit status 0 — while the MANIFEST
@@ -74,7 +74,7 @@ def test_a_section_that_ends_up_empty_is_reported_even_when_every_source_is_opti
 
     _, gaps = plan_bundle(tmp_path)
 
-    assert any(gap.startswith("04-run-artifacts:") for gap in gaps), gaps
+    assert any(gap.startswith("05-run-artifacts:") for gap in gaps), gaps
 
 
 def test_explicit_without_runs_mode_builds_base_bundle_and_documents_omission(tmp_path):
@@ -86,11 +86,12 @@ def test_explicit_without_runs_mode_builds_base_bundle_and_documents_omission(tm
     plan, gaps = plan_bundle(source, include_runs=False)
 
     assert gaps == []
-    assert "04-run-artifacts" not in plan
+    assert "05-run-artifacts" not in plan
     assert build(source, out, dry_run=False, include_runs=False) == 0
     manifest = (out / "MANIFEST.md").read_text(encoding="utf-8")
     assert "Дополнительные логи контрольных прогонов не входят" in manifest
-    assert "`04-run-artifacts`" in manifest
+    assert "`04-presentation`" in manifest
+    assert "`05-run-artifacts`" in manifest
     assert "`--without-runs`" not in manifest
 
 
