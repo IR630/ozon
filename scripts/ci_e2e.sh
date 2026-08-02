@@ -25,4 +25,13 @@ export SOFT_START_TRIES=240
 timeout 300 bash scripts/run_skeleton.sh box_300x200x200 B
 
 export LOGDIR=/tmp/estop_stream_e2e
-timeout 180 bash scripts/smoke_estop_stream.sh
+# 300, not 180. The e2e job went red on a loaded runner (02.08, run 30730053772,
+# exit 124) with the SAME code that is green on the commits either side of it, and
+# the log shows why the red is not a defect: the smoke reached its last meaningful
+# line — `blade C after recovery gate: 0.000 rad`, i.e. the E-stop recovery gate
+# had already passed — and only then hit the cap. That is the stopwatch failing,
+# not the contour, and this project has twice drawn a false conclusion from an
+# rc=124 before. The skeleton step above already carries 300 for the same reason
+# (a multi-head world boots slower than the default wait); the E-stop stream runs
+# the same world plus a stream and had less budget than the simpler step.
+timeout 300 bash scripts/smoke_estop_stream.sh
