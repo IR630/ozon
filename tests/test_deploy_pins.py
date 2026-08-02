@@ -108,3 +108,30 @@ def test_ci_and_the_deployment_image_agree_on_trimesh():
     assert "pip3 install --no-deps -c docker/pip-constraints.txt trimesh" in WORKFLOW
     assert re.search(r"^trimesh==\d+\.\d+\.\d+$", CONSTRAINTS, re.M), (
         "the lock must carry the trimesh version the CI step now defers to")
+
+
+def test_the_deploy_gate_offers_a_path_for_machines_without_docker():
+    """An abort that leaves the operator with nothing is a failed check twice over.
+
+    On Windows 10 LTSC 2019 (02.08) the gate died on the docker probe and said
+    only that docker was missing. On that OS neither docker nor WSL2 can be
+    installed at all, so "install docker" is not an answer — yet the whole
+    perception/classification core deploys there fine and was left unverified
+    from a clean checkout. The abort must name the mode that does work.
+    """
+    assert "--python-only" in DEPLOY_CHECK
+    abort = DEPLOY_CHECK.split("ABORT: docker is required", 1)[1].split("exit 1", 1)[0]
+    assert "--python-only" in abort, "the abort does not offer the way forward"
+
+
+def test_the_python_only_mode_states_what_it_cannot_cover():
+    """A green half must not read as a green whole.
+
+    The mode verifies a clean checkout end to end without docker, which is
+    exactly the shape of claim that gets over-read: "deploy check passed".
+    Its success message therefore has to name ROS 2, Gazebo and the end-to-end
+    run as untested.
+    """
+    tail = DEPLOY_CHECK.split("PASS (--python-only)", 1)[1]
+    for missing in ("ROS 2", "Gazebo", "colcon"):
+        assert missing in tail, f"success message hides that {missing} is untested"
