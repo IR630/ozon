@@ -99,14 +99,25 @@
 
 ## 4. Git: два дефекта конфигурации, оба блокируют обмен кодом
 
-**4.1. `git fetch` виснет намертво.** Первая же попытка `git fetch --all` не
-завершилась за 2 минуты и была убита по таймауту. Причина найдена: credential
-helper не настроен, и git молча ждёт ввода логина, которого в неинтерактивной
-сессии не будет. При `GIT_TERMINAL_PROMPT=0` диагноз виден явно:
+**4.1. `git fetch` и `git push` виснут намертво.** Первая же попытка
+`git fetch --all` не завершилась за 2 минуты и была убита по таймауту.
+При `GIT_TERMINAL_PROMPT=0` диагноз виден явно:
 
 ```
+fatal: User cancelled dialog.
 fatal: could not read Username for 'https://github.com': terminal prompts disabled
 ```
+
+Причина именно такая: credential helper **настроен** (`credential.helper=manager`,
+и `git-credential-manager.exe` на месте в составе Git for Windows) — но
+сохранённых учётных данных для `github.com` нет. GCM пытается открыть
+графический диалог логина, а в неинтерактивной сессии этот диалог не появляется.
+Поэтому любая сетевая операция git либо ждёт вечно, либо отваливается.
+
+Лечится однократным интерактивным входом: выполнить `git push` (или
+`git fetch`) руками из обычного терминала и пройти авторизацию в открывшемся
+окне GCM. После этого учётка ложится в Windows Credential Manager и всё
+последующее работает без вопросов.
 
 Сеть при этом полностью рабочая — `pypi.org` и `github.com` отдают 200, пакеты
 скачались. Дело только в учётных данных.
@@ -132,7 +143,19 @@ git remote set-url --push true https://github.com/hackathonsrus/ozone-tech_ii_v_
 git remote set-url --add --push true https://github.com/IR630/ozon.git
 ```
 
-**4.3. Мелочь: `git` не виден из PowerShell.** Бинарь есть (`C:\Program Files\Git`,
+**4.3. `user.name` / `user.email` не заданы.** Первый же `git commit` упал с
+`Author identity unknown ... unable to auto-detect email address (got
+'Ivan@PC5.(none)')`. Прописано локально для этого репозитория:
+
+```
+git config user.name "Alex Bessonov"
+git config user.email "alexbessonov278@gmail.com"
+```
+
+Если машина будет использоваться дальше — имеет смысл сделать это через
+`--global`, иначе то же самое всплывёт в следующем checkout.
+
+**4.4. Мелочь: `git` не виден из PowerShell.** Бинарь есть (`C:\Program Files\Git`,
 version 2.45.1), но в `PATH` PowerShell его нет — доступен только внутри Git Bash.
 README в разделе про WSL даёт `git worktree add ...` именно как PowerShell-команду,
 и она здесь не выполнится. Лечится дописыванием `C:\Program Files\Git\cmd` в PATH.
@@ -189,8 +212,9 @@ opencv-python-headless 5.0.0.93   pytest 9.1.1   ruff 0.16.1
    нельзя. Варианты: другая машина с Windows 21H2+/11, либо нативная Ubuntu 22.04,
    либо доступ администратора + попытка легаси-Docker на Hyper-V (последнее —
    наименее надёжное, версия снята с поддержки).
-2. **Настроить git:** credential helper (иначе любой `pull` виснет) и ремоут
-   `true` по GIT.md.
+2. **Настроить git:** один раз войти интерактивно, чтобы GCM сохранил учётку
+   (иначе любой `pull`/`push` виснет), задать `user.name`/`user.email` и
+   добавить ремоут `true` по GIT.md.
 3. **Дописать в README минимальную версию Windows** — сэкономит следующему
    человеку тот же день.
 4. **Добавить `C:\Program Files\Git\cmd` в PATH**, чтобы PowerShell-команды из
