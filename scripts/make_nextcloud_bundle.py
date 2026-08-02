@@ -44,9 +44,10 @@ SECTIONS = (
         folder="01-video-demo",
         title="Видеодемонстрация решения",
         why=(
-            "**Начните с `census_reel.mp4`** — это основная видеодемонстрация: "
-            "полная запись контрольной переписи 33 тестовых случаев. Остальные "
-            "короткие клипы показывают работу системы для разных маршрутов."
+            "**Основная видеодемонстрация — `census_reel.mp4`.** В ролике "
+            "показаны все 33 контрольных случая с ожидаемыми и фактическими "
+            "маршрутами. Остальные файлы содержат короткие примеры работы "
+            "системы для зон B, C и D."
         ),
         patterns=(
             "docs/report/video/*.mp4",
@@ -57,8 +58,9 @@ SECTIONS = (
         folder="02-cad-and-models",
         title="CAD-файлы и 3D-модели в исходных форматах",
         why=(
-            "Наш эскиз ячейки в STEP/STL плюс размерный чертёж и изометрия, "
-            "и исходные модели 11 товаров, выданные организаторами."
+            "Раздел содержит модель сортировочной ячейки в форматах STEP и "
+            "STL, размерный чертёж, изометрическое изображение и исходные "
+            "модели 11 товаров из задания."
         ),
         patterns=(
             "docs/defense/cad/out",
@@ -71,10 +73,9 @@ SECTIONS = (
         folder="03-simulation",
         title="Файлы симуляции",
         why=(
-            "Миры Gazebo всех конфигураций стойки, конфиги моста ros_gz и "
-            "сгенерированные SDF-модели товаров. Модели воспроизводятся "
-            "командой build_item_models.py, но кладём готовые: проверяющему "
-            "не придётся собирать их, чтобы открыть мир."
+            "Раздел содержит миры Gazebo, конфигурации моста `ros_gz` и "
+            "готовые SDF-модели товаров. SDF-модели также можно повторно "
+            "сгенерировать командой `python scripts/build_item_models.py`."
         ),
         patterns=(
             "sim/worlds",
@@ -87,9 +88,9 @@ SECTIONS = (
         folder="05-run-artifacts",
         title="Объёмные материалы: логи прогонов, из которых взяты цифры",
         why=(
-            "Каждая заявленная цифра пересчитывается из этих логов одной "
-            "командой measure_throughput.py — это и есть доказательство "
-            "воспроизводимости, а не пересказ результата."
+            "Раздел содержит логи контрольных прогонов. Показатели "
+            "производительности и задержки пересчитываются из них скриптом "
+            "`scripts/measure_throughput.py`."
         ),
         patterns=(
             "runs/rig_throughput_20260728",
@@ -184,7 +185,8 @@ def render_manifest(root: Path, plan: dict[str, list[Path]], *, include_runs: bo
         "",
         "В папке собраны объёмные материалы к решению задачи 3:",
         "видеодемонстрация, исходные CAD и 3D-модели, а также файлы симуляции.",
-        "Код, инструкция запуска и итоговый отчёт размещены в командном GitHub.",
+        "Код, инструкция запуска и итоговый отчёт размещены в командном GitHub:",
+        "https://github.com/hackathonsrus/ozone-tech_ii_v_massy_883",
         "",
     ]
     if include_runs:
@@ -195,7 +197,8 @@ def render_manifest(root: Path, plan: dict[str, list[Path]], *, include_runs: bo
         ]
     else:
         lines += [
-            "Финальная презентация добавляется в раздел `04-presentation`.",
+            "Записанная презентация размещается в разделе `04-presentation`",
+            "под именем `II_v_massy_pitch.mp4`.",
             "",
             "Дополнительные логи контрольных прогонов не входят в этот комплект",
             "и при необходимости могут быть добавлены отдельным разделом",
@@ -264,8 +267,8 @@ def build(root: Path, out: Path, dry_run: bool, *, include_runs: bool = True) ->
         render_manifest(root, plan, include_runs=include_runs), encoding="utf-8")
 
     print(f"\nbundle written to {out}")
-    print("next, by hand: upload the folder to the organizers' Nextcloud, take the")
-    print("share link, replace the placeholder in README.md, then")
+    print("next, by hand: upload the folder to the organizers' Nextcloud, add")
+    print("04-presentation/II_v_massy_pitch.mp4, verify both public links, then")
     print("`python scripts/check_submission.py` -> PASS.")
     return 1 if gaps else 0
 
