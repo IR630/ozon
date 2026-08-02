@@ -44,14 +44,12 @@ SECTIONS = (
         folder="01-video-demo",
         title="Видеодемонстрация решения",
         why=(
-            "Сквозной прогон и по клипу на каждый исход правила классификации. "
-            "Эти же пять клипов лежат в репозитории — деке они нужны, чтобы "
-            "играть из чистого клона; сюда они идут как полная демонстрация."
+            "Полная запись контрольной переписи 33 тестовых случаев и короткие "
+            "клипы, показывающие работу системы для разных маршрутов."
         ),
         patterns=(
             "docs/report/video/*.mp4",
             "docs/report/video/*_poster.png",
-            "docs/report/video_script.md",
         ),
     ),
     Section(
@@ -114,26 +112,10 @@ SECTIONS = (
     ),
 )
 
-# Bulky files deliberately NOT bundled, with the reason. Printed by the script
-# so the decision is visible instead of looking like an oversight.
-EXCLUDED = (
-    ("ozon_stream.mp4", "397 МБ сырой записи рабочей сессии — не артефакт сдачи; "
-                        "если это нужный материал, добавить руками осознанно"),
-    ("build/, install/, log/", "артефакты сборки colcon, воспроизводятся командой"),
-    ("docs/report/video/demo_reel.mp4",
-     "повествовательный ролик — рабочий материал, а не артефакт сдачи "
-     "(видеодемонстрация — census_reel.mp4); в git его нет, поэтому в пакет он "
-     "попадал только у того, у кого лежал на диске, и притом собранный ДО "
-     "правок чисел 31.07"),
-    ("docs/report/video/demo_sorting_cycle_C_short_20260713.*",
-     "устаревший локальный клип ранней ревизии; в git его нет, финальная дека "
-     "его не использует"),
-)
-
 # Files a pattern sweeps up but that must not ship. Enforced here, not by
 # narrowing the glob: a pattern precise enough to miss this file would also
-# miss the next clip someone records. EXCLUDED above only PRINTS the decision —
-# until this set existed, the bundle's contents depended on what happened to be
+# miss the next clip someone records. Until this set existed, the bundle's
+# contents depended on what happened to be
 # lying in the author's working tree, which is the same drift the reel and the
 # deck each hit once already.
 NOT_BUNDLED = frozenset({
@@ -197,11 +179,11 @@ def plan_bundle(root: Path, *, include_runs: bool = True) -> tuple[dict[str, lis
 
 def render_manifest(root: Path, plan: dict[str, list[Path]], *, include_runs: bool = True) -> str:
     lines = [
-        "# Что загружено в Nextcloud",
+        "# Материалы решения команды «ИИ в массы»",
         "",
-        "Собрано `scripts/make_nextcloud_bundle.py` из рабочего дерева репозитория.",
-        "Репозиторий несёт код, документы и клипы деки; сюда уходит объёмное:",
-        "видеодемонстрация, исходные CAD и 3D-модели, файлы симуляции.",
+        "В папке собраны объёмные материалы к решению задачи 3:",
+        "видеодемонстрация, исходные CAD и 3D-модели, а также файлы симуляции.",
+        "Код, инструкция запуска и итоговый отчёт размещены в командном GitHub.",
         "",
     ]
     if include_runs:
@@ -212,10 +194,9 @@ def render_manifest(root: Path, plan: dict[str, list[Path]], *, include_runs: bo
         ]
     else:
         lines += [
-            "Раздел `04-run-artifacts` не включён: финальные логи находятся у",
-            "участника, выполнявшего прогоны, и могут быть дозагружены отдельной",
-            "распакованной папкой. Это явно выбранный режим `--without-runs`,",
-            "а не тихо потерянные файлы.",
+            "Дополнительные логи контрольных прогонов не входят в этот комплект",
+            "и при необходимости могут быть добавлены отдельным разделом",
+            "`04-run-artifacts`.",
             "",
         ]
     total = 0
@@ -247,14 +228,7 @@ def render_manifest(root: Path, plan: dict[str, list[Path]], *, include_runs: bo
             for name, size in rows:
                 lines.append(f"| `{name}` | {_human(size)} |")
             lines.append("")
-    lines += [
-        f"**Итого: {_human(total)}.**",
-        "",
-        "## Чего здесь намеренно нет",
-        "",
-    ]
-    lines += [f"- `{name}` — {reason}" for name, reason in EXCLUDED]
-    lines.append("")
+    lines += [f"**Итого: {_human(total)}.**", ""]
     return "\n".join(lines)
 
 

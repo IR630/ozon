@@ -89,8 +89,9 @@ def test_explicit_without_runs_mode_builds_base_bundle_and_documents_omission(tm
     assert "04-run-artifacts" not in plan
     assert build(source, out, dry_run=False, include_runs=False) == 0
     manifest = (out / "MANIFEST.md").read_text(encoding="utf-8")
-    assert "`04-run-artifacts` не включён" in manifest
-    assert "`--without-runs`" in manifest
+    assert "Дополнительные логи контрольных прогонов не входят" in manifest
+    assert "`04-run-artifacts`" in manifest
+    assert "`--without-runs`" not in manifest
 
 
 def test_build_copies_originals_and_writes_a_manifest(tmp_path):
@@ -106,7 +107,8 @@ def test_build_copies_originals_and_writes_a_manifest(tmp_path):
     assert (source / "docs" / "report" / "video" / "hero.mp4").is_file()
     manifest = (out / "MANIFEST.md").read_text(encoding="utf-8")
     assert "Видеодемонстрация решения" in manifest
-    assert "ozon_stream.mp4" in manifest  # the deliberate exclusion is named
+    assert "Чего здесь намеренно нет" not in manifest
+    assert "ozon_stream.mp4" not in manifest
 
 
 def test_dry_run_writes_nothing(tmp_path):
