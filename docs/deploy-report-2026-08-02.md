@@ -114,10 +114,18 @@ fatal: could not read Username for 'https://github.com': terminal prompts disabl
 графический диалог логина, а в неинтерактивной сессии этот диалог не появляется.
 Поэтому любая сетевая операция git либо ждёт вечно, либо отваливается.
 
-Лечится однократным интерактивным входом: выполнить `git push` (или
-`git fetch`) руками из обычного терминала и пройти авторизацию в открывшемся
-окне GCM. После этого учётка ложится в Windows Credential Manager и всё
-последующее работает без вопросов.
+Обходится интерактивным входом: выполнить `git push` (или `git fetch`) руками
+из обычного терминала и пройти авторизацию в открывшемся окне GCM. Так push
+02.08 и прошёл.
+
+**Но учётка при этом не сохранилась.** После успешного ручного push
+`cmdkey /list` не показывает ни одной записи git/github, и следующая же
+операция из неинтерактивной сессии снова упирается в диалог (`fatal: User
+cancelled dialog` для `origin`, `fatal: User canceled device code
+authentication` для `true`). То есть авторизацию придётся проходить руками
+каждый раз, пока хранилище GCM не заработает. Это отдельная незакрытая
+проблема машины — на неё стоит посмотреть тому, у кого есть права
+администратора.
 
 Сеть при этом полностью рабочая — `pypi.org` и `github.com` отдают 200, пакеты
 скачались. Дело только в учётных данных.
@@ -134,14 +142,32 @@ fatal: could not read Username for 'https://github.com': terminal prompts disabl
 [remote "origin"] url = https://github.com/IR630/ozon.git
 ```
 
-То есть отправить что-либо организаторам отсюда нельзя, а требование «истории
-обязаны совпадать» не выполнимо и даже не проверяемо. Нужны команды из GIT.md:
+То есть отправить что-либо организаторам отсюда было нельзя, а требование
+«истории обязаны совпадать» не выполнимо и даже не проверяемо.
+
+**Исправлено 02.08.** Ремоут добавлен по GIT.md, с двумя push-URL — обычный
+`git push true main` теперь уходит сразу в оба репозитория:
 
 ```
 git remote add true https://github.com/hackathonsrus/ozone-tech_ii_v_massy_883.git
 git remote set-url --push true https://github.com/hackathonsrus/ozone-tech_ii_v_massy_883.git
 git remote set-url --add --push true https://github.com/IR630/ozon.git
 ```
+
+Итоговая конфигурация:
+
+```
+origin  https://github.com/IR630/ozon.git                                  (fetch)
+origin  https://github.com/IR630/ozon.git                                  (push)
+true    https://github.com/hackathonsrus/ozone-tech_ii_v_massy_883.git     (fetch)
+true    https://github.com/hackathonsrus/ozone-tech_ii_v_massy_883.git     (push)
+true    https://github.com/IR630/ozon.git                                  (push)
+```
+
+Чего проверить **не удалось**: совпадают ли фактически истории в двух
+репозиториях. Обе команды сверки из GIT.md (`git ls-remote true main` и
+`git ls-remote origin main`) упираются в п. 4.1 и из неинтерактивной сессии не
+проходят. Сверку нужно сделать руками.
 
 **4.3. `user.name` / `user.email` не заданы.** Первый же `git commit` упал с
 `Author identity unknown ... unable to auto-detect email address (got
@@ -212,9 +238,11 @@ opencv-python-headless 5.0.0.93   pytest 9.1.1   ruff 0.16.1
    нельзя. Варианты: другая машина с Windows 21H2+/11, либо нативная Ubuntu 22.04,
    либо доступ администратора + попытка легаси-Docker на Hyper-V (последнее —
    наименее надёжное, версия снята с поддержки).
-2. **Настроить git:** один раз войти интерактивно, чтобы GCM сохранил учётку
-   (иначе любой `pull`/`push` виснет), задать `user.name`/`user.email` и
-   добавить ремоут `true` по GIT.md.
+2. **Починить хранилище учёток GCM** — единственное, что из git-блока осталось
+   незакрытым: `user.name`/`user.email` заданы, ремоут `true` настроен (п. 4.2),
+   а вот учётка после успешного ручного входа не сохраняется, и каждый
+   `push`/`fetch` снова требует человека у клавиатуры. Заодно руками сверить
+   `git ls-remote true main` и `git ls-remote origin main`.
 3. **Дописать в README минимальную версию Windows** — сэкономит следующему
    человеку тот же день.
 4. **Добавить `C:\Program Files\Git\cmd` в PATH**, чтобы PowerShell-команды из
