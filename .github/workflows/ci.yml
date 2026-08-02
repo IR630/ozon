@@ -1,16 +1,10 @@
 name: CI
 
-# Automatic again (28.07): the acceptance run is close and a bundle that is only
-# checked when someone remembers to press a button is not checked.
-#
-# Scoped to main and pull requests rather than every branch push — that is what the
-# manual-only period was protecting (Actions minutes on the personal mirror), and an
-# experimental branch does not need a full Gazebo e2e on every commit. A branch that
-# wants the full gate can still ask for it: workflow_dispatch stays.
+# Final-submission mode (02.08): the organizers' repository does not start jobs,
+# while the personal mirror has a limited Actions budget. The last full gate was
+# green; documentation and cloud-link pushes must not spend another ROS/Gazebo run.
+# A team member can still start the complete gate explicitly when needed.
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 
 jobs:

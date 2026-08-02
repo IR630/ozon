@@ -77,6 +77,22 @@ def test_a_section_that_ends_up_empty_is_reported_even_when_every_source_is_opti
     assert any(gap.startswith("04-run-artifacts:") for gap in gaps), gaps
 
 
+def test_explicit_without_runs_mode_builds_base_bundle_and_documents_omission(tmp_path):
+    source = tmp_path / "repo"
+    source.mkdir()
+    _fake_tree(source, with_logs=False)
+    out = tmp_path / "bundle"
+
+    plan, gaps = plan_bundle(source, include_runs=False)
+
+    assert gaps == []
+    assert "04-run-artifacts" not in plan
+    assert build(source, out, dry_run=False, include_runs=False) == 0
+    manifest = (out / "MANIFEST.md").read_text(encoding="utf-8")
+    assert "`04-run-artifacts` не включён" in manifest
+    assert "`--without-runs`" in manifest
+
+
 def test_build_copies_originals_and_writes_a_manifest(tmp_path):
     source = tmp_path / "repo"
     source.mkdir()
@@ -171,3 +187,17 @@ def test_exclusion_is_enforced_and_not_merely_documented(tmp_path):
     assert "demo_reel.mp4" not in names
     assert any("*.mp4" in gap for gap in gaps), (
         "a pattern left with nothing but excluded files must be reported as a gap")
+
+
+def test_old_local_cycle_clip_and_poster_do_not_leak_into_bundle(tmp_path):
+    _fake_tree(tmp_path)
+    video = tmp_path / "docs" / "report" / "video"
+    (video / "demo_sorting_cycle_C_short_20260713.mp4").write_bytes(b"old")
+    (video / "demo_sorting_cycle_C_short_20260713_poster.png").write_bytes(b"old")
+
+    plan, gaps = plan_bundle(tmp_path)
+    bundled = {path.name for path in plan["01-video-demo"]}
+
+    assert gaps == []
+    assert "demo_sorting_cycle_C_short_20260713.mp4" not in bundled
+    assert "demo_sorting_cycle_C_short_20260713_poster.png" not in bundled

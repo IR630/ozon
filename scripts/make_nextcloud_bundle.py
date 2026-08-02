@@ -11,7 +11,8 @@ is "drag one folder into Nextcloud, paste the link", not "remember what was
 bulky". It copies, never moves, and writes a MANIFEST.md naming every file with
 its size and what claim it backs.
 
-    python scripts/make_nextcloud_bundle.py            # -> build/nextcloud/
+    python scripts/make_nextcloud_bundle.py            # -> build/II_v_massy_Task3/
+    python scripts/make_nextcloud_bundle.py --without-runs
     python scripts/make_nextcloud_bundle.py --dry-run  # just print the plan
 """
 from __future__ import annotations
@@ -124,6 +125,9 @@ EXCLUDED = (
      "(видеодемонстрация — census_reel.mp4); в git его нет, поэтому в пакет он "
      "попадал только у того, у кого лежал на диске, и притом собранный ДО "
      "правок чисел 31.07"),
+    ("docs/report/video/demo_sorting_cycle_C_short_20260713.*",
+     "устаревший локальный клип ранней ревизии; в git его нет, финальная дека "
+     "его не использует"),
 )
 
 # Files a pattern sweeps up but that must not ship. Enforced here, not by
@@ -134,12 +138,15 @@ EXCLUDED = (
 # deck each hit once already.
 NOT_BUNDLED = frozenset({
     "docs/report/video/demo_reel.mp4",
+    "docs/report/video/demo_sorting_cycle_C_short_20260713.mp4",
+    "docs/report/video/demo_sorting_cycle_C_short_20260713_poster.png",
 })
 
 
 # Дальше этого числа поимённый список перестаёт читаться и сворачивается
 # в каталоги.
 MANIFEST_FILE_ROWS = 30
+RUN_SECTION_FOLDER = "04-run-artifacts"
 
 
 def _human(size: int) -> str:
@@ -154,11 +161,16 @@ def _files_under(path: Path) -> list[Path]:
     return sorted(p for p in path.rglob("*") if p.is_file())
 
 
-def plan_bundle(root: Path) -> tuple[dict[str, list[Path]], list[str]]:
+def _sections(include_runs: bool) -> tuple[Section, ...]:
+    return tuple(section for section in SECTIONS
+                 if include_runs or section.folder != RUN_SECTION_FOLDER)
+
+
+def plan_bundle(root: Path, *, include_runs: bool = True) -> tuple[dict[str, list[Path]], list[str]]:
     """Return files per section folder plus the patterns that matched nothing."""
     plan: dict[str, list[Path]] = {}
     gaps: list[str] = []
-    for section in SECTIONS:
+    for section in _sections(include_runs):
         collected: list[Path] = []
         for pattern in section.patterns:
             # A pattern that resolves to an empty directory contributes nothing
@@ -183,18 +195,31 @@ def plan_bundle(root: Path) -> tuple[dict[str, list[Path]], list[str]]:
     return plan, gaps
 
 
-def render_manifest(root: Path, plan: dict[str, list[Path]]) -> str:
+def render_manifest(root: Path, plan: dict[str, list[Path]], *, include_runs: bool = True) -> str:
     lines = [
         "# Что загружено в Nextcloud",
         "",
         "Собрано `scripts/make_nextcloud_bundle.py` из рабочего дерева репозитория.",
         "Репозиторий несёт код, документы и клипы деки; сюда уходит объёмное:",
-        "видеодемонстрация, исходные CAD и 3D-модели, файлы симуляции и логи",
-        "прогонов, из которых пересчитываются заявленные цифры.",
+        "видеодемонстрация, исходные CAD и 3D-модели, файлы симуляции.",
         "",
     ]
+    if include_runs:
+        lines += [
+            "В комплект также включены логи прогонов, из которых пересчитываются",
+            "заявленные цифры.",
+            "",
+        ]
+    else:
+        lines += [
+            "Раздел `04-run-artifacts` не включён: финальные логи находятся у",
+            "участника, выполнявшего прогоны, и могут быть дозагружены отдельной",
+            "распакованной папкой. Это явно выбранный режим `--without-runs`,",
+            "а не тихо потерянные файлы.",
+            "",
+        ]
     total = 0
-    for section in SECTIONS:
+    for section in _sections(include_runs):
         files = plan.get(section.folder, [])
         size = sum(path.stat().st_size for path in files)
         total += size
@@ -233,13 +258,13 @@ def render_manifest(root: Path, plan: dict[str, list[Path]]) -> str:
     return "\n".join(lines)
 
 
-def build(root: Path, out: Path, dry_run: bool) -> int:
+def build(root: Path, out: Path, dry_run: bool, *, include_runs: bool = True) -> int:
     # Console output stays English: Windows consoles mangle Cyrillic under the
     # default codepage, and this is tooling, not a document. MANIFEST.md, which
     # the jury actually reads, is Russian.
-    plan, gaps = plan_bundle(root)
+    plan, gaps = plan_bundle(root, include_runs=include_runs)
     total = 0
-    for section in SECTIONS:
+    for section in _sections(include_runs):
         files = plan[section.folder]
         size = sum(path.stat().st_size for path in files)
         total += size
@@ -253,12 +278,13 @@ def build(root: Path, out: Path, dry_run: bool) -> int:
 
     if out.exists():
         shutil.rmtree(out)
-    for section in SECTIONS:
+    for section in _sections(include_runs):
         for path in plan[section.folder]:
             target = out / section.folder / path.relative_to(root)
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(path, target)
-    (out / "MANIFEST.md").write_text(render_manifest(root, plan), encoding="utf-8")
+    (out / "MANIFEST.md").write_text(
+        render_manifest(root, plan, include_runs=include_runs), encoding="utf-8")
 
     print(f"\nbundle written to {out}")
     print("next, by hand: upload the folder to the organizers' Nextcloud, take the")
@@ -270,11 +296,16 @@ def build(root: Path, out: Path, dry_run: bool) -> int:
 def main(argv: list[str] | None = None) -> int:
     root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--out", type=Path, default=root / "build" / "nextcloud")
+    parser.add_argument("--out", type=Path, default=root / "build" / "II_v_massy_Task3")
     parser.add_argument("--dry-run", action="store_true",
                         help="показать план и пробелы, ничего не копируя")
+    parser.add_argument(
+        "--without-runs",
+        action="store_true",
+        help="собрать обязательный пакет без логов; их можно дозагрузить позже",
+    )
     args = parser.parse_args(argv)
-    return build(root, args.out, args.dry_run)
+    return build(root, args.out, args.dry_run, include_runs=not args.without_runs)
 
 
 if __name__ == "__main__":
