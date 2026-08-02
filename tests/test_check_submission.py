@@ -35,15 +35,13 @@ def _clip(root: Path, name: str, *, playable: bool) -> None:
     path.write_bytes(b"\x00\x00\x00\x18ftypisom" + (b"avc1" if playable else b"mp4v"))
 
 
-def test_current_package_has_only_the_known_human_placeholder():
+def test_current_package_has_no_repository_only_submission_issues():
     # The colcon container exercises the unpacked source/package contract but its
     # workspace does not guarantee a usable Git index. Large tracked binaries are
     # covered separately below with an explicit inventory; the real CLI remains
     # strict and obtains that inventory from ``git ls-files``.
     issues = submission_issues(ROOT, tracked=[])
-    assert issues == [
-        "PLACEHOLDER: README.md: <ссылка на облако организаторов>",
-    ]
+    assert issues == []
 
 
 def test_no_tracked_binary_is_large_without_being_argued_for():
