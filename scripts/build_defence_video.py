@@ -89,30 +89,44 @@ def render_stills(work: Path, live_slide: int) -> dict[int, Path]:
         """)
         page.wait_for_timeout(400)
         count = page.evaluate("document.querySelectorAll('.slide').length")
+
+        # WALK THE DECK THE WAY A PRESENTER DOES. The first version toggled
+        # `.active`/`.visible` by hand, which shows the right slide but skips
+        # `showSlide()` — and that method is what advances the counter and the
+        # progress bar. Every still therefore carried "1 / 12" in the corner
+        # while the slide behind it changed. Pressing the real key runs the real
+        # code path, so the chrome cannot disagree with the slide again.
         for index in range(count):
-            if index + 1 == live_slide:
-                continue
-            page.evaluate(
-                """(i) => document.querySelectorAll('.slide').forEach((s, j) => {
-                       s.classList.toggle('active', i === j);
-                       s.classList.toggle('visible', i === j);
-                   })""", index)
-            page.wait_for_timeout(120)
-            shot = work / f"slide-{index + 1:02d}.png"
-            page.screenshot(path=str(shot))
-            shots[index + 1] = shot
+            if index + 1 != live_slide:
+                page.wait_for_timeout(120)
+                shot = work / f"slide-{index + 1:02d}.png"
+                page.screenshot(path=str(shot))
+                shots[index + 1] = shot
+            if index + 1 < count:
+                page.keyboard.press("ArrowRight")
         browser.close()
     return shots
 
 
-def record_live_slide(work: Path, slide: int, seconds: float) -> Path:
-    """Film the moving slide straight from the browser, clips running."""
+def record_live_slide(work: Path, slide: int, seconds: float) -> tuple[Path, float]:
+    """Film the moving slide straight from the browser, clips running.
+
+    Returns the file AND the offset at which the slide is actually on screen.
+    Recording starts when the CONTEXT is created, so the file always opens on
+    the deck loading at slide 1 and walking to the target. Trimming from zero
+    put that walk into the montage — a frame of slide 1 flashed before slide 8.
+    The offset is measured rather than assumed, because page load and clip
+    start-up are not constant.
+    """
+    import time
+
     from playwright.sync_api import sync_playwright
 
     videos = work / "live"
     videos.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as p:
         browser = p.chromium.launch(args=["--autoplay-policy=no-user-gesture-required"])
+        started = time.monotonic()
         context = browser.new_context(
             viewport={"width": WIDTH, "height": HEIGHT},
             record_video_dir=str(videos),
@@ -122,13 +136,14 @@ def record_live_slide(work: Path, slide: int, seconds: float) -> Path:
         page.wait_for_load_state("networkidle")
         for _ in range(slide - 1):
             page.keyboard.press("ArrowRight")
-        # Let the five clips reach a frame before the recording that matters starts.
-        page.wait_for_timeout(1200)
-        page.wait_for_timeout(int(seconds * 1000) + 600)
+        # Let the five clips decode a frame and the entrance transition finish.
+        page.wait_for_timeout(1600)
+        offset = time.monotonic() - started
+        page.wait_for_timeout(int(seconds * 1000) + 800)
         path = Path(page.video.path())
         context.close()
         browser.close()
-    return path
+    return path, offset
 
 
 def build(root: Path, out: Path) -> int:
@@ -139,13 +154,15 @@ def build(root: Path, out: Path) -> int:
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp)
         stills = render_stills(work, LIVE_SLIDE)
-        live = record_live_slide(work, LIVE_SLIDE, lengths[LIVE_SLIDE - 1])
+        live, live_offset = record_live_slide(work, LIVE_SLIDE, lengths[LIVE_SLIDE - 1])
 
         segments = []
         for index, seconds in enumerate(lengths, start=1):
             segment = work / f"seg-{index:02d}.mp4"
             if index == LIVE_SLIDE:
-                cmd = [ffmpeg, "-y", "-v", "error", "-i", str(live),
+                # -ss BEFORE -i so the walk from slide 1 is skipped, not shown.
+                cmd = [ffmpeg, "-y", "-v", "error",
+                       "-ss", f"{live_offset:.3f}", "-i", str(live),
                        "-t", f"{seconds:.3f}"]
             else:
                 cmd = [ffmpeg, "-y", "-v", "error", "-loop", "1",
