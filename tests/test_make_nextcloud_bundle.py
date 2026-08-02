@@ -13,12 +13,17 @@ from scripts.make_nextcloud_bundle import (
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _fake_tree(root: Path, *, with_logs: bool = True) -> None:
+def _fake_tree(root: Path, *, with_logs: bool = True, with_pitch: bool = True) -> None:
     """A miniature of the repository holding one file per required pattern.
 
     ``with_logs=False`` reproduces a checkout that never ran anything: the log
     directories are build artifacts, so every source of 05-run-artifacts is
     optional and the section legitimately collects nothing.
+
+    ``with_pitch`` exists because the recorded presentation is derived too — it
+    is built by ``build_defence_video.py`` and not kept in git. The default is
+    True: a tree WITHOUT it is not a normal repository but the specific failure
+    the gap check is written against.
     """
     relatives = [
         "docs/report/video/hero.mp4",
@@ -33,6 +38,8 @@ def _fake_tree(root: Path, *, with_logs: bool = True) -> None:
     ]
     if with_logs:
         relatives.append("runs/census_prod2cam_seed0/cell.log")
+    if with_pitch:
+        relatives.append("docs/report/video/defence.mp4")
     for relative in relatives:
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -204,3 +211,43 @@ def test_old_local_cycle_clip_and_poster_do_not_leak_into_bundle(tmp_path):
     assert gaps == []
     assert "demo_sorting_cycle_C_short_20260713.mp4" not in bundled
     assert "demo_sorting_cycle_C_short_20260713_poster.png" not in bundled
+
+
+def test_recorded_pitch_lands_in_its_own_section_under_the_submission_name(tmp_path):
+    """MANIFEST promised a section the builder never created.
+
+    The manifest told the jury the recorded presentation lives in
+    `04-presentation/II_v_massy_pitch.mp4`, while the file actually rode into
+    `01-video-demo` under its working name `defence.mp4` because it matched the
+    `*.mp4` mask. So the document described a layout the folder did not have, and
+    a human was left with "remember to move and rename it" — the kind of step
+    that is skipped exactly once.
+    """
+    from scripts.make_nextcloud_bundle import PITCH_FOLDER, PITCH_NAME, PITCH_SOURCE
+
+    source = tmp_path / "repo"
+    source.mkdir()
+    _fake_tree(source)
+    out = tmp_path / "bundle"
+
+    build(source, out, dry_run=False)
+
+    assert (out / PITCH_FOLDER / PITCH_NAME).is_file()
+    # And not a second time under its working name.
+    stray = out / "01-video-demo" / PITCH_SOURCE
+    assert not stray.exists(), "the pitch is duplicated in the video section"
+
+
+def test_missing_pitch_is_a_loud_gap_not_a_quiet_omission(tmp_path):
+    """The pitch is derived and not in git, so absence is likely — and costly.
+
+    A bundle that ships without the recorded presentation looks complete: every
+    other section is there. The build has to say which command produces it.
+    """
+    source = tmp_path / "repo"
+    source.mkdir()
+    _fake_tree(source, with_pitch=False)
+    out = tmp_path / "bundle"
+
+    assert build(source, out, dry_run=False) == 1
+    assert not (out / "04-presentation").exists()

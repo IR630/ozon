@@ -114,6 +114,16 @@ SECTIONS = (
     ),
 )
 
+# ЗАПИСАННАЯ ПРЕЗЕНТАЦИЯ КЛАДЁТСЯ СКРИПТОМ, А НЕ РУКАМИ. MANIFEST обещал раздел
+# `04-presentation` с файлом `II_v_massy_pitch.mp4`, но сборщик его не создавал:
+# ролик уезжал в `01-video-demo` под своим рабочим именем, потому что попадал под
+# маску `*.mp4`. Итог — манифест описывал состав, которого в папке нет, а человеку
+# оставался шаг «не забыть переложить и переименовать». Оба конца закрыты здесь.
+PITCH_SOURCE = "docs/report/video/defence.mp4"
+PITCH_FOLDER = "04-presentation"
+PITCH_NAME = "II_v_massy_pitch.mp4"
+
+
 # Files a pattern sweeps up but that must not ship. Enforced here, not by
 # narrowing the glob: a pattern precise enough to miss this file would also
 # miss the next clip someone records. Until this set existed, the bundle's
@@ -122,6 +132,8 @@ SECTIONS = (
 # deck each hit once already.
 NOT_BUNDLED = frozenset({
     "docs/report/video/demo_reel.mp4",
+    # Не дубль: тот же файл уезжает в 04-presentation под именем сдачи.
+    PITCH_SOURCE,
     "docs/report/video/demo_sorting_cycle_C_short_20260713.mp4",
     "docs/report/video/demo_sorting_cycle_C_short_20260713_poster.png",
 })
@@ -131,6 +143,7 @@ NOT_BUNDLED = frozenset({
 # в каталоги.
 MANIFEST_FILE_ROWS = 30
 RUN_SECTION_FOLDER = "05-run-artifacts"
+
 
 
 def _human(size: int) -> str:
@@ -263,12 +276,27 @@ def build(root: Path, out: Path, dry_run: bool, *, include_runs: bool = True) ->
             target = out / section.folder / path.relative_to(root)
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(path, target)
+    pitch = root / PITCH_SOURCE
+    if pitch.is_file():
+        target = out / PITCH_FOLDER / PITCH_NAME
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(pitch, target)
+        print(f"{PITCH_FOLDER:<18} {1:>4} files "
+              f"{pitch.stat().st_size / (1024 * 1024):>8.1f} MiB")
+    else:
+        # Ролик производный и в git не лежит, поэтому его отсутствие — не ошибка
+        # сборки, а сигнал «сначала собери ролик». Молча пропустить нельзя:
+        # именно так раздел и оказывался пустым.
+        print(f"GAP: {PITCH_FOLDER}: нет {PITCH_SOURCE} — "
+              f"сначала `python scripts/build_defence_video.py`")
+        gaps.append(f"{PITCH_FOLDER}: нет {PITCH_SOURCE}")
+
     (out / "MANIFEST.md").write_text(
         render_manifest(root, plan, include_runs=include_runs), encoding="utf-8")
 
     print(f"\nbundle written to {out}")
-    print("next, by hand: upload the folder to the organizers' Nextcloud, add")
-    print("04-presentation/II_v_massy_pitch.mp4, verify both public links, then")
+    print("next, by hand: upload the folder to the organizers' Nextcloud,")
+    print("verify both public links, then")
     print("`python scripts/check_submission.py` -> PASS.")
     return 1 if gaps else 0
 
